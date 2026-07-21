@@ -1,4 +1,4 @@
-# 🧠 AI AGENT CONTEXT: LAUNDROTWIN PROJECT
+#AI AGENT CONTEXT: LAUNDROTWIN PROJECT
 
 **Project Name:** Smart Laundry Management & Analytics Platform
 **Target Audience:** Commercial Laundromat Franchise Owners, Managers, and Technicians (B2B).
