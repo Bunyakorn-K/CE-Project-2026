@@ -1,14 +1,43 @@
-# LaundryGo
+# CE Project 2026 — LaundroTwin
 
-LaundryGo is a standalone, mobile-first LINE LIFF reporting surface for
-laundromat stakeholders. It reads tenant-scoped reporting data through the
-IRIS LaundryGo Read API and keeps its own local access control, alert
-acknowledgement audit trail, and admin workflow.
+LaundroTwin is a Smart Laundry Management and Analytics Platform for
+commercial laundromat franchise owners, managers, and technicians. The target
+product turns existing MQTT and Modbus data into a multi-branch Digital Twin,
+business intelligence, safe AI-assisted analysis, and event-driven alerts.
 
-It never sends machine commands, writes payment data, ingests telemetry, or
-exposes IRIS credentials to the browser.
+This repository combines the CE Project requirements and data contracts with
+the existing LaundryGo implementation. LaundryGo is currently a read-only,
+mobile-first LINE LIFF reporting application backed by a Hono API and local
+SQLite. It is an implementation starting point, not evidence that every
+LaundroTwin MVP requirement is complete.
 
-## Architecture
+## Sources of truth
+
+Read these documents before changing behavior or data models:
+
+- [`docs/01_requirements/`](docs/01_requirements/) defines requirements,
+  functions, user stories, priorities, and acceptance criteria.
+- [`docs/03_data_contracts/`](docs/03_data_contracts/) defines telemetry fields,
+  Modbus mappings, units, validation rules, and unresolved hardware semantics.
+- [`docs/04_traceability/RTM_matrix.md`](docs/04_traceability/RTM_matrix.md)
+  maps requirements to system functions and user stories.
+- [`docs/integration/iris-laundrygo-read-api.md`](docs/integration/iris-laundrygo-read-api.md)
+  describes the current optional IRIS read-only integration.
+
+## Current implementation status
+
+| Area | Status |
+| --- | --- |
+| CE requirements and data-contract documentation | Present |
+| LINE LIFF mobile reporting UI | Implemented |
+| Local owner, manager, and technician access workflow | Implemented |
+| Explicit, labeled demo mode | Implemented |
+| Read-only IRIS reporting integration | Client implemented; upstream API required |
+| Direct MQTT ingestion and normalized time-series storage | Not implemented in this repository |
+| Complete Digital Twin and alert engine from CE requirements | Not implemented |
+| Safe AI Executive Assistant | Not implemented |
+
+## Current application architecture
 
 ```text
 LINE LIFF or local owner account
@@ -21,88 +50,78 @@ LINE LIFF or local owner account
               |
               | X-LaundryGo-Read-Key (server only)
               v
-    IRIS /v1/laundrygo read API
-              |
-              v
-       IRIS reporting and live state
+    Optional IRIS read-only reporting API
+```
+
+The current application never sends machine commands, writes payment data,
+or exposes upstream credentials to the browser.
+
+## Repository layout
+
+```text
+apps/api/                 Hono API, authentication, RBAC, and reporting client
+apps/web/                 React/Vite LINE LIFF application
+deploy/                   Container deployment configuration
+docs/01_requirements/     CE Project requirements and user stories
+docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
+docs/04_traceability/     Requirements Traceability Matrix
+docs/integration/         Current IRIS read-only integration contract
 ```
 
 ## Run locally
 
-1. Use Node.js 22+ and pnpm 10+.
+1. Install Node.js 22+ and pnpm 10+.
 2. Copy `.env.example` to `.env`.
-3. Set a unique `BETTER_AUTH_SECRET` and a `LAUNDRYGO_BOOTSTRAP_ADMIN_EMAIL`.
-4. Configure `IRIS_READ_BASE_URL` and `IRIS_LAUNDRYGO_READ_API_KEY` once the
-   corresponding IRIS Worker integration is available.
+3. Set a unique `BETTER_AUTH_SECRET` and a
+   `LAUNDRYGO_BOOTSTRAP_ADMIN_EMAIL`.
+4. Configure `IRIS_READ_BASE_URL` and `IRIS_LAUNDRYGO_READ_API_KEY` when the
+   corresponding read API is available.
 5. Run `pnpm install` and `pnpm dev`.
 
-The mobile app is at `http://localhost:5173`; the API is at
-`http://localhost:8787`. The Vite development server proxies `/api` requests
-to the Hono API.
-
-Without the two IRIS read settings, authenticated users see an explicit
-reporting-source-unavailable state. LaundryGo does not create fallback metrics
-or fabricated machine statuses.
+The web application runs at `http://localhost:5173`; the API runs at
+`http://localhost:8787`. Without the IRIS read settings, authenticated users
+see an explicit reporting-source-unavailable state rather than fabricated
+metrics or machine statuses.
 
 ## Demo mode
 
-Set `LAUNDRYGO_DEMO_MODE=true` only for local preview or stakeholder demo.
-LaundryGo then shows a labeled `DEMO MODE` entry point, simulated branches,
-machine states, alerts, and a local Demo Owner session. It makes no IRIS request
-and is never an automatic fallback when real reporting is unavailable.
+Set `LAUNDRYGO_DEMO_MODE=true` only for local preview or stakeholder demos.
+Demo mode is visibly labeled, uses simulated branches, machines, and alerts,
+and never acts as an automatic fallback for unavailable production data.
 
 ## Access workflow
 
 1. Create or sign in to the local owner account using the bootstrap email.
 2. Open `/mange` to review LINE access requests and active grants.
-3. A LINE user opens the LIFF app. Their ID token is verified server-side and
-   an unknown user creates a pending local access request.
-4. An owner approves the request as `owner`, `manager`, or `technician`.
-5. The user reopens LIFF and receives a short-lived, HttpOnly LaundryGo
-   session cookie.
-
-Role scope:
+3. A LINE user opens the LIFF application and the API verifies their ID token.
+4. The owner approves the request as `owner`, `manager`, or `technician`.
+5. The user receives a short-lived, HttpOnly LaundryGo session cookie.
 
 | Role | Branch scope | Revenue | Access administration |
 | --- | --- | --- | --- |
-| Owner | All branches in the configured IRIS tenant | Yes | Yes |
+| Owner | All branches in the configured tenant | Yes | Yes |
 | Manager | One assigned branch per grant | Yes | No |
 | Technician | One assigned branch per grant | No | No |
 
-Alert acknowledgement is local to LaundryGo and audit-logged. It never marks
-an IRIS alert as acknowledged upstream.
+Alert acknowledgement is local to LaundryGo and audit-logged. It does not
+acknowledge an upstream alert.
 
-## LINE configuration
+## LINE and production configuration
 
-Set `VITE_LIFF_ID` for the browser and `LINE_LOGIN_CHANNEL_ID` for the Hono
-API. The latter is used only to verify an ID token with LINE. The LIFF ID is
-public; channel secrets, access tokens, the IRIS read key, and Better Auth
-secret remain server-side.
+Set `VITE_LIFF_ID` for the browser and `LINE_LOGIN_CHANNEL_ID` for server-side
+ID-token verification. Channel secrets, access tokens, upstream read keys, and
+the Better Auth secret must remain server-side.
 
-`POST /webhooks/line` is optional and remains disabled until both LINE Messaging
-API variables are configured. It is not required for LIFF sign-in.
+`POST /webhooks/line` is optional and remains disabled until the LINE Messaging
+API variables are configured. For container deployment, copy
+`deploy/.env.production.example` to the deployment host's `.env`, populate the
+required values, and run `docker compose up -d --build`. Back up
+`data/laundrygo.sqlite` before replacing the host or persistent volume.
 
-## Production configuration
+## Verification
 
-Copy `deploy/.env.production.example` to `.env` on the VM and set every value
-needed by the chosen features. `docker compose up -d --build` runs the Hono API
-and Nginx web container. The `VITE_LIFF_ID` build argument is intentionally the
-only browser-exposed build setting; the IRIS key is available only to the API
-container.
-
-Back up `data/laundrygo.sqlite` before replacing the VM or recreating its
-persistent volume.
-
-## Verification commands
-
-- `pnpm test` — API and web unit tests.
-- `pnpm check` — TypeScript checks for both workspaces.
-- `pnpm build` — API type check and production Vite build.
-
-## IRIS integration contract
-
-LaundryGo expects the versioned endpoints summarized in
-[`docs/integration/iris-laundrygo-read-api.md`](docs/integration/iris-laundrygo-read-api.md).
-The backend holds the integration key and sends it through
-`X-LaundryGo-Read-Key`; there is no tenant, arbitrary URL, or credential input
-in the browser request path.
+```bash
+pnpm test
+pnpm check
+pnpm build
+```

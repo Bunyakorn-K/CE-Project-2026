@@ -2,11 +2,11 @@
 .DS_Store
 **/.DS_Store
 
-# Local tooling
-.impeccable/hook.cache.json
-
+# Dependencies and build output
 node_modules/
 dist/
+
+# Local environment and runtime data
 .env
 *.sqlite
 *.sqlite-shm
@@ -14,3 +14,6 @@ dist/
 apps/api/data/
 apps/api/drizzle/
 data/
+
+# Local tooling
+.impeccable/hook.cache.json

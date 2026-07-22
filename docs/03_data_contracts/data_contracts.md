@@ -1,0 +1,20 @@
+# 📑 Data Contracts & Rules (Main Rules)
+
+**Document Purpose:** This document defines the primary data contract rules, mandatory fields, validation logic, and execution scopes required across the telemetry pipeline, backend storage, and API layers.
+**CRITICAL FOR AI AGENTS:** Always enforce these data rules strictly when generating database schemas, DTOs, data validation middleware, or API endpoints.
+
+| Domain / Area | Field / Rule | Data Source | Definition & Control Requirements | Used By | Status / Milestone |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Tenant Identity** | `branch_id` | Device provisioning / backend | Unique & immutable branch ID. **MUST** be present in every telemetry event and database query. Reject missing/unknown `branch_id` and strictly enforce server-side scope. | R01, R04, Dashboard, AI | **Required before MVP** |
+| **Device Identity** | `machine_id` | Device provisioning | Unique machine ID within a branch (not just a UI display name). Reject duplicate mappings and log device mapping history. | Digital Twin, Alerts, Maintenance | **Required before MVP** |
+| **Schema Version** | `register_map_version` | Device mapping registry | Version tag specifying register address, unit, type, bits, and valid value ranges for a machine model. Reject events referencing unknown map versions. | All register-based features | **Required before MVP** |
+| **Event Timestamp** | `event_timestamp` | Device gateway / ingestion | UTC timestamp when telemetry was generated. Store `received_at` separately. Reject invalid timestamps and flag excessive clock skew. | Time series, KPI, Alerts | **Required before MVP** |
+| **Machine State** | `state` | Mapped register (e.g., Reg 4) | Enum value for machine state defined explicitly in `register_map_version`. Do not guess state in the UI. Reject unknown enums and flag data quality status. | Digital Twin, Anomaly rules | **Required before MVP** |
+| **Remaining Time** | `remaining_seconds` | Mapped registers (e.g., Reg 6, 7) | Normalized remaining time as a non-negative integer in seconds. Must define source units and handle counter rollovers properly. | Digital Twin, Public status | **Required before MVP** |
+| **Temperature** | `temperature_c` | Mapped register (e.g., Reg 13) | Normalized Celsius value. Must handle unit conversion (from Fahrenheit) and validate against reasonable sensor boundaries. | Digital Twin, Gas estimate, Anomaly rules | **Required before MVP** |
+| **Payment / Revenue** | `paid_counter` or transaction event | Mapped register / payment source | Explicitly define whether value is lifetime accumulated, per-session, cash-only, or all payment methods. Record reset semantics and cross-check against transaction events. | KPI, Coin box estimate | **Required before MVP** |
+| **Door Status** | `door_status` | Explicit mapped bit/register | Physical door status ONLY. **DO NOT** use as a proxy for coin box status without explicit documentation. Specify device type, address, and bit in `register_map_version`. | Digital Twin | **Required before MVP** |
+| **Coin Box Open** | `coinbox_open` | Explicit mapped switch/event | Mapped event allowed to reset coin box volume estimates. If missing on hardware, require a manual reset with audit logging. **NEVER** infer from `door_status`. | Coin Box estimation | **Required before MVP** |
+| **Gas Pressure** | `gas_pressure` | External gas pressure sensor | Pressure reading with units, sensor ID, and sampling window. Check reasonable value ranges and flag missing sensor data. | Gas early-warning | **Required before MVP** |
+| **Gas Leak Detected** | `gas_leak_detected` | Dedicated gas-leak detector | Boolean signal from a dedicated physical gas leak sensor (separate from pressure drop estimation). Local alarm must function offline even if cloud disconnects. | Safety alert | *Hardware decision required* |
+| **Alert Rules** | `rule_id` + `rule_version` | Alert configuration | Versioned configuration defining thresholds, cooldowns, recipients, and enabled states. Log every rule evaluation and dispatch outcome. | Notifications, Audit log | **Required before MVP** |
