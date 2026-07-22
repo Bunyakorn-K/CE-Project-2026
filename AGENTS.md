@@ -13,6 +13,18 @@ evidence in this repository support that claim.
 
 Direct user instructions take precedence over this guide.
 
+## Repository identity
+
+- Canonical repository: `https://github.com/Bunyakorn-K/CE-Project-2026`
+- Default branch: `main`
+- Local working copy: `/Users/uunw/programming/final-project`
+
+This directory is now the application repository, not a temporary planning
+workspace. Keep project documentation and implementation changes here. IRIS is
+an optional read-only integration for the current LaundryGo implementation; do
+not redirect CE Project work to a Meepain-group repository unless the user
+explicitly requests a cross-repository change.
+
 ## Product goal
 
 Existing laundromats expose operational data through local Modbus, ESP, MQTT,
@@ -97,12 +109,16 @@ ingestion are not part of the current implementation.
 
 ## Change workflow
 
-1. Identify the requirement, user story, function, and data contract affected.
-2. State assumptions and unresolved hardware or data semantics.
-3. Make the smallest change that satisfies the acceptance criteria.
-4. Add or update focused tests, including tenant isolation and failure cases.
-5. Run the narrow test first, then the repository verification commands.
-6. Update the RTM or source document when approved scope changes.
+1. Fetch `origin` and verify the current `main` before starting substantive
+   work. Preserve unrelated user changes in the working tree.
+2. Identify the requirement, user story, function, and data contract affected.
+3. State assumptions and unresolved hardware or data semantics.
+4. Make the smallest change that satisfies the acceptance criteria.
+5. Add or update focused tests, including tenant isolation and failure cases.
+6. Run the narrow test first, then the repository verification commands.
+7. Update the RTM or source document when approved scope changes.
+8. Commit only reviewed files. Pushing code does not authorize deployment,
+   production migration, or live machine actions.
 
 Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 `apps/web` unless an approved architecture change establishes a new package.
