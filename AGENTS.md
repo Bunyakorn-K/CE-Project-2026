@@ -41,6 +41,8 @@ Read the relevant project documents before changing code:
 
 - `docs/01_requirements/`: requirements, user stories, functions, priorities,
   and acceptance criteria.
+- `docs/02_architecture/`: target data relationships and activity flows. Update
+  the diagrams when entity ownership, process decisions, or failure paths change.
 - `docs/03_data_contracts/`: telemetry fields, register maps, units, validation,
   and unresolved semantics. Read this before changing schemas, MQTT parsing,
   KPIs, alerts, or API contracts.

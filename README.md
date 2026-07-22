@@ -17,6 +17,8 @@ Read these documents before changing behavior or data models:
 
 - [`docs/01_requirements/`](docs/01_requirements/) defines requirements,
   functions, user stories, priorities, and acceptance criteria.
+- [`docs/02_architecture/`](docs/02_architecture/) defines the target-MVP data
+  model and the main ingestion, access, alert, and AI workflows.
 - [`docs/03_data_contracts/`](docs/03_data_contracts/) defines telemetry fields,
   Modbus mappings, units, validation rules, and unresolved hardware semantics.
 - [`docs/04_traceability/RTM_matrix.md`](docs/04_traceability/RTM_matrix.md)
@@ -63,6 +65,7 @@ apps/api/                 Hono API, authentication, RBAC, and reporting client
 apps/web/                 React/Vite LINE LIFF application
 deploy/                   Container deployment configuration
 docs/01_requirements/     CE Project requirements and user stories
+docs/02_architecture/     Target data model and Mermaid workflow diagrams
 docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
 docs/04_traceability/     Requirements Traceability Matrix
 docs/integration/         Current IRIS read-only integration contract

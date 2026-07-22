@@ -29,7 +29,7 @@
 - Consumes: `docs/01_requirements/system_functions.md`, `docs/01_requirements/user_stories.md`, `docs/03_data_contracts/data_contracts.md`, `docs/04_traceability/RTM_matrix.md`
 - Produces: Stable entity and workflow terminology for the CE Project report
 
-- [ ] **Step 1: Add the target-MVP ER diagram**
+- [x] **Step 1: Add the target-MVP ER diagram**
 
 Declare these exact entity groups:
 
@@ -49,7 +49,7 @@ by its requirement. Use integer satang for money. Keep optional branch, machine,
 sensor, and actor references explicit where one alert or audit record can target
 different entity types.
 
-- [ ] **Step 2: Add MQTT Telemetry Ingestion and Digital Twin Update**
+- [x] **Step 2: Add MQTT Telemetry Ingestion and Digital Twin Update**
 
 Use subgraphs `Existing Branch Edge`, `Cloud Ingestion`, and
 `Authorized Dashboard`. Include broker authentication, envelope validation,
@@ -58,14 +58,14 @@ unit normalization, rejection storage, event persistence, snapshot update,
 derived evidence, branch-scoped streaming, authorization re-check, and stale UI
 handling.
 
-- [ ] **Step 3: Add Dashboard Access and Branch-Scoped RBAC**
+- [x] **Step 3: Add Dashboard Access and Branch-Scoped RBAC**
 
 Use subgraphs `User and Browser`, `API Authorization`, and `Data Access`. Include
 authentication failure, active-membership loading, requested-scope validation,
 role permission checks, server-side tenant/branch predicates, field-level
 revenue policy, denial auditing, response timestamps, and stream authorization.
 
-- [ ] **Step 4: Add Rule-Based Alert Evaluation and LINE Delivery**
+- [x] **Step 4: Add Rule-Based Alert Evaluation and LINE Delivery**
 
 Use subgraphs `Rule Engine`, `Delivery Worker`, and `Authorized User`. Include
 versioned matching rules, evidence evaluation, dedupe key construction,
@@ -73,7 +73,7 @@ cooldown suppression, durable alert creation, recipient resolution, LINE
 Messaging API delivery, bounded retry, delivery outcome storage, and authorized
 acknowledgement auditing.
 
-- [ ] **Step 5: Add Safe AI Executive Assistant Function Calling**
+- [x] **Step 5: Add Safe AI Executive Assistant Function Calling**
 
 Use subgraphs `Authorized User`, `Assistant Orchestrator`, and
 `Analytics Service`. Include authentication, sanitized request recording,
@@ -81,7 +81,7 @@ allow-listed tool selection, strict argument schema validation, branch-scope
 validation, parameterized analytics execution, insufficient-data handling,
 tool-call auditing, and answer generation from tool results only.
 
-- [ ] **Step 6: Validate all Mermaid blocks**
+- [x] **Step 6: Validate all Mermaid blocks**
 
 Extract each Mermaid block in memory or through standard input and render it
 with Mermaid CLI. Each block must exit successfully and produce non-empty SVG.
@@ -105,18 +105,18 @@ Expected: exit code `0` for each of the five Mermaid blocks.
 - Consumes: Architecture document created in Task 1
 - Produces: Discoverable architecture source from both repository entry points
 
-- [ ] **Step 1: Add the architecture directory to the README index**
+- [x] **Step 1: Add the architecture directory to the README index**
 
 Add `docs/02_architecture/` between requirements and data contracts and describe
 it as the target data model and workflow diagrams.
 
-- [ ] **Step 2: Add architecture guidance to AGENTS.md**
+- [x] **Step 2: Add architecture guidance to AGENTS.md**
 
 Add `docs/02_architecture/` to `Sources of truth`. Require future schema and
 workflow changes to update the diagrams when entity relationships or process
 decisions change.
 
-- [ ] **Step 3: Run documentation checks**
+- [x] **Step 3: Run documentation checks**
 
 Run:
 
@@ -129,7 +129,7 @@ gitleaks git --staged --redact --no-banner --log-level warn .
 Expected: no whitespace errors, no placeholders, no claim that pressure detects
 a gas leak, and no staged secrets.
 
-- [ ] **Step 4: Commit the implementation**
+- [x] **Step 4: Commit the implementation**
 
 ```bash
 git add AGENTS.md README.md docs/02_architecture/data-and-activity-diagrams.md
