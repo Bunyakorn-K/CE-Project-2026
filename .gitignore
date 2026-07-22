@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Local tooling
+.impeccable/hook.cache.json
+
+node_modules/
+dist/
+.env
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+apps/api/data/
+apps/api/drizzle/
+data/

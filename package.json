@@ -1,0 +1,16 @@
+{
+  "name": "laundrygo",
+  "private": true,
+  "packageManager": "pnpm@10.33.4",
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @laundrygo/api dev\" \"pnpm --filter @laundrygo/web dev\"",
+    "build": "pnpm --filter @laundrygo/api build && pnpm --filter @laundrygo/web build",
+    "check": "pnpm --filter @laundrygo/api check && pnpm --filter @laundrygo/web check",
+    "test": "pnpm --filter @laundrygo/api test && pnpm --filter @laundrygo/web test",
+    "db:generate": "pnpm --filter @laundrygo/api db:generate",
+    "db:push": "pnpm --filter @laundrygo/api db:push"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

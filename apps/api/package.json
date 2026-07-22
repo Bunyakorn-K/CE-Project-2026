@@ -1,0 +1,32 @@
+{
+  "name": "@laundrygo/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.6.23",
+    "@hono/node-server": "^1.19.5",
+    "@line/bot-sdk": "^9.9.0",
+    "better-auth": "^1.6.23",
+    "better-sqlite3": "^12.8.0",
+    "dotenv": "^17.2.4",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}
