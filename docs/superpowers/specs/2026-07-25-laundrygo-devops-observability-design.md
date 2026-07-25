@@ -1,6 +1,6 @@
 # LaundryGo DevOps and Observability Design
 
-**Status:** Approved design for implementation planning
+**Status:** Revised design awaiting final review
 
 **Date:** 2026-07-25
 
@@ -37,6 +37,9 @@ The baseline must provide:
   creates a verified candidate only.
 - Grafana, Loki, and Prometheus are reused. Tempo and an OpenTelemetry
   Collector are added to complete the traces path.
+- The initial Jenkins trigger is manual for the protected `main` branch only.
+  A public GitHub webhook is a separate, later change with its own signature
+  validation and authorization design.
 
 ### 2.2 Existing constraints
 
@@ -49,9 +52,34 @@ The baseline must provide:
   image is deleted or moved without a separately confirmed target.
 - PVE `local-lvm` has capacity for workloads, but capacity alone does not
   remove the host-root storage blocker.
+- The monitoring LXC currently uses DHCP. It needs a DHCP reservation or a
+  static private address before it becomes a firewall-rule source.
 - All new Caddy upstreams and cross-network monitoring ports must be reflected
   in the persistent PVE private-network firewall and its regression test.
 - Browser clients never receive upstream service credentials.
+
+### 2.3 Mandatory pre-flight gates
+
+No implementation or public route change starts until all of these checks pass:
+
+1. `grafana.notnotik.duckdns.org` completes a public TLS handshake and an
+   authenticated browser smoke test. The effective Grafana `root_url`, Caddy
+   route, certificate, and Authentik callback are recorded without printing
+   secrets.
+2. The live Grafana administrator credential is confirmed rotated from any
+   source-controlled placeholder. It is stored outside Git with restrictive
+   file permissions. The local break-glass procedure is tested before OAuth
+   changes.
+3. PVE `local` has at least 10 GiB free after an explicitly approved recovery
+   action. The recovery record identifies each retained, moved, or removed
+   artifact and its rollback location.
+4. The monitoring LXC has a stable private address, current resource
+   measurements, and a successful guest backup. Jenkins receives a stable
+   private address and must complete its first successful guest backup before
+   its public Caddy route is exposed.
+5. Existing Grafana OAuth users and the current Main organization mapping are
+   inventoried. The LaundryGo mapping may not revoke existing authorized
+   administrators as an accidental side effect.
 
 ## 3. Architecture
 
@@ -68,9 +96,9 @@ Project member
            `-- dedicated Jenkins VM and Authentik OIDC
 
 LaundryGo API on VM 117
-    |-- /metrics (private, Prometheus scrape only)
+    |-- metrics listener :9464 (private, Prometheus scrape only)
     |-- structured logs -> Alloy -> Loki
-    `-- OTLP traces -> OpenTelemetry Collector -> Tempo
+    `-- OTLP/HTTP :4318 -> OpenTelemetry Collector -> Tempo
 
 Monitoring LXC
     |-- Grafana (shared UI)
@@ -97,17 +125,20 @@ Create one Authentik OIDC application for Jenkins. It emits `openid`,
 `laundrygo-members` and `authentik Admins` only. Jenkins validates its own
 OIDC session; Caddy only terminates TLS and proxies the public request.
 
-The existing Grafana Generic OAuth provider is extended, not replaced. It
-receives the group claim and maps:
+The existing Grafana Generic OAuth provider is extended, not replaced. It uses
+the Authentik `groups` claim as the explicit organization mapping input. It
+does not rely on Grafana Team Sync. The live Main organization name and current
+administrator mapping are recorded during pre-flight before these mappings are
+applied:
 
 | External group | Grafana organization | Role |
 | --- | --- | --- |
 | `laundrygo-members` | `LaundryGo` | Viewer |
 | `authentik Admins` | Main organization and `LaundryGo` | Admin |
 
-The configuration must reject a user whose group claim does not match an
-explicit mapping. It must not place LaundryGo members in the Main organization
-as a fallback.
+The configuration rejects a user whose group claim does not match an explicit
+mapping. It must not place LaundryGo members in the Main organization as a
+fallback, and it must preserve the existing administrator path.
 
 ### 4.2 Grafana resources
 
@@ -124,6 +155,13 @@ This is a Grafana UI/resource boundary. Because the underlying Prometheus and
 Loki servers remain shared, it is not a security boundary suitable for
 untrusted tenants. Project members are deliberately trusted within the
 homelab's shared observability environment.
+
+The initial rollout does not depend on per-organization Explore restrictions,
+because the installed Grafana OSS edition does not make that a hard backend
+boundary. Members are trusted users with dashboard-resource access only; the
+acceptance test verifies organization and dashboard permissions, while the
+shared-backend limitation remains explicit. A future requirement for untrusted
+members requires separate telemetry stores or a query-enforcing proxy.
 
 ### 4.3 Jenkins authorization
 
@@ -156,6 +194,13 @@ application telemetry data model.
 Every new signal uses stable service attributes including
 `service.name=laundrygo-api`, `deployment.environment`, and
 `project=laundrygo`.
+
+When real ingestion is implemented, the application data path preserves the
+required `branch_id`, `machine_id`, `register_map_version`, `event_timestamp`,
+and `received_at` fields. An invalid payload is quarantined in application
+storage with its validation reason. Observability records only a safe event
+hash, schema version, rejection reason, and correlation ID; it never receives
+the raw payload.
 
 ### 5.2 Metric and log rules
 
@@ -192,6 +237,10 @@ All dashboard queries filter on `project=laundrygo`. The telemetry dashboard
 is empty or explicitly reports unavailable data until a real, validated
 telemetry pipeline exists; it must never fabricate telemetry.
 
+While `LAUNDRYGO_DEMO_MODE=true`, the service overview explicitly displays
+demo/reporting-source state. Telemetry freshness, rejection, and stale-data
+panels remain unavailable rather than showing zero-valued production metrics.
+
 ## 6. Infrastructure Components
 
 ### 6.1 Monitoring LXC changes
@@ -208,15 +257,29 @@ The existing monitoring LXC gains:
 Before enabling Tempo, increase the monitoring LXC resources after measuring
 current usage. The target is at least 3 GiB RAM and 24 GiB root storage, with
 the final values verified against PVE capacity. Retention starts conservatively
-and is reviewed after one week of real service data.
+and is reviewed after one week of real service data. The initial policy is:
+
+| Store | Initial retention | Capacity control |
+| --- | --- | --- |
+| Prometheus | Existing 30 days | Preserve the existing retention and alert on LXC disk pressure |
+| Loki | Existing 14 days | Preserve the existing retention and alert on LXC disk pressure |
+| Tempo | 7 days | Review storage after one week; alert when monitor LXC disk use exceeds 80% |
+
+Before adding any new image, record the running Grafana, Loki, and Prometheus
+digests. New Tempo, Collector, Alloy, and Jenkins images use tested immutable
+tags or digests. Updating pre-existing `latest` images is a separate reviewed
+maintenance change, not an incidental part of LaundryGo delivery.
 
 ### 6.2 LaundryGo VM changes
 
 VM 117 gains only the observability components necessary for the application:
 
-- API instrumentation and a private `/metrics` endpoint.
-- A minimal log shipping agent that forwards structured container logs to Loki.
-- OTLP export to the private collector.
+- API instrumentation and a dedicated metrics listener on private port `9464`.
+  The public Nginx route and Caddy route do not proxy this port or a `/metrics`
+  path.
+- A minimal Alloy log agent with a read-only Docker socket and only the mounts
+  needed to collect LaundryGo container logs.
+- OTLP/HTTP export to the private collector on port `4318`.
 
 The API remains read-only. Metrics and traces describe the reporting service;
 they do not authorize telemetry ingestion, machine control, payment writes, or
@@ -236,11 +299,20 @@ The first pipeline checks out the canonical repository and runs:
 pnpm test
 pnpm check
 pnpm build
-docker compose build
+docker compose -f compose.ci.yaml build
 ```
 
-The final Docker build is a verification artifact only. Deployment remains a
+`compose.ci.yaml` is a build-only file that never reads the production `.env`
+file, database, or provider credentials. It supplies only non-secret build
+arguments and verifies both application images from a clean workspace. The
+final Docker build is a verification artifact only. Deployment remains a
 human-approved process with a separate future design.
+
+Jenkins configuration uses Configuration as Code. The OIDC client secret stays
+in a mode-restricted runtime secret file outside Git. Jenkins home and the
+controller guest are included in the PVE backup schedule; the restore test
+uses an isolated guest identity. Job artifacts expire after 14 days unless a
+release administrator explicitly retains one.
 
 ### 6.4 Public routing
 
@@ -251,15 +323,18 @@ human-approved process with a separate future design.
 | Prometheus, Loki, Tempo, OTLP | Private PVE network only | Network firewall and service-level configuration |
 
 The Jenkins route receives an individual public certificate through Caddy. No
-wildcard certificate or public wildcard catch-all route is required.
+wildcard certificate or public wildcard catch-all route is required. Caddy
+terminates public TLS and proxies only to Jenkins's private HTTP listener;
+end-to-end upstream TLS is not implied by this design.
 
 ## 7. Firewall and Network Rules
 
 All network changes are deny-by-default additions to the persistent PVE guard:
 
-- Pi Caddy may reach only the Jenkins HTTPS upstream port.
-- The monitoring LXC may reach VM 117 only for the metrics endpoint.
-- VM 117 may reach the monitoring LXC only for Loki ingestion and OTLP.
+- Pi Caddy may reach only the Jenkins private HTTP listener.
+- The monitoring LXC may reach VM 117 port `9464` only.
+- VM 117 may reach the monitoring LXC port `3100` for Loki ingestion and port
+  `4318` for OTLP/HTTP only.
 - No direct internet or LAN route is added to the monitoring write APIs.
 
 Each rule is added before the applicable source-deny rule and covered by the
@@ -271,11 +346,13 @@ old DHCP data.
 
 1. **Capacity gate:** inventory PVE `local` storage, propose exact recovery
    targets, obtain approval, and verify at least 10 GiB free. Confirm PVE
-   memory, `local-lvm`, VM ID, service health, and firewall state.
+   memory, `local-lvm`, stable private addresses, VM ID, service health, and
+   firewall state.
 2. **Identity gate:** back up the current Grafana configuration, create the
    Authentik group and Jenkins OIDC application, create the Grafana
    `LaundryGo` organization, and validate an administrator and a member test
-   account.
+   account. This includes the Grafana TLS/root URL and break-glass pre-flight
+   checks.
 3. **Observability:** expand the monitor LXC as needed, add Tempo and the
    collector, add private firewall rules, then provision LaundryGo metrics,
    logs, traces, datasources, and dashboards.
@@ -283,7 +360,8 @@ old DHCP data.
    add the Caddy route and firewall rule, then create the verification-only
    pipeline.
 5. **Acceptance and rollback check:** execute access, network, data hygiene,
-   and CI verification. Record deployed versions and rollback locations.
+   alerting, backup/restore, and CI verification. Record deployed versions and
+   rollback locations.
 
 The steps are intentionally ordered so no public route is created before its
 authorization policy, internal service, and firewall rules are verified.
@@ -309,6 +387,14 @@ authorization policy, internal service, and firewall rules are verified.
 - A synthetic invalid telemetry sample, when the ingestion feature exists,
   increments the safe rejection metric and never exposes its raw payload.
 - Loki, Tempo, Prometheus, and OTLP are unreachable from the public internet.
+- Alertmanager produces a tested alert for API target down, scrape failure,
+  Collector or Tempo unavailability, and monitor LXC disk pressure. A
+  telemetry-stale alert is enabled only after real ingestion is available.
+  These alerts use the existing default Alertmanager receiver; adding a new
+  recipient or LINE delivery is a separate approved change.
+- A backup restore test validates the new Jenkins guest and confirms that
+  Grafana's LaundryGo organization resources can be recreated from their
+  declared configuration.
 
 ### 9.3 CI and public routing
 
@@ -320,6 +406,8 @@ authorization policy, internal service, and firewall rules are verified.
 - A successful job does not deploy to VM 117.
 - Caddy configuration validation, firewall regression tests, container health,
   and external HTTPS smoke tests all pass.
+- The CI build succeeds without a production `.env` file, upstream credentials,
+  or access to VM 117.
 
 ## 10. Rollback
 
@@ -333,6 +421,9 @@ authorization policy, internal service, and firewall rules are verified.
 - Stop the new Tempo, collector, log agent, or Jenkins services without
   touching existing Grafana, Loki, Prometheus, or LaundryGo application data.
 - Keep the existing VM 117 rollback snapshot and application data intact.
+- Restore the previous monitoring LXC sizing only after Tempo data has been
+  intentionally discarded or archived according to the approved retention
+  policy.
 
 ## 11. Out of Scope
 
