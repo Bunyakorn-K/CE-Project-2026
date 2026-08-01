@@ -33,6 +33,23 @@ test("extractWorkflows fails closed when an expected heading is missing", () => 
   );
 });
 
+test("extractWorkflows fails closed when an approved workflow is duplicated", async () => {
+  const markdown = await readFile(sourcePath, "utf8");
+  const duplicate = [
+    "## Activity Diagram 1: MQTT Telemetry Ingestion and Digital Twin Update",
+    "",
+    "```mermaid",
+    "flowchart TD",
+    "    DUPLICATE[Duplicate telemetry workflow]",
+    "```",
+  ].join("\n");
+
+  assert.throws(
+    () => extractWorkflows(`${markdown}\n\n${duplicate}\n`),
+    /Expected 4 Activity Mermaid blocks, found 5/,
+  );
+});
+
 test("prefixSvgIds rewrites IDs and local references", () => {
   const svg = [
     '<svg aria-labelledby="title desc">',
@@ -55,6 +72,53 @@ test("prefixSvgIds rewrites IDs and local references", () => {
   assert.match(output, /aria-labelledby="telemetry-title telemetry-desc"/);
 });
 
+test("prefixSvgIds rewrites every supported local fragment reference form", () => {
+  const svg = [
+    "<svg aria-labelledby='title desc' aria-describedby=\"desc\">",
+    "<title id='title'>Example</title>",
+    '<desc id="desc">Description</desc>',
+    "<style>#gradient, #clip:hover{fill:url('#gradient')}#node > use{filter:url(\"#blur\")}</style>",
+    "<defs><linearGradient id='gradient'/><filter id=\"blur\"/><clipPath id='clip'/>",
+    "<mask id='mask'/><marker id='marker'/></defs>",
+    "<path id='node' fill='#gradient' stroke=\"#gradient\" filter='#blur' clip-path=\"#clip\" mask='#mask' marker-end=\"#marker\"/>",
+    "<use href='#node'/><use xlink:href=\"#node\"/>",
+    "</svg>",
+  ].join("");
+
+  const output = prefixSvgIds(svg, "telemetry");
+
+  assert.match(output, /id='telemetry-gradient'/);
+  assert.match(output, /url\('#telemetry-gradient'\)/);
+  assert.match(output, /url\("#telemetry-blur"\)/);
+  assert.match(output, /href='#telemetry-node'/);
+  assert.match(output, /xlink:href="#telemetry-node"/);
+  assert.match(output, /fill='#telemetry-gradient'/);
+  assert.match(output, /stroke="#telemetry-gradient"/);
+  assert.match(output, /filter='#telemetry-blur'/);
+  assert.match(output, /clip-path="#telemetry-clip"/);
+  assert.match(output, /mask='#telemetry-mask'/);
+  assert.match(output, /marker-end="#telemetry-marker"/);
+  assert.match(output, /#telemetry-gradient, #telemetry-clip:hover/);
+  assert.match(output, /#telemetry-node > use/);
+  assert.match(output, /aria-labelledby='telemetry-title telemetry-desc'/);
+  assert.match(output, /aria-describedby="telemetry-desc"/);
+});
+
+test("prefixSvgIds applies overlapping ID mappings exactly once", () => {
+  const svg = [
+    '<svg><g id="node"/><g id="telemetry-node"/>',
+    '<use href="#node"/><use href="#telemetry-node"/></svg>',
+  ].join("");
+
+  const output = prefixSvgIds(svg, "telemetry");
+
+  assert.match(output, /id="telemetry-node"/);
+  assert.match(output, /id="telemetry-telemetry-node"/);
+  assert.match(output, /href="#telemetry-node"/);
+  assert.match(output, /href="#telemetry-telemetry-node"/);
+  assert.doesNotMatch(output, /telemetry-telemetry-telemetry-node/);
+});
+
 test("normalizeSvg adds accessible metadata and rejects external resources", () => {
   const workflow = {
     id: "telemetry",
@@ -72,5 +136,67 @@ test("normalizeSvg adds accessible metadata and rejects external resources", () 
   assert.throws(
     () => normalizeSvg('<svg><image href="https://example.com/a.svg"/></svg>', workflow),
     /External resource/,
+  );
+});
+
+test("normalizeSvg rejects non-local resource-bearing attributes", () => {
+  const workflow = {
+    id: "telemetry",
+    title: "Telemetry Ingestion and Digital Twin",
+    summary: "Validate and persist branch telemetry.",
+  };
+  const unsafeSvgs = [
+    "<svg><image href='images/machine.png'/></svg>",
+    "<svg><image xlink:href='/images/machine.png'/></svg>",
+    '<svg><use href="//example.com/icons.svg#machine"/></svg>',
+    "<svg><use xlink:href='icons.svg#machine'/></svg>",
+    "<svg><script src='javascript:alert(1)'/></svg>",
+    "<svg><image href=data:image/svg+xml;base64,PHN2Zy8+/></svg>",
+    "<svg><image data-note='>' href='images/machine.png'/></svg>",
+  ];
+
+  for (const svg of unsafeSvgs) {
+    assert.throws(() => normalizeSvg(svg, workflow), /External resource/, svg);
+  }
+});
+
+test("normalizeSvg allows local fragment resource references", () => {
+  const workflow = {
+    id: "telemetry",
+    title: "Telemetry Ingestion and Digital Twin",
+    summary: "Validate and persist branch telemetry.",
+  };
+
+  assert.doesNotThrow(() => normalizeSvg(
+    "<svg><defs><g id='machine'/></defs><use href='#machine'/></svg>",
+    workflow,
+  ));
+});
+
+test("normalizeSvg generates collision-free accessibility metadata IDs", () => {
+  const workflow = {
+    id: "telemetry",
+    title: "Telemetry Ingestion and Digital Twin",
+    summary: "Validate and persist branch telemetry.",
+  };
+  const svg = [
+    '<svg><title id="svg-title">Source title</title>',
+    '<desc id="svg-desc">Source description</desc>',
+    '<g aria-labelledby="svg-title svg-desc"/></svg>',
+  ].join("");
+
+  const output = normalizeSvg(svg, workflow);
+  const ids = [...output.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+
+  assert.equal(ids.length, new Set(ids).size);
+  assert.match(output, /<title id="telemetry-svg-title-2">/);
+  assert.match(output, /<desc id="telemetry-svg-desc-2">/);
+  assert.match(
+    output,
+    /aria-labelledby="telemetry-svg-title-2 telemetry-svg-desc-2"/,
+  );
+  assert.match(
+    output,
+    /<g aria-labelledby="telemetry-svg-title telemetry-svg-desc"\/>/,
   );
 });

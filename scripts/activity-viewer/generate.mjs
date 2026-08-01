@@ -56,23 +56,36 @@ const workflowMetadata = [
 ];
 
 export function extractWorkflows(markdown) {
-  const workflows = workflowMetadata.flatMap((metadata) => {
+  const matchesByWorkflow = workflowMetadata.map((metadata) => {
     const escapedHeading = metadata.heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(
       "^## " + escapedHeading + "\\n\\n```mermaid\\n([\\s\\S]*?)\\n```",
-      "m",
+      "gm",
     );
-    const match = markdown.match(pattern);
-    return match ? [{ ...metadata, source: match[1].trim() }] : [];
+    return { matches: [...markdown.matchAll(pattern)], metadata };
   });
+  const matchCount = matchesByWorkflow.reduce(
+    (total, { matches }) => total + matches.length,
+    0,
+  );
 
-  if (workflows.length !== workflowMetadata.length) {
+  if (matchCount !== workflowMetadata.length) {
     throw new Error(
-      `Expected ${workflowMetadata.length} Activity Mermaid blocks, found ${workflows.length}`,
+      `Expected ${workflowMetadata.length} Activity Mermaid blocks, found ${matchCount}`,
     );
   }
 
-  return workflows;
+  const invalidWorkflow = matchesByWorkflow.find(({ matches }) => matches.length !== 1);
+  if (invalidWorkflow) {
+    throw new Error(
+      `Expected exactly one Mermaid block for ${invalidWorkflow.metadata.heading}, found ${invalidWorkflow.matches.length}`,
+    );
+  }
+
+  return matchesByWorkflow.map(({ matches, metadata }) => ({
+    ...metadata,
+    source: matches[0][1].trim(),
+  }));
 }
 
 function escapeHtml(value) {
@@ -83,45 +96,106 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-export function prefixSvgIds(svg, prefix) {
-  const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
-  let output = svg;
+function assertLocalResources(svg, workflow) {
+  const resourceElements = svg.matchAll(
+    /<(?:image|script|use)\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi,
+  );
 
-  for (const id of [...new Set(ids)].sort((a, b) => b.length - a.length)) {
-    const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output
-      .replace(new RegExp(`id="${escapedId}"`, "g"), `id="${prefix}-${id}"`)
-      .replace(new RegExp(`url\\(#${escapedId}\\)`, "g"), `url(#${prefix}-${id})`)
-      .replace(new RegExp(`(href|xlink:href)="#${escapedId}"`, "g"), `$1="#${prefix}-${id}"`)
-      .replace(
-        new RegExp(`#${escapedId}(?=[\\s.{,:>\\[])`, "g"),
-        `#${prefix}-${id}`,
-      )
-      .replace(
-        new RegExp(`(aria-labelledby|aria-describedby)="([^"]*)"`, "g"),
-        (full, attribute, value) => {
-          const rewritten = value
-            .split(/\s+/)
-            .map((token) => (token === id ? `${prefix}-${token}` : token))
-            .join(" ");
-          return `${attribute}="${rewritten}"`;
-        },
-      );
+  for (const [, attributes] of resourceElements) {
+    const resourceAttributes = attributes.matchAll(
+      /(?:^|\s)(?:href|xlink:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi,
+    );
+    for (const match of resourceAttributes) {
+      const value = match[1] ?? match[2] ?? match[3];
+      if (!/^#[A-Za-z_][\w:.-]*$/.test(value)) {
+        throw new Error(`External resource found in ${workflow.id} SVG`);
+      }
+    }
+  }
+}
+
+export function prefixSvgIds(svg, prefix) {
+  const ids = [...new Set(
+    [...svg.matchAll(/\sid\s*=\s*(["'])([^"']+)\1/g)].map((match) => match[2]),
+  )].sort();
+  const idMap = new Map(ids.map((id) => [id, `${prefix}-${id}`]));
+  const rewriteId = (id) => idMap.get(id) ?? id;
+  let output = svg.replace(
+    /(\sid\s*=\s*)(["'])([^"']+)\2/g,
+    (full, attribute, quote, id) => `${attribute}${quote}${rewriteId(id)}${quote}`,
+  );
+
+  output = output
+    .replace(
+      /url\(\s*(["']?)#([^"')\s]+)\1\s*\)/gi,
+      (full, quote, id) => full.replace(`#${id}`, `#${rewriteId(id)}`),
+    )
+    .replace(
+      /(\s(?:href|xlink:href)\s*=\s*)(["'])#([^"']+)\2/gi,
+      (full, attribute, quote, id) => `${attribute}${quote}#${rewriteId(id)}${quote}`,
+    )
+    .replace(
+      /(\s(?:fill|stroke|filter|clip-path|mask|marker-start|marker-mid|marker-end)\s*=\s*)(["'])#([^"']+)\2/gi,
+      (full, attribute, quote, id) => `${attribute}${quote}#${rewriteId(id)}${quote}`,
+    )
+    .replace(
+      /(\s(?:aria-labelledby|aria-describedby)\s*=\s*)(["'])([^"']*)\2/gi,
+      (full, attribute, quote, value) => {
+        const rewritten = value
+          .split(/\s+/)
+          .map((token) => rewriteId(token))
+          .join(" ");
+        return `${attribute}${quote}${rewritten}${quote}`;
+      },
+    );
+
+  if (ids.length > 0) {
+    const idAlternation = ids
+      .sort((a, b) => b.length - a.length)
+      .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const selectorPattern = new RegExp(
+      `#(${idAlternation})(?=[\\s.{,:>\\[+~#)])`,
+      "g",
+    );
+    output = output.replace(
+      /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+      (full, opening, css, closing) => {
+        const rewrittenCss = css.replace(
+          selectorPattern,
+          (match, id) => `#${rewriteId(id)}`,
+        );
+        return `${opening}${rewrittenCss}${closing}`;
+      },
+    );
   }
 
   return output;
 }
 
 export function normalizeSvg(svg, workflow) {
-  if (/<(?:image|script|use)\b[^>]*(?:href|src)="(?:https?:)?\/\//i.test(svg)) {
-    throw new Error(`External resource found in ${workflow.id} SVG`);
-  }
+  assertLocalResources(svg, workflow);
 
   let output = svg
     .replace(/<\?xml[\s\S]*?\?>/g, "")
     .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
     .trim();
   output = prefixSvgIds(output, workflow.id);
+  const usedIds = new Set(
+    [...output.matchAll(/\sid\s*=\s*(["'])([^"']+)\1/g)].map((match) => match[2]),
+  );
+  const reserveId = (base) => {
+    let candidate = base;
+    let suffix = 2;
+    while (usedIds.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+  const titleId = reserveId(`${workflow.id}-svg-title`);
+  const descriptionId = reserveId(`${workflow.id}-svg-desc`);
   output = output.replace(
     /<svg\b([^>]*)>/,
     (full, attributes) => {
@@ -129,9 +203,9 @@ export function normalizeSvg(svg, workflow) {
         /\s(?:role|aria-labelledby|aria-describedby|preserveAspectRatio)="[^"]*"/g,
         "",
       );
-      return `<svg${cleanAttributes} role="img" aria-labelledby="${workflow.id}-svg-title ${workflow.id}-svg-desc" preserveAspectRatio="xMidYMin meet">`
-        + `<title id="${workflow.id}-svg-title">${escapeHtml(workflow.title)}</title>`
-        + `<desc id="${workflow.id}-svg-desc">${escapeHtml(workflow.summary)}</desc>`;
+      return `<svg${cleanAttributes} role="img" aria-labelledby="${titleId} ${descriptionId}" preserveAspectRatio="xMidYMin meet">`
+        + `<title id="${titleId}">${escapeHtml(workflow.title)}</title>`
+        + `<desc id="${descriptionId}">${escapeHtml(workflow.summary)}</desc>`;
     },
   );
 
