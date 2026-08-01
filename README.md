@@ -65,7 +65,7 @@ apps/api/                 Hono API, authentication, RBAC, and reporting client
 apps/web/                 React/Vite LINE LIFF application
 deploy/                   Container deployment configuration
 docs/01_requirements/     CE Project requirements and user stories
-docs/02_architecture/     Target data model and Mermaid workflow diagrams
+docs/02_architecture/     Target data model, Mermaid sources, and offline Activity viewer
 docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
 docs/04_traceability/     Requirements Traceability Matrix
 docs/integration/         Current IRIS read-only integration contract

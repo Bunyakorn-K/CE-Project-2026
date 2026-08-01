@@ -7,6 +7,8 @@
     "build": "pnpm --filter @laundrygo/api build && pnpm --filter @laundrygo/web build",
     "check": "pnpm --filter @laundrygo/api check && pnpm --filter @laundrygo/web check",
     "test": "pnpm --filter @laundrygo/api test && pnpm --filter @laundrygo/web test",
+    "docs:activity:generate": "node scripts/activity-viewer/generate.mjs",
+    "docs:activity:verify": "node --test scripts/activity-viewer/generate.test.mjs && node scripts/activity-viewer/verify.mjs && npx -y html-validate@11.5.6 docs/02_architecture/laundrotwin-activity-diagrams.html",
     "db:generate": "pnpm --filter @laundrygo/api db:generate",
     "db:push": "pnpm --filter @laundrygo/api db:push"
   },

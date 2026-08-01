@@ -4,6 +4,10 @@ This document describes the target LaundroTwin MVP. It is a logical design for
 the CE Project report and future implementation; it does not claim that every
 entity and workflow is already implemented by the current LaundryGo application.
 
+> Open the [offline Activity diagram viewer](laundrotwin-activity-diagrams.html)
+> to explore one workflow at a readable scale without a server or internet
+> connection.
+
 ## Entity Relationship Diagram
 
 The model separates immutable source events, the latest Digital Twin snapshot,
