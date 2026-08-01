@@ -24,6 +24,7 @@ export const outputPath = join(
   repositoryRoot,
   "docs/02_architecture/laundrotwin-activity-diagrams.html",
 );
+export const mermaidConfiguration = Object.freeze({ handDrawnSeed: 42 });
 
 export function createTemporaryOutputPath(destinationPath) {
   return join(
@@ -228,10 +229,12 @@ export function normalizeSvg(svg, workflow) {
   output = output.replace(
     /<svg\b([^>]*)>/,
     (full, attributes) => {
-      const cleanAttributes = attributes.replace(
-        /\s(?:role|aria-labelledby|aria-describedby|preserveAspectRatio)="[^"]*"/g,
-        "",
-      );
+      const cleanAttributes = attributes
+        .replace(
+          /\s(?:role|aria-labelledby|aria-describedby|preserveAspectRatio)\s*=\s*(?:"[^"]*"|'[^']*')/gi,
+          "",
+        )
+        .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*')/gi, "");
       return `<svg${cleanAttributes} role="img" aria-labelledby="${titleId} ${descriptionId}" preserveAspectRatio="xMidYMin meet">`
         + `<title id="${titleId}">${escapeHtml(workflow.title)}</title>`
         + `<desc id="${descriptionId}">${escapeHtml(workflow.summary)}</desc>`;
@@ -244,7 +247,11 @@ export function normalizeSvg(svg, workflow) {
 async function renderSvg(definition, name, tempDirectory) {
   const inputPath = join(tempDirectory, `${name}.mmd`);
   const svgPath = join(tempDirectory, `${name}.svg`);
-  await writeFile(inputPath, definition, "utf8");
+  const configPath = join(tempDirectory, "mermaid-config.json");
+  await Promise.all([
+    writeFile(inputPath, definition, "utf8"),
+    writeFile(configPath, JSON.stringify(mermaidConfiguration), "utf8"),
+  ]);
   await execFileAsync(
     "npx",
     [
@@ -256,6 +263,8 @@ async function renderSvg(definition, name, tempDirectory) {
       svgPath,
       "--backgroundColor",
       "transparent",
+      "--configFile",
+      configPath,
     ],
     { cwd: repositoryRoot, maxBuffer: 10 * 1024 * 1024 },
   );
@@ -424,7 +433,7 @@ export function buildViewerHtml(workflows, overviewSvg) {
         <p>${escapeHtml(view.summary)}</p>
         <p class="outcome"><strong>Outcome:</strong> ${escapeHtml(view.outcome)}</p>
       </div>
-      <div class="viewer-controls" aria-label="${escapeHtml(view.title)} controls">
+      <div class="viewer-controls" role="group" aria-label="${escapeHtml(view.title)} controls">
         <button type="button" data-action="zoom-out">Zoom out</button>
         <span class="zoom-value" data-zoom-value aria-live="polite">100%</span>
         <button type="button" data-action="zoom-in">Zoom in</button>
@@ -436,7 +445,7 @@ export function buildViewerHtml(workflows, overviewSvg) {
       </div>
     </section>`).join("");
 
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">

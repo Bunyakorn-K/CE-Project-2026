@@ -186,6 +186,29 @@ test("normalizeSvg adds accessible metadata and rejects external resources", () 
   );
 });
 
+test("normalizeSvg removes only the renderer root style and preserves sizing", () => {
+  const workflow = {
+    id: "telemetry",
+    title: "Telemetry Ingestion and Digital Twin",
+    summary: "Validate and persist branch telemetry.",
+  };
+  const svg = [
+    '<svg width="100%" viewBox="0 0 800 600"',
+    ' style="max-width: 800px; background-color: transparent;">',
+    '<g style="fill: currentColor"><text>Valid</text></g>',
+    '</svg>',
+  ].join("");
+
+  const output = normalizeSvg(svg, workflow);
+  const root = output.match(/^<svg\b[^>]*>/)?.[0];
+
+  assert.ok(root);
+  assert.doesNotMatch(root, /\sstyle\s*=/i);
+  assert.match(root, /\swidth="100%"/);
+  assert.match(root, /\sviewBox="0 0 800 600"/);
+  assert.match(output, /<g style="fill: currentColor">/);
+});
+
 test("normalizeSvg rejects non-local resource-bearing attributes", () => {
   const workflow = {
     id: "telemetry",
@@ -273,6 +296,19 @@ test("buildViewerHtml creates overview and four selectable workflows", () => {
   assert.match(html, /window\.print\(\)/);
 });
 
+test("buildViewerHtml emits validator-safe document and control semantics", () => {
+  const html = buildViewerHtml(
+    workflowMetadataForTest(),
+    minimalSvg("overview"),
+  );
+
+  assert.match(html, /^<!DOCTYPE html>/);
+  assert.equal(
+    (html.match(/<div class="viewer-controls" role="group" aria-label=/g) ?? []).length,
+    5,
+  );
+});
+
 test("buildViewerHtml scales percentage and minimum widths for each panel zoom", () => {
   const html = buildViewerHtml(
     workflowMetadataForTest(),
@@ -304,6 +340,11 @@ test("temporary output paths are unique siblings of the published artifact", () 
   assert.equal(dirname(second), dirname(outputPath));
   assert.match(first, /\.html\.[0-9a-f-]+\.tmp$/);
   assert.match(second, /\.html\.[0-9a-f-]+\.tmp$/);
+});
+
+test("renderer configuration uses a deterministic Mermaid hand-drawn seed", () => {
+  assert.deepEqual(generator.mermaidConfiguration, { handDrawnSeed: 42 });
+  assert.notEqual(generator.mermaidConfiguration.handDrawnSeed, 0);
 });
 
 test("buildViewerHtml is self-contained", () => {
