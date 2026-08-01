@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  buildViewerHtml,
   extractWorkflows,
   normalizeSvg,
   prefixSvgIds,
@@ -11,6 +12,19 @@ const sourcePath = new URL(
   "../../docs/02_architecture/data-and-activity-diagrams.md",
   import.meta.url,
 );
+
+const minimalSvg = (id) =>
+  `<svg role="img" aria-labelledby="${id}-title"><title id="${id}-title">${id}</title></svg>`;
+
+function workflowMetadataForTest() {
+  return ["telemetry", "access", "alerts", "assistant"].map((id) => ({
+    id,
+    title: id,
+    summary: `${id} summary`,
+    outcome: `${id} outcome`,
+    svg: minimalSvg(id),
+  }));
+}
 
 test("extractWorkflows returns the four authoritative Activity diagrams", async () => {
   const markdown = await readFile(sourcePath, "utf8");
@@ -210,4 +224,39 @@ test("normalizeSvg generates collision-free accessibility metadata IDs", () => {
     output,
     /<g aria-labelledby="telemetry-svg-title telemetry-svg-desc"\/>/,
   );
+});
+
+test("buildViewerHtml creates overview and four selectable workflows", () => {
+  const workflows = [
+    ["telemetry", "Telemetry"],
+    ["access", "Access"],
+    ["alerts", "Alerts"],
+    ["assistant", "Assistant"],
+  ].map(([id, title]) => ({
+    id,
+    title,
+    summary: `${title} summary`,
+    outcome: `${title} outcome`,
+    svg: minimalSvg(id),
+  }));
+
+  const html = buildViewerHtml(workflows, minimalSvg("overview"));
+
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 5);
+  assert.equal((html.match(/role="tabpanel"/g) ?? []).length, 5);
+  assert.match(html, /data-view="overview"[^>]*aria-selected="true"/);
+  assert.match(html, /data-action="zoom-in"/);
+  assert.match(html, /data-action="zoom-out"/);
+  assert.match(html, /data-action="reset"/);
+  assert.match(html, /window\.print\(\)/);
+});
+
+test("buildViewerHtml is self-contained", () => {
+  const workflows = workflowMetadataForTest();
+  const html = buildViewerHtml(workflows, minimalSvg("overview"));
+
+  assert.doesNotMatch(html, /<(?:script|link|img)\b[^>]*(?:src|href)="https?:/i);
+  assert.doesNotMatch(html, /\bfetch\s*\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage/);
+  assert.match(html, /@media print/);
+  assert.match(html, /prefers-reduced-motion/);
 });
