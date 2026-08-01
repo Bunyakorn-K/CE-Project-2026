@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   mkdtemp,
   readFile,
@@ -7,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -23,6 +24,13 @@ export const outputPath = join(
   repositoryRoot,
   "docs/02_architecture/laundrotwin-activity-diagrams.html",
 );
+
+export function createTemporaryOutputPath(destinationPath) {
+  return join(
+    dirname(destinationPath),
+    `.${basename(destinationPath)}.${randomUUID()}.tmp`,
+  );
+}
 
 const workflowMetadata = [
   {
@@ -304,11 +312,19 @@ a { color: var(--accent); }
 .viewer-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
 .zoom-value { min-width: 4rem; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
 .diagram-frame { overflow: auto; border-block: 1px solid var(--border); background: var(--surface-soft); }
-.diagram-surface { width: 100%; min-width: 44rem; padding: 1rem; transform-origin: top left; }
+.diagram-surface {
+  --diagram-width: 100%;
+  --diagram-min-width-wide: 44rem;
+  --diagram-min-width-narrow: 38rem;
+  width: var(--diagram-width);
+  min-width: var(--diagram-min-width-wide);
+  padding: 1rem;
+  transform-origin: top left;
+}
 .diagram-surface svg { display: block; width: 100%; height: auto; }
 @media (max-width: 48rem) {
   .page-shell { padding: 1rem; }
-  .diagram-surface { min-width: 38rem; }
+  .diagram-surface { min-width: var(--diagram-min-width-narrow); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
@@ -341,7 +357,10 @@ function selectView(view) {
 function setZoom(panel, value) {
   const zoom = Math.min(2, Math.max(0.6, value));
   zoomByView.set(panel.dataset.view, zoom);
-  panel.querySelector(".diagram-surface").style.width = String(zoom * 100) + "%";
+  const surface = panel.querySelector(".diagram-surface");
+  surface.style.setProperty("--diagram-width", String(Math.round(zoom * 100)) + "%");
+  surface.style.setProperty("--diagram-min-width-wide", String(Math.round(zoom * 440) / 10) + "rem");
+  surface.style.setProperty("--diagram-min-width-narrow", String(Math.round(zoom * 380) / 10) + "rem");
   panel.querySelector("[data-zoom-value]").textContent = String(Math.round(zoom * 100)) + "%";
 }
 
@@ -448,7 +467,7 @@ async function main() {
   const markdown = await readFile(sourcePath, "utf8");
   const workflows = extractWorkflows(markdown);
   const tempDirectory = await mkdtemp(join(tmpdir(), "laundrotwin-activity-"));
-  const temporaryOutput = `${outputPath}.tmp`;
+  const temporaryOutput = createTemporaryOutputPath(outputPath);
 
   try {
     const rendered = [];

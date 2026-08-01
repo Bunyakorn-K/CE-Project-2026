@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import test from "node:test";
-import {
+import * as generator from "./generate.mjs";
+
+const {
   buildViewerHtml,
   extractWorkflows,
   normalizeSvg,
+  outputPath,
   prefixSvgIds,
-} from "./generate.mjs";
+} = generator;
 
 const sourcePath = new URL(
   "../../docs/02_architecture/data-and-activity-diagrams.md",
@@ -25,6 +29,24 @@ function workflowMetadataForTest() {
     svg: minimalSvg(id),
   }));
 }
+
+const externalResourceElementPattern =
+  /<(?:script|link|img|image|iframe|object|embed|audio|video|source|track|input)\b[^>]*\s(?:src|href|xlink:href|data|poster|srcset)\s*=/i;
+const remoteResourceAttributePattern =
+  /\s(?:src|href|xlink:href|data|poster|srcset|action|formaction|ping|manifest)\s*=\s*(?:["']\s*)?(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const externalCssResourcePattern =
+  /(?:@import\s+(?:url\(\s*)?(?:["']\s*)?(?:[a-z][a-z0-9+.-]*:|\/\/)|url\(\s*(?:["']\s*)?(?:[a-z][a-z0-9+.-]*:|\/\/))/i;
+const prohibitedResourceElementPattern =
+  /<(?:iframe|object|embed)\b|<meta\b[^>]*\bhttp-equiv\s*=\s*(?:["']\s*)?refresh\b/i;
+const prohibitedBrowserPrimitivePattern =
+  /\b(?:fetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon\s*\(|localStorage|sessionStorage|indexedDB|cookieStore|serviceWorker|caches\s*\.|document\s*\.\s*cookie)/i;
+const offlineGuardPatterns = [
+  externalResourceElementPattern,
+  remoteResourceAttributePattern,
+  externalCssResourcePattern,
+  prohibitedResourceElementPattern,
+  prohibitedBrowserPrimitivePattern,
+];
 
 test("extractWorkflows returns the four authoritative Activity diagrams", async () => {
   const markdown = await readFile(sourcePath, "utf8");
@@ -251,12 +273,79 @@ test("buildViewerHtml creates overview and four selectable workflows", () => {
   assert.match(html, /window\.print\(\)/);
 });
 
+test("buildViewerHtml scales percentage and minimum widths for each panel zoom", () => {
+  const html = buildViewerHtml(
+    workflowMetadataForTest(),
+    minimalSvg("overview"),
+  );
+
+  assert.match(html, /--diagram-width:\s*100%/);
+  assert.match(html, /--diagram-min-width-wide:\s*44rem/);
+  assert.match(html, /--diagram-min-width-narrow:\s*38rem/);
+  assert.match(html, /width:\s*var\(--diagram-width\)/);
+  assert.match(html, /min-width:\s*var\(--diagram-min-width-wide\)/);
+  assert.match(html, /min-width:\s*var\(--diagram-min-width-narrow\)/);
+  assert.match(html, /setProperty\("--diagram-width"/);
+  assert.match(html, /setProperty\("--diagram-min-width-wide"/);
+  assert.match(html, /setProperty\("--diagram-min-width-narrow"/);
+  assert.doesNotMatch(html, /\.style\.width\s*=/);
+});
+
+test("temporary output paths are unique siblings of the published artifact", () => {
+  assert.equal(typeof generator.createTemporaryOutputPath, "function");
+
+  const first = generator.createTemporaryOutputPath(outputPath);
+  const second = generator.createTemporaryOutputPath(outputPath);
+
+  assert.notEqual(first, second);
+  assert.notEqual(first, outputPath);
+  assert.notEqual(second, outputPath);
+  assert.equal(dirname(first), dirname(outputPath));
+  assert.equal(dirname(second), dirname(outputPath));
+  assert.match(first, /\.html\.[0-9a-f-]+\.tmp$/);
+  assert.match(second, /\.html\.[0-9a-f-]+\.tmp$/);
+});
+
 test("buildViewerHtml is self-contained", () => {
   const workflows = workflowMetadataForTest();
   const html = buildViewerHtml(workflows, minimalSvg("overview"));
+  const prohibitedSamples = [
+    '<script src="https://example.com/viewer.js"></script>',
+    "<link href='//example.com/viewer.css' rel='stylesheet'>",
+    '<img src="./machine.png">',
+    "<svg><image xlink:href='data:image/png;base64,AA=='></image></svg>",
+    '<iframe srcdoc="unsafe"></iframe>',
+    '<meta http-equiv="refresh" content="0;url=https://example.com">',
+    '<style>@import "https://example.com/viewer.css";</style>',
+    "<style>.diagram{background:url('//example.com/image.png')}</style>",
+    '<a ping="https://example.com/audit">remote</a>',
+    'fetch("/api")',
+    "new XMLHttpRequest()",
+    'new WebSocket("wss://example.com")',
+    'new EventSource("/events")',
+    'navigator.sendBeacon("/audit")',
+    "localStorage.viewer = 'state'",
+    "sessionStorage.viewer = 'state'",
+    'indexedDB.open("viewer")',
+    'document.cookie = "viewer=state"',
+    'cookieStore.get("viewer")',
+    'navigator.serviceWorker.register("/worker.js")',
+    'caches.open("viewer")',
+  ];
 
-  assert.doesNotMatch(html, /<(?:script|link|img)\b[^>]*(?:src|href)="https?:/i);
-  assert.doesNotMatch(html, /\bfetch\s*\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage/);
+  for (const pattern of offlineGuardPatterns) {
+    assert.doesNotMatch(html, pattern);
+  }
+  for (const sample of prohibitedSamples) {
+    assert.ok(
+      offlineGuardPatterns.some((pattern) => pattern.test(sample)),
+      `Offline guard missed: ${sample}`,
+    );
+  }
+  assert.match(
+    html,
+    /<a href="\.\/data-and-activity-diagrams\.md">data-and-activity-diagrams\.md<\/a>/,
+  );
   assert.match(html, /@media print/);
   assert.match(html, /prefers-reduced-motion/);
 });
