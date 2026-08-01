@@ -50,6 +50,17 @@ test("extractWorkflows fails closed when an approved workflow is duplicated", as
   );
 });
 
+test("extractWorkflows fails closed when an approved heading is duplicated", async () => {
+  const markdown = await readFile(sourcePath, "utf8");
+  const duplicateHeading =
+    "## Activity Diagram 1: MQTT Telemetry Ingestion and Digital Twin Update";
+
+  assert.throws(
+    () => extractWorkflows(`${markdown}\n\n${duplicateHeading}\n`),
+    /Expected exactly one heading for Activity Diagram 1.*found 2/,
+  );
+});
+
 test("prefixSvgIds rewrites IDs and local references", () => {
   const svg = [
     '<svg aria-labelledby="title desc">',

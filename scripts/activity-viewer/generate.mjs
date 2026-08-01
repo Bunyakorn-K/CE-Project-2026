@@ -58,11 +58,16 @@ const workflowMetadata = [
 export function extractWorkflows(markdown) {
   const matchesByWorkflow = workflowMetadata.map((metadata) => {
     const escapedHeading = metadata.heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headingPattern = new RegExp("^## " + escapedHeading + "$", "gm");
     const pattern = new RegExp(
       "^## " + escapedHeading + "\\n\\n```mermaid\\n([\\s\\S]*?)\\n```",
       "gm",
     );
-    return { matches: [...markdown.matchAll(pattern)], metadata };
+    return {
+      headingCount: [...markdown.matchAll(headingPattern)].length,
+      matches: [...markdown.matchAll(pattern)],
+      metadata,
+    };
   });
   const matchCount = matchesByWorkflow.reduce(
     (total, { matches }) => total + matches.length,
@@ -72,6 +77,13 @@ export function extractWorkflows(markdown) {
   if (matchCount !== workflowMetadata.length) {
     throw new Error(
       `Expected ${workflowMetadata.length} Activity Mermaid blocks, found ${matchCount}`,
+    );
+  }
+
+  const invalidHeading = matchesByWorkflow.find(({ headingCount }) => headingCount !== 1);
+  if (invalidHeading) {
+    throw new Error(
+      `Expected exactly one heading for ${invalidHeading.metadata.heading}, found ${invalidHeading.headingCount}`,
     );
   }
 
