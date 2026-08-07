@@ -92,7 +92,7 @@ function createLocalSession(userId: string) {
 }
 
 export function ensureDemoOwner(): UserIdentity {
-  const email = "demo.owner@laundrygo.local";
+  const email = "demo.owner@laundrytwin.local";
   const now = new Date();
   const existing = db.select({ id: user.id, name: user.name, email: user.email }).from(user).where(eq(user.email, email)).get();
   const demoUser = existing ?? createDemoUser(email, now);
@@ -248,7 +248,7 @@ export function resolveUserPrincipal(currentUser: UserIdentity, source: Principa
 }
 
 function ensureBootstrapOwner(currentUser: UserIdentity) {
-  const bootstrapEmail = process.env.LAUNDRYGO_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const bootstrapEmail = process.env.LAUNDRYTWIN_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
   if (!bootstrapEmail || currentUser.email.toLowerCase() !== bootstrapEmail) return;
 
   const existing = db

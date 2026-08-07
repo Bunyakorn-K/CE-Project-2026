@@ -127,7 +127,7 @@ export function createIrisReadClient(options: IrisReadClientOptions = {}) {
   }
 
   const baseUrl = options.baseUrl ?? process.env.IRIS_READ_BASE_URL;
-  const apiKey = options.apiKey ?? process.env.IRIS_LAUNDRYGO_READ_API_KEY;
+  const apiKey = options.apiKey ?? process.env.IRIS_LAUNDRYTWIN_READ_API_KEY;
   const fetcher = options.fetcher ?? fetch;
 
   async function get<T extends ReportingEnvelope>(path: string, query?: Record<string, string | number | undefined>) {

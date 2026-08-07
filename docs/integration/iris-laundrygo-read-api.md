@@ -1,25 +1,28 @@
-# IRIS LaundryGo Read API
+# IRIS LaundryTwin Read API
 
 ## Purpose
 
-LaundryGo consumes a dedicated, tenant-bound, read-only IRIS API. This is not a
-general reporting integration. The LaundryGo Hono server is the only consumer;
-browser code must never call it directly.
+LaundryTwin consumes a dedicated, tenant-bound, read-only IRIS API. It is not a
+ general reporting integration. The LaundryTwin Hono server is the only consumer;
+ browser code must not call IRIS directly.
 
 ## Configuration
 
 ```text
 IRIS_READ_BASE_URL=https://<iris-worker>/v1/laundrygo
-IRIS_LAUNDRYGO_READ_API_KEY=<dedicated integration key>
+IRIS_LAUNDRYTWIN_READ_API_KEY=<dedicated integration key>
 ```
 
 Every request includes the server-held `X-LaundryGo-Read-Key` header. Tenant
 scope is selected by the IRIS Worker secret configuration and cannot be changed
-by a LaundryGo request.
+by a LaundryTwin request.
+
+The `X-LaundryGo-Read-Key` header name and `/v1/laundrygo` URL path are the
+IRIS-side wire contract and remain unchanged by the LaundryTwin rename.
 
 ## Read resources
 
-| Endpoint | LaundryGo use |
+| Endpoint | LaundryTwin use |
 | --- | --- |
 | `GET /branches` | Filter the branch picker to the local role grant. |
 | `GET /dashboard` | Revenue, cycle, machine-count, and utilization aggregates. |
@@ -32,17 +35,15 @@ Each successful payload includes `contractVersion`, `source`, and `fetchedAt`.
 
 ## Reporting rules
 
-- `null` plus a coverage object means unavailable data, never a safe zero.
+- `null` plus a coverage object means unavailable data, not a safe zero.
 - Only the source's documented `temperature_f` input is converted to Celsius.
-- Gas pressure, gas-leak state, and register-map version remain unavailable
-  until IRIS supplies those fields.
-- IRIS alert rules have no version column, so `ruleVersion` can be `null`.
-- The integration has no write route and exposes no commands, telemetry
-  ingestion, payment mutation, customer data, or database binding.
+- Gas pressure, gas-leak state, and register-map version remain unavailable until IRIS supplies fields.
+- IRIS alert rules version is represented by the `ruleVersion` column and may be `null`.
+- The integration exposes no write route for commands, telemetry ingestion, payment mutation, customer data, or database binding.
 
 ## Failure handling
 
-LaundryGo maps a missing local integration configuration to an explicit
+LaundryTwin maps missing local integration configuration to the explicit
 `REPORTING_SOURCE_UNAVAILABLE` response. It maps malformed or failed upstream
-responses to `REPORTING_SOURCE_FAILED`. No fallback dashboard or synthetic
-machine status is permitted.
+responses to `REPORTING_SOURCE_FAILED`. A synthetic fallback dashboard machine
+status is permitted only in explicitly enabled demo mode.

@@ -7,7 +7,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8787
-      DATABASE_PATH: /data/laundrygo.sqlite
+      DATABASE_PATH: /data/laundrytwin.sqlite
     restart: unless-stopped
     volumes:
       - ./data:/data

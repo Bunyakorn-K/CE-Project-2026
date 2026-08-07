@@ -9,7 +9,7 @@ vi.mock("./auth", () => ({
 
 import { createApp } from "./index";
 
-describe("LaundryGo API", () => {
+describe("LaundryTwin API", () => {
   it("does not call the IRIS source before a local session is established", async () => {
     const getDashboard = vi.fn();
     const app = createApp({

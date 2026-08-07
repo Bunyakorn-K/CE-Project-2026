@@ -21,7 +21,7 @@ export async function replyToLineEvent(event: WebhookEvent) {
     messages: [
       {
         type: "text",
-        text: "LaundryGo received your message. Connect the production command service before enabling operational actions."
+        text: "LaundryTwin received your message. Connect the production command service before enabling operational actions."
       }
     ]
   });

@@ -4,7 +4,7 @@ import { canAccessBranch, mayManageAccess, mayViewRevenue, type AccessGrant } fr
 const branchOne = "b1c470cc-4ca2-4e5f-8af2-d0b5539e13f8";
 const branchTwo = "3f01cc02-ed2f-4b86-8949-50eb018025a6";
 
-describe("LaundryGo access policy", () => {
+describe("LaundryTwin access policy", () => {
   it("keeps a technician inside their assigned branch and away from revenue", () => {
     const grants: AccessGrant[] = [{ id: "grant-1", role: "technician", branchId: branchOne }];
 

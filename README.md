@@ -6,7 +6,7 @@ product turns existing MQTT and Modbus data into a multi-branch Digital Twin,
 business intelligence, safe AI-assisted analysis, and event-driven alerts.
 
 This repository combines the CE Project requirements and data contracts with
-the existing LaundryGo implementation. LaundryGo is currently a read-only,
+the existing LaundryTwin implementation. LaundryTwin is currently a read-only,
 mobile-first LINE LIFF reporting application backed by a Hono API and local
 SQLite. It is an implementation starting point, not evidence that every
 LaundroTwin MVP requirement is complete.
@@ -23,7 +23,7 @@ Read these documents before changing behavior or data models:
   Modbus mappings, units, validation rules, and unresolved hardware semantics.
 - [`docs/04_traceability/RTM_matrix.md`](docs/04_traceability/RTM_matrix.md)
   maps requirements to system functions and user stories.
-- [`docs/integration/iris-laundrygo-read-api.md`](docs/integration/iris-laundrygo-read-api.md)
+- [`docs/integration/iris-laundrytwin-read-api.md`](docs/integration/iris-laundrytwin-read-api.md)
   describes the current optional IRIS read-only integration.
 
 ## Current implementation status
@@ -45,12 +45,12 @@ Read these documents before changing behavior or data models:
 LINE LIFF or local owner account
               |
               v
-    LaundryGo React mobile web
+    LaundryTwin React mobile web
               |
               v
-    LaundryGo Hono API + local SQLite
+    LaundryTwin Hono API + local SQLite
               |
-              | X-LaundryGo-Read-Key (server only)
+              | X-LaundryTwin-Read-Key (server only)
               v
     Optional IRIS read-only reporting API
 ```
@@ -76,8 +76,8 @@ docs/integration/         Current IRIS read-only integration contract
 1. Install Node.js 22+ and pnpm 10+.
 2. Copy `.env.example` to `.env`.
 3. Set a unique `BETTER_AUTH_SECRET` and a
-   `LAUNDRYGO_BOOTSTRAP_ADMIN_EMAIL`.
-4. Configure `IRIS_READ_BASE_URL` and `IRIS_LAUNDRYGO_READ_API_KEY` when the
+   `LAUNDRYTWIN_BOOTSTRAP_ADMIN_EMAIL`.
+4. Configure `IRIS_READ_BASE_URL` and `IRIS_LAUNDRYTWIN_READ_API_KEY` when the
    corresponding read API is available.
 5. Run `pnpm install` and `pnpm dev`.
 
@@ -88,7 +88,7 @@ metrics or machine statuses.
 
 ## Demo mode
 
-Set `LAUNDRYGO_DEMO_MODE=true` only for local preview or stakeholder demos.
+Set `LAUNDRYTWIN_DEMO_MODE=true` only for local preview or stakeholder demos.
 Demo mode is visibly labeled, uses simulated branches, machines, and alerts,
 and never acts as an automatic fallback for unavailable production data.
 
@@ -98,7 +98,7 @@ and never acts as an automatic fallback for unavailable production data.
 2. Open `/mange` to review LINE access requests and active grants.
 3. A LINE user opens the LIFF application and the API verifies their ID token.
 4. The owner approves the request as `owner`, `manager`, or `technician`.
-5. The user receives a short-lived, HttpOnly LaundryGo session cookie.
+5. The user receives a short-lived, HttpOnly LaundryTwin session cookie.
 
 | Role | Branch scope | Revenue | Access administration |
 | --- | --- | --- | --- |
@@ -106,7 +106,7 @@ and never acts as an automatic fallback for unavailable production data.
 | Manager | One assigned branch per grant | Yes | No |
 | Technician | One assigned branch per grant | No | No |
 
-Alert acknowledgement is local to LaundryGo and audit-logged. It does not
+Alert acknowledgement is local to LaundryTwin and audit-logged. It does not
 acknowledge an upstream alert.
 
 ## LINE and production configuration
@@ -119,7 +119,7 @@ the Better Auth secret must remain server-side.
 API variables are configured. For container deployment, copy
 `deploy/.env.production.example` to the deployment host's `.env`, populate the
 required values, and run `docker compose up -d --build`. Back up
-`data/laundrygo.sqlite` before replacing the host or persistent volume.
+`data/laundrytwin.sqlite` before replacing the host or persistent volume.
 
 ## Verification
 

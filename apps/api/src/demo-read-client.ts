@@ -141,7 +141,7 @@ export function createDemoReadClient(now: () => Date = () => new Date()) {
 }
 
 export function isDemoModeEnabled() {
-  return process.env.LAUNDRYGO_DEMO_MODE === "true";
+  return process.env.LAUNDRYTWIN_DEMO_MODE === "true";
 }
 
 function dateRange(query: { from?: string; to?: string }, now: () => Date) {

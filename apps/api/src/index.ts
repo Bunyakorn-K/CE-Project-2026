@@ -75,7 +75,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
     const demoUser = ensureDemoOwner();
     const session = createDemoSession(demoUser.id);
-    setCookie(c, "laundrygo_demo_session", session.token, {
+    setCookie(c, "laundrytwin_demo_session", session.token, {
       httpOnly: true,
       sameSite: "Lax",
       secure: process.env.NODE_ENV === "production",
@@ -104,7 +104,7 @@ export function createApp(dependencies: AppDependencies = {}) {
       }
 
       const session = createLiffSession(knownUser.id);
-      setCookie(c, "laundrygo_liff_session", session.token, {
+      setCookie(c, "laundrytwin_liff_session", session.token, {
         httpOnly: true,
         sameSite: "Lax",
         secure: process.env.NODE_ENV === "production",
@@ -118,16 +118,16 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   app.post("/api/auth/liff/logout", (c) => {
-    revokeLiffSession(getCookie(c, "laundrygo_liff_session"));
-    revokeLiffSession(getCookie(c, "laundrygo_demo_session"));
-    setCookie(c, "laundrygo_liff_session", "", {
+    revokeLiffSession(getCookie(c, "laundrytwin_liff_session"));
+    revokeLiffSession(getCookie(c, "laundrytwin_demo_session"));
+    setCookie(c, "laundrytwin_liff_session", "", {
       httpOnly: true,
       sameSite: "Lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 0
     });
-    setCookie(c, "laundrygo_demo_session", "", {
+    setCookie(c, "laundrytwin_demo_session", "", {
       httpOnly: true,
       sameSite: "Lax",
       secure: process.env.NODE_ENV === "production",
@@ -147,8 +147,8 @@ export function createApp(dependencies: AppDependencies = {}) {
           name: currentSession.user.name,
           email: currentSession.user.email
         })
-      : resolveLiffPrincipal(getCookie(c, "laundrygo_liff_session")) ??
-        resolveDemoPrincipal(getCookie(c, "laundrygo_demo_session"));
+      : resolveLiffPrincipal(getCookie(c, "laundrytwin_liff_session")) ??
+        resolveDemoPrincipal(getCookie(c, "laundrytwin_demo_session"));
     c.set("principal", principal);
     await next();
   });
@@ -353,7 +353,7 @@ export function createApp(dependencies: AppDependencies = {}) {
 export const app = createApp();
 
 function requirePrincipal(c: Context<{ Variables: AppVariables }>) {
-  return c.get("principal") ?? apiError(c, 401, "AUTHENTICATION_REQUIRED", "Sign in with an approved LaundryGo account");
+  return c.get("principal") ?? apiError(c, 401, "AUTHENTICATION_REQUIRED", "Sign in with an approved LaundryTwin account");
 }
 
 function requireOwner(c: Context<{ Variables: AppVariables }>) {
@@ -436,7 +436,7 @@ function apiError(c: Context, status: 400 | 401 | 403 | 404 | 502 | 503, code: s
 
 function irisError(c: Context, error: unknown) {
   if (error instanceof IrisReadUnavailableError) {
-    return apiError(c, 503, "REPORTING_SOURCE_UNAVAILABLE", "IRIS reporting is not configured for LaundryGo");
+    return apiError(c, 503, "REPORTING_SOURCE_UNAVAILABLE", "IRIS reporting is not configured for LaundryTwin");
   }
   if (error instanceof IrisReadResponseError && error.status === 404) {
     return apiError(c, 404, "BRANCH_NOT_FOUND", "The branch is not available in the configured IRIS tenant");
@@ -464,7 +464,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 8787);
   serve({ fetch: app.fetch, port });
-  console.log(`LaundryGo API listening on http://localhost:${port}`);
+  console.log(`LaundryTwin API listening on http://localhost:${port}`);
 }
 
 export type AppType = typeof app;

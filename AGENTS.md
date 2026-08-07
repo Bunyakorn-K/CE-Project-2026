@@ -4,7 +4,7 @@
 
 This repository is the CE Project 2026 workspace for the Smart Laundry
 Management and Analytics Platform, also called LaundroTwin. It contains both
-the project requirements and the current LaundryGo application.
+the project requirements and the current LaundryTwin application.
 
 The current application is a read-only LINE LIFF reporting surface. It is a
 starting implementation and does not yet satisfy every target requirement.
@@ -21,7 +21,7 @@ Direct user instructions take precedence over this guide.
 
 This directory is now the application repository, not a temporary planning
 workspace. Keep project documentation and implementation changes here. IRIS is
-an optional read-only integration for the current LaundryGo implementation; do
+an optional read-only integration for the current LaundryTwin implementation; do
 not redirect CE Project work to a Meepain-group repository unless the user
 explicitly requests a cross-repository change.
 
@@ -47,7 +47,7 @@ Read the relevant project documents before changing code:
   and unresolved semantics. Read this before changing schemas, MQTT parsing,
   KPIs, alerts, or API contracts.
 - `docs/04_traceability/RTM_matrix.md`: requirement-to-function traceability.
-- `docs/integration/iris-laundrygo-read-api.md`: current optional IRIS read-only
+- `docs/integration/iris-laundrytwin-read-api.md`: current optional IRIS read-only
   integration. It does not override the CE requirements or data contracts.
 
 Historical plans under `docs/superpowers/` are implementation evidence, not
@@ -84,7 +84,7 @@ apps/web/   React/Vite mobile web and LINE LIFF interface
 deploy/     Docker and Nginx deployment files
 ```
 
-The current LaundryGo path is:
+The current LaundryTwin path is:
 
 ```text
 LINE LIFF/browser -> React web -> Hono API + SQLite -> optional IRIS read API

@@ -272,10 +272,10 @@ function Header({
   return (
     <>
       <header className="topbar">
-        <div className="brand" aria-label="LaundryGo reporting">
+        <div className="brand" aria-label="LaundryTwin reporting">
           <span className="brand-mark" aria-hidden="true">◌</span>
           <span>
-            <strong>LaundryGo</strong>
+            <strong>LaundryTwin</strong>
             <small>{branch?.name ?? "Operational reporting"}</small>
           </span>
         </div>
@@ -377,7 +377,7 @@ function DashboardView({
                 <h3>{alert.title}</h3>
                 {alert.detail ? <p>{alert.detail}</p> : null}
                 {!alert.coverage.ruleVersion?.available ? <small>รุ่นของกฎยังไม่มีใน IRIS alert record</small> : null}
-                {alert.acknowledgedLocally ? <span className="acknowledged">รับทราบแล้วใน LaundryGo</span> : (
+                {alert.acknowledgedLocally ? <span className="acknowledged">รับทราบแล้วใน LaundryTwin</span> : (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -480,7 +480,7 @@ function AdminScreen({ branches, error, me }: { branches: Branch[]; error: strin
   }, []);
 
   if (!isOwner) {
-    return <SourceMessage message="หน้านี้ใช้ได้เฉพาะ LaundryGo owner" />;
+    return <SourceMessage message="หน้านี้ใช้ได้เฉพาะ LaundryTwin owner" />;
   }
 
   return (
@@ -488,7 +488,7 @@ function AdminScreen({ branches, error, me }: { branches: Branch[]; error: strin
       <section className="admin-hero">
         <p className="eyebrow">Access control</p>
         <h1>สิทธิ์การดูรายงาน</h1>
-        <p>การเปลี่ยนแปลงด้านล่างมีผลเฉพาะบัญชี LaundryGo ไม่แก้สิทธิ์หรือข้อมูลใน IRIS</p>
+        <p>การเปลี่ยนแปลงด้านล่างมีผลเฉพาะบัญชี LaundryTwin ไม่แก้สิทธิ์หรือข้อมูลใน IRIS</p>
       </section>
       {message ? <SourceMessage message={message} /> : null}
       {isLoading ? <LoadingScreen compact label="กำลังอ่านสิทธิ์การเข้าถึง" /> : null}
@@ -640,7 +640,7 @@ function AccessScreen({
     <main className="access-page">
       <section className="access-panel">
         <span className="access-mark">◌</span>
-        <p className="eyebrow">LaundryGo reporting</p>
+        <p className="eyebrow">LaundryTwin reporting</p>
         <h1>รายงานที่<br />อ้างอิงข้อมูลจริง</h1>
         <p>ดูสถานะเครื่อง, telemetry และ alert ของสาขาที่คุณได้รับสิทธิ์เท่านั้น</p>
         {message ? <SourceMessage message={message} /> : null}
@@ -717,7 +717,7 @@ function branchName(branches: Branch[], branchId: string | null) {
 
 function messageForError(error: unknown) {
   if (error instanceof ApiError) return error.message;
-  return "ไม่สามารถเชื่อมต่อบริการ LaundryGo ได้";
+  return "ไม่สามารถเชื่อมต่อบริการ LaundryTwin ได้";
 }
 
 function freshnessColor(value: LiveMachine["freshness"]): "success" | "warning" | "danger" {

@@ -13,7 +13,7 @@ COPY apps apps
 COPY deploy deploy
 ARG VITE_LIFF_ID
 ENV VITE_LIFF_ID=$VITE_LIFF_ID
-RUN pnpm --filter @laundrygo/web build
+RUN pnpm --filter @laundrytwin/web build
 
 FROM node:22-bookworm-slim AS api
 
@@ -25,7 +25,7 @@ RUN corepack enable
 COPY --from=build /app /app
 
 EXPOSE 8787
-CMD ["pnpm", "--filter", "@laundrygo/api", "start"]
+CMD ["pnpm", "--filter", "@laundrytwin/api", "start"]
 
 FROM nginx:1.27-alpine AS web
 
