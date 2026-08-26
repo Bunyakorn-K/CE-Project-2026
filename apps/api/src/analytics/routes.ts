@@ -3,13 +3,16 @@ import type { Principal } from "../access-store";
 import type { ClickHouseExecutor } from "./clickhouse";
 import type { AnalyticsMeta } from "./envelope";
 import { buildOpenApiDocument } from "./openapi";
+import { registerRevenueRoutes } from "./revenue";
 import { parseAnalyticsRange, resolveAnalyticsScope } from "./scope";
 
 export type AnalyticsDeps = {
   clickhouse: ClickHouseExecutor;
 };
 
-type AppEnv = { Variables: { principal: Principal | null } };
+export type AnalyticsAppEnv = { Variables: { principal: Principal | null } };
+
+type AppEnv = AnalyticsAppEnv;
 
 type AnalyticsErrorStatus = 400 | 401 | 403 | 404 | 422 | 502 | 503;
 
@@ -52,5 +55,5 @@ export function registerAnalyticsRoutes(app: Hono<AppEnv>, deps: AnalyticsDeps) 
     await next();
   });
   app.get("/api/openapi.json", (c) => c.json(buildOpenApiDocument()));
-  void deps;
+  registerRevenueRoutes(app, deps);
 }
