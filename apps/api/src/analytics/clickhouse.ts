@@ -37,9 +37,13 @@ export function createClickHouseClient(config: ClickHouseClientConfig = {}): Cli
       throw new ClickHouseUnavailableError(`ClickHouse request failed with status ${response.status}`);
     }
     const text = await response.text();
-    return text
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as T);
+    try {
+      return text
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as T);
+    } catch {
+      throw new ClickHouseUnavailableError("ClickHouse returned an unparseable response");
+    }
   };
 }

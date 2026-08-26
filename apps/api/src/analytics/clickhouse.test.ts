@@ -37,4 +37,11 @@ describe("clickhouse client", () => {
     await expect(query("SELECT secret_col FROM users")).rejects.toThrow(/ClickHouse request failed with status 403/);
     await expect(query("SELECT secret_col FROM users")).rejects.not.toThrow(/secret_col/);
   });
+
+  it("maps a malformed JSONEachRow body to ClickHouseUnavailableError without leaking the body", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("ok-line\n{not json", { status: 200 }));
+    const query = createClickHouseClient({ fetchImpl });
+    await expect(query("SELECT 1")).rejects.toBeInstanceOf(ClickHouseUnavailableError);
+    await expect(query("SELECT 1")).rejects.not.toThrow(/\{not json/);
+  });
 });
