@@ -18,6 +18,7 @@ describe("seed-analytics", () => {
       expect(Number.isInteger(row.amount_satang)).toBe(true);
       expect(row.amount_satang).toBeGreaterThan(0);
     }
+    expect(new Set(usage.map((row) => row.amount_satang)).size).toBeGreaterThan(1);
   });
 
   it("refuses to seed over real data unless forced", () => {

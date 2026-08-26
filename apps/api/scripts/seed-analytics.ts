@@ -62,7 +62,7 @@ export function buildSeedRows(seed: number, days: number) {
       const startedAt = new Date(dayStart + hourSkew * 3_600_000 + Math.floor(rand() * 3_600_000));
       const durationMin = 30 + Math.floor(rand() * 40);
       const machine = machines[Math.floor(rand() * machines.length)]!;
-      const amountSatang = (machine.machine_kind === "dryer" ? 2000 : 4000) + Math.floor(rand()) * 500;
+      const amountSatang = (machine.machine_kind === "dryer" ? 2000 : 4000) + Math.floor(rand() * 500);
       usage.push({
         tenant_id: String(machine.tenant_id),
         branch_id: String(machine.branch_id),
