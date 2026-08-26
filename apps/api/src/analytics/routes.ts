@@ -5,6 +5,8 @@ import type { AnalyticsMeta } from "./envelope";
 import { buildOpenApiDocument } from "./openapi";
 import { registerRevenueRoutes } from "./revenue";
 import { parseAnalyticsRange, resolveAnalyticsScope } from "./scope";
+import { registerTemperatureRoutes } from "./temperature";
+import { registerUtilizationRoutes } from "./utilization";
 
 export type AnalyticsDeps = {
   clickhouse: ClickHouseExecutor;
@@ -56,4 +58,6 @@ export function registerAnalyticsRoutes(app: Hono<AppEnv>, deps: AnalyticsDeps) 
   });
   app.get("/api/openapi.json", (c) => c.json(buildOpenApiDocument()));
   registerRevenueRoutes(app, deps);
+  registerUtilizationRoutes(app, deps);
+  registerTemperatureRoutes(app, deps);
 }
