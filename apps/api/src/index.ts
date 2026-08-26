@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { Scalar } from "@scalar/hono-api-reference";
 import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { Hono, type Context } from "hono";
@@ -23,6 +24,9 @@ import {
   revokeAccessGrant,
   type Principal
 } from "./access-store";
+import { createClickHouseClient } from "./analytics/clickhouse";
+import { buildOpenApiDocument } from "./analytics/openapi";
+import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { auth } from "./auth";
 import { initializeDatabase } from "./db";
 import {
@@ -45,6 +49,7 @@ type LiffVerifier = typeof verifyLiffIdToken;
 export type AppDependencies = {
   irisClient?: IrisClient;
   liffVerifier?: LiffVerifier;
+  analyticsDeps?: AnalyticsDeps;
 };
 
 initializeDatabase();
@@ -152,6 +157,8 @@ export function createApp(dependencies: AppDependencies = {}) {
     c.set("principal", principal);
     await next();
   });
+
+  registerAnalyticsRoutes(app, dependencies.analyticsDeps ?? { clickhouse: createClickHouseClient() });
 
   app.get("/api/me", (c) => {
     const principal = requirePrincipal(c);
@@ -346,6 +353,9 @@ export function createApp(dependencies: AppDependencies = {}) {
     await Promise.all(payload.events.map(replyToLineEvent));
     return c.json({ ok: true });
   });
+
+  app.get("/api/openapi.json", (c) => c.json(buildOpenApiDocument()));
+  app.get("/docs", Scalar({ url: "/api/openapi.json" }));
 
   return app;
 }
