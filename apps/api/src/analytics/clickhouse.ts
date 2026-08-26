@@ -20,7 +20,7 @@ export function createClickHouseClient(config: ClickHouseClientConfig = {}): Cli
   const database = config.database ?? process.env.CLICKHOUSE_DATABASE ?? "laundrytwin_analytics";
   const doFetch = config.fetchImpl ?? fetch;
 
-  return async function query<T extends Record<string, unknown>>(queryText, params = {}) {
+  return async function query<T extends Record<string, unknown>>(queryText: string, params = {}) {
     const search = new URLSearchParams({ database, default_format: "JSONEachRow" });
     for (const [name, value] of Object.entries(params)) search.set(`param_${name}`, String(value));
     let response: Response;
