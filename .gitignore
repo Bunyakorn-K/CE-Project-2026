@@ -17,3 +17,6 @@ data/
 
 # Local tooling
 .impeccable/hook.cache.json
+
+# TypeScript build info
+*.tsbuildinfo
