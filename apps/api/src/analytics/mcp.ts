@@ -17,6 +17,10 @@ import { parseAnalyticsRange } from "./scope";
 // reach ClickHouse through this surface. Callers pass an explicit accessScope so
 // the server enforces declared branch scope + revenue gating; the trusted caller
 // (the LINE bot) derives that scope from server-resolved user grants.
+//
+// One McpServer + transport pair is created per MCP session (keyed by the
+// Mcp-Session-Id header), because an McpServer can attach to only one transport.
+// Sessions are held in memory; a DELETE request closes a session.
 
 export type McpDeps = {
   clickhouse: ClickHouseExecutor;
@@ -70,9 +74,7 @@ function rangeMeta(from: string, to: string, branchId: string): AnalyticsMeta {
   return { range: { from, to }, branchId: branchId || null, dataSource: "empty" };
 }
 
-export function createMcpServer(deps: McpDeps): McpTransport {
-  const server = new McpServer({ name: "laundrytwin-analytics", version: "0.1.0" });
-
+function registerTools(server: McpServer, deps: McpDeps): void {
   server.registerTool(
     "get_revenue_daily",
     {
@@ -184,11 +186,60 @@ export function createMcpServer(deps: McpDeps): McpTransport {
       }
     }
   );
+}
 
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    enableJsonResponse: true,
-    sessionIdGenerator: () => crypto.randomUUID()
-  });
-  void server.connect(transport);
-  return { handle: (request) => transport.handleRequest(request) };
+export function createMcpServer(deps: McpDeps): McpTransport {
+  const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
+
+  function makeTransport(): WebStandardStreamableHTTPServerTransport {
+    const server = new McpServer({ name: "laundrytwin-analytics", version: "0.1.0" });
+    registerTools(server, deps);
+    let transport: WebStandardStreamableHTTPServerTransport;
+    transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => crypto.randomUUID(),
+      onsessioninitialized: (sessionId) => {
+        sessions.set(sessionId, transport);
+      },
+      onsessionclosed: (sessionId) => {
+        sessions.delete(sessionId);
+      }
+    });
+    void server.connect(transport);
+    return transport;
+  }
+
+  async function handle(request: Request): Promise<Response> {
+    const method = request.method;
+    const sessionId = request.headers.get("mcp-session-id");
+
+    if (method === "DELETE") {
+      if (sessionId) {
+        const transport = sessions.get(sessionId);
+        if (transport) {
+          await transport.close();
+          sessions.delete(sessionId);
+        }
+      }
+      return new Response(null, { status: 200 });
+    }
+
+    if (method !== "POST" && method !== "GET") {
+      return new Response(null, { status: 405, headers: { allow: "GET, POST, DELETE" } });
+    }
+
+    if (sessionId) {
+      const transport = sessions.get(sessionId);
+      if (!transport) return new Response("Session not found", { status: 404 });
+      return transport.handleRequest(request);
+    }
+
+    // New session: a fresh transport + McpServer pair. onsessioninitialized
+    // registers it in the map so subsequent requests with the session id route
+    // back to the same transport.
+    const transport = makeTransport();
+    return transport.handleRequest(request);
+  }
+
+  return { handle };
 }

@@ -22,7 +22,7 @@ const ownerApp = (rows: FakeRow[]) =>
 
 // The scoping predicate must survive in the fixed SQL template itself — params alone
 // don't prove filtering, so the query-text regex pins the bind usage in place.
-const SCOPED_DAILY_QUERY = /fact_machine_usage[\s\S]*u\.branch_id = \{branchId:String\}/;
+const SCOPED_DAILY_QUERY = /fact_machine_usage[\s\S]*toString\(u\.branch_id\) = \{branchId:String\}/;
 
 describe("revenue + cycles endpoints", () => {
   it("returns satang integers with synthetic meta for owner", async () => {

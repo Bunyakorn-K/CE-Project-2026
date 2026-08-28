@@ -36,7 +36,7 @@ SELECT
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON (u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id)
 WHERE started_at >= {from:String} AND started_at < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR u.branch_id = {branchId:String})
+  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
 GROUP BY date, branchId, branchName
 ORDER BY date, branchName`;
 
@@ -115,7 +115,7 @@ SELECT
 FROM fact_machine_usage AS u
 INNER JOIN dim_machine AS m ON (u.tenant_id = m.tenant_id AND u.machine_id = m.machine_id)
 WHERE started_at >= {from:String} AND started_at < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR u.branch_id = {branchId:String})
+  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
 GROUP BY hourBucket, machineId, machineCode
 ORDER BY hourBucket, machineCode`;
 
@@ -172,7 +172,7 @@ SELECT
 FROM fact_temperature_sample AS s
 INNER JOIN dim_machine AS m ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
 WHERE occurred_at >= {from:String} AND occurred_at < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR s.branch_id = {branchId:String})
+  AND ({branchId:String} = '' OR toString(s.branch_id) = {branchId:String})
   AND ({machineId:String} = '' OR s.machine_id = {machineId:String})
 ORDER BY occurred_at ASC
 LIMIT 5000`;

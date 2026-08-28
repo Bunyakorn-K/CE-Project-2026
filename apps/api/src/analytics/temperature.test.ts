@@ -23,7 +23,7 @@ const mixedRows: FakeRow[] = [
 
 // The FULL branch and machine disjunctions are pinned so a tenant-wide or
 // unfiltered request cannot silently drop either predicate from the template.
-const SCOPED_CURVE_QUERY = /\{branchId:String\} = '' OR s\.branch_id = \{branchId:String\}[\s\S]*\{machineId:String\} = '' OR s\.machine_id = \{machineId:String\}/;
+const SCOPED_CURVE_QUERY = /\{branchId:String\} = '' OR toString\(s\.branch_id\) = \{branchId:String\}[\s\S]*\{machineId:String\} = '' OR s\.machine_id = \{machineId:String\}/;
 
 describe("temperature curve endpoint", () => {
   it("returns samples with numeric temps, null passthrough, and synthetic meta for owners", async () => {

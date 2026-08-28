@@ -23,7 +23,7 @@ const mixedRows: FakeRow[] = [
 
 // The scoping predicate must survive in the fixed SQL template itself — the FULL
 // disjunction is pinned so a tenant-wide request cannot silently drop the branch filter.
-const SCOPED_HEATMAP_QUERY = /\{branchId:String\} = '' OR u\.branch_id = \{branchId:String\}/;
+const SCOPED_HEATMAP_QUERY = /\{branchId:String\} = '' OR toString\(u\.branch_id\) = \{branchId:String\}/;
 
 describe("utilization heatmap endpoint", () => {
   it("returns hourly buckets with numeric aggregates and synthetic meta for owners", async () => {
