@@ -7,6 +7,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/playground/package.json apps/playground/package.json
 RUN pnpm install --frozen-lockfile
 
 COPY apps apps
@@ -14,6 +15,7 @@ COPY deploy deploy
 ARG VITE_LIFF_ID
 ENV VITE_LIFF_ID=$VITE_LIFF_ID
 RUN pnpm --filter @laundrytwin/web build
+RUN pnpm --filter @laundrytwin/playground build
 
 FROM node:22-bookworm-slim AS api
 
@@ -31,5 +33,12 @@ FROM nginx:1.27-alpine AS web
 
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+FROM nginx:1.27-alpine AS playground
+
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/apps/playground/dist /usr/share/nginx/html
 
 EXPOSE 80

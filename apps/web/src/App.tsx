@@ -1,5 +1,5 @@
 import { Button, Card, Chip } from "@heroui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiBaseUrl, authClient } from "./auth-client";
 import { summarizeMachineActivity } from "./dashboard-metrics";
 import { connectLiff } from "./liff";
