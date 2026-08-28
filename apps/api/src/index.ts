@@ -25,6 +25,7 @@ import {
   type Principal
 } from "./access-store";
 import { createClickHouseClient } from "./analytics/clickhouse";
+import { createMcpServer, type McpTransport } from "./analytics/mcp";
 import { buildOpenApiDocument } from "./analytics/openapi";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { auth } from "./auth";
@@ -35,8 +36,8 @@ import {
   IrisReadUnavailableError
 } from "./iris-read-client";
 import { isDemoModeEnabled } from "./demo-read-client";
+import { createBotHandler } from "./bot";
 import { verifyLiffIdToken } from "./liff-auth";
-import { isValidLineSignature, replyToLineEvent } from "./line";
 import { buildThaiStakeholderSummary, redactDashboardRevenue } from "./reporting";
 
 type AppVariables = {
@@ -50,6 +51,7 @@ export type AppDependencies = {
   irisClient?: IrisClient;
   liffVerifier?: LiffVerifier;
   analyticsDeps?: AnalyticsDeps;
+  mcp?: McpTransport;
 };
 
 initializeDatabase();
@@ -59,6 +61,20 @@ export function createApp(dependencies: AppDependencies = {}) {
   const iris = dependencies.irisClient ?? createIrisReadClient();
   const liffVerifier = dependencies.liffVerifier ?? verifyLiffIdToken;
   const allowedOrigin = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+  const mcpAccessToken = process.env.MCP_ACCESS_TOKEN ?? "";
+  const clickhouse = dependencies.analyticsDeps?.clickhouse ?? createClickHouseClient();
+  const mcp = dependencies.mcp ?? createMcpServer({
+    clickhouse,
+    allowRevenue: process.env.MCP_ALLOW_REVENUE !== "false"
+  });
+  const botHandler = createBotHandler({
+    mcpUrl: process.env.BOT_MCP_URL ?? "http://127.0.0.1:8787/mcp",
+    mcpToken: mcpAccessToken,
+    openRouterKey: process.env.OPENROUTER_API_KEY ?? "",
+    model: process.env.BOT_MODEL ?? "openai/gpt-4o-mini",
+    lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+    clickhouse
+  });
 
   app.use(
     "*",
@@ -345,17 +361,18 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.post("/webhooks/line", async (c) => {
     const rawBody = await c.req.text();
     const signature = c.req.header("x-line-signature");
-    if (!isValidLineSignature(rawBody, signature)) {
-      return c.json({ error: "Invalid LINE webhook signature" }, 401);
-    }
-
-    const payload = JSON.parse(rawBody) as { events: import("@line/bot-sdk").WebhookEvent[] };
-    await Promise.all(payload.events.map(replyToLineEvent));
-    return c.json({ ok: true });
+    return botHandler.handle(rawBody, signature);
   });
 
   app.get("/api/openapi.json", (c) => c.json(buildOpenApiDocument()));
   app.get("/docs", Scalar({ url: "/api/openapi.json" }));
+
+  app.all("/mcp", async (c) => {
+    if (!mcpAccessToken || c.req.header("authorization") !== `Bearer ${mcpAccessToken}`) {
+      return apiError(c, 401, "UNAUTHORIZED", "A valid MCP bearer token is required");
+    }
+    return mcp.handle(c.req.raw);
+  });
 
   return app;
 }
