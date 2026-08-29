@@ -1,0 +1,8 @@
+[Unit]
+Description=LaundryTwin ETL (IRIS Postgres -> ClickHouse)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker run --rm --network=host --env-file=/opt/laundrytwin-etl/.env -v /opt/laundrytwin-etl/data:/data laundrytwin-etl:latest
