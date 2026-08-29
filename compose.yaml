@@ -8,6 +8,8 @@ services:
       NODE_ENV: production
       PORT: 8787
       DATABASE_PATH: /data/laundrytwin.sqlite
+    ports:
+      - "8787:8787"
     restart: unless-stopped
     volumes:
       - ./data:/data
@@ -30,3 +32,27 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+
+  playground:
+    build:
+      context: .
+      target: playground
+      args:
+        VITE_LIFF_ID: ${VITE_LIFF_ID:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+
+  etl:
+    build:
+      context: .
+      target: etl
+    env_file: /opt/laundrytwin-etl/.env
+    volumes:
+      - /opt/laundrytwin-etl/data:/data
+    network_mode: host
+    restart: unless-stopped
+    command: sh -c "while true; do pnpm --filter @laundrytwin/etl start:container; sleep 300; done"
