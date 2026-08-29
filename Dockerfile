@@ -8,6 +8,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/playground/package.json apps/playground/package.json
+COPY apps/etl/package.json apps/etl/package.json
 RUN pnpm install --frozen-lockfile
 
 COPY apps apps
@@ -42,3 +43,17 @@ COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/playground/dist /usr/share/nginx/html
 
 EXPOSE 80
+
+FROM node:22-bookworm-slim AS etl
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN corepack enable
+
+COPY --from=build /app /app
+
+# ETL runs once and exits; schedule via systemd timer or cron on the VM host.
+# Provide PG_CONNECTION_STRING / CLICKHOUSE_* via env or env-file mounted at runtime.
+# Keep watermark on a host volume (e.g. -v etl-data:/app/apps/etl/data).
+CMD ["pnpm", "--filter", "@laundrytwin/etl", "start:container"]

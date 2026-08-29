@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env --import tsx src/index.ts",
+    "start:container": "node --import tsx src/index.ts",
     "verify": "tsx src/verify-source.ts",
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
