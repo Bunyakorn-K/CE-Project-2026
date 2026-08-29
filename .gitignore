@@ -15,6 +15,10 @@ apps/api/data/
 apps/api/drizzle/
 data/
 
+# ETL runtime state (cursor watermark advances; not a source-of-truth file)
+apps/etl/etl-watermark.json
+apps/etl/.tmp/
+
 # Local tooling
 .impeccable/hook.cache.json
 

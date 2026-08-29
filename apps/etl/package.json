@@ -1,0 +1,22 @@
+{
+  "name": "@laundrytwin/etl",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env --import tsx src/index.ts",
+    "verify": "tsx src/verify-source.ts",
+    "build": "tsc --noEmit",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "concurrently -n api,web,playground -c cyan,magenta,green \"pnpm --filter @laundrytwin/api dev\" \"pnpm --filter @laundrytwin/web dev\" \"pnpm --filter @laundrytwin/playground dev\"",
     "build": "pnpm --filter @laundrytwin/api build && pnpm --filter @laundrytwin/web build && pnpm --filter @laundrytwin/playground build",
-    "check": "pnpm --filter @laundrytwin/api check && pnpm --filter @laundrytwin/web check && pnpm --filter @laundrytwin/playground check",
-    "test": "pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/web test",
+    "check": "pnpm --filter @laundrytwin/api check && pnpm --filter @laundrytwin/web check && pnpm --filter @laundrytwin/playground check && pnpm --filter @laundrytwin/etl check",
+    "test": "pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/web test && pnpm --filter @laundrytwin/etl test",
+    "etl": "pnpm --filter @laundrytwin/etl start",
     "db:generate": "pnpm --filter @laundrytwin/api db:generate",
     "db:push": "pnpm --filter @laundrytwin/api db:push"
   },
