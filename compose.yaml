@@ -50,7 +50,7 @@ services:
     build:
       context: .
       target: etl
-    env_file: /opt/laundrytwin-etl/.env
+    env_file: ${ETL_ENV_FILE:-/opt/laundrytwin-etl/.env}
     volumes:
       - /opt/laundrytwin-etl/data:/data
     network_mode: host
