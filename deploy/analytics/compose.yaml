@@ -1,0 +1,100 @@
+name: analytics
+services:
+  airflow:
+    command: standalone
+    environment:
+      AIRFLOW__API__BASE_URL: http://analytics-airflow-1:8080
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__PIP_PACKAGES: clickhouse-driver==0.2.6,requests==2.32.3
+      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      _AIRFLOW_WWW_USER_USERNAME: admin
+    healthcheck:
+      interval: 30s
+      retries: 10
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://127.0.0.1:8080/api/v2/monitor/health
+      timeout: 10s
+    image: apache/airflow:3.3.0
+    ports:
+    - 8081:8080
+    restart: unless-stopped
+    volumes:
+    - airflow-data:/opt/airflow
+    - ./dags:/opt/airflow/dags
+  clickhouse:
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_USER: admin
+    healthcheck:
+      interval: 15s
+      retries: 10
+      test:
+      - CMD
+      - wget
+      - -qO-
+      - http://127.0.0.1:8123/ping
+      timeout: 5s
+    image: clickhouse/clickhouse-server:25.8
+    ports:
+    - 8123:8123
+    - 127.0.0.1:9009:9000
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        hard: 262144
+        soft: 262144
+    volumes:
+    - clickhouse-data:/var/lib/clickhouse
+  mcp-inspector:
+    command: npx -y @modelcontextprotocol/inspector
+    environment:
+      ALLOWED_ORIGINS: https://mcp.laundrytwin.duckdns.org
+      DANGEROUSLY_BIND_ALL_INTERFACES: 'true'
+      DANGEROUSLY_OMIT_AUTH: 'true'
+      HOST: 0.0.0.0
+    image: node:22-bookworm-slim
+    ports:
+    - 6274:6274
+    restart: unless-stopped
+  redis:
+    command: redis-server --save 60 1 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      interval: 10s
+      retries: 5
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      timeout: 5s
+    image: redis:7-alpine
+    restart: unless-stopped
+  superset:
+    environment:
+      SERVER_WORKER_AMOUNT: '2'
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    healthcheck:
+      interval: 30s
+      retries: 10
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://127.0.0.1:8088/health
+      timeout: 10s
+    image: apache/superset:6.1.0
+    ports:
+    - 8088:8088
+    restart: unless-stopped
+    volumes:
+    - superset-home:/app/superset_home
+    - ./superset_config.py:/app/superset_config.py:ro
+volumes:
+  airflow-data: null
+  clickhouse-data: null
+  superset-home: null
