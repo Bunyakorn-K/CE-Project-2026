@@ -1,0 +1,34 @@
+services:
+  arcane:
+    image: getarcaneapp/manager:latest
+    container_name: arcane
+    ports:
+      - "3552:3552"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - arcane-data:/app/data
+      - /opt:/opt
+    environment:
+      - APP_URL=${APP_URL}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PROJECTS_DIRECTORY=/opt
+      - OIDC_ENABLED=${OIDC_ENABLED}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL}
+      - OIDC_SCOPES=${OIDC_SCOPES}
+      - OIDC_GROUPS_CLAIM=${OIDC_GROUPS_CLAIM}
+      - OIDC_ROLE_MAPPINGS=${OIDC_ROLE_MAPPINGS}
+    extra_hosts:
+      # Arcane (VM 117) cannot hairpin the public auth domain via WAN NAT;
+      # pin it to the Caddy-on-Pi reverse proxy which terminates TLS for
+      # auth.notnotik.duckdns.org with a valid LE cert.
+      - "auth.notnotik.duckdns.org:192.168.88.10"
+    cgroup: host
+    restart: unless-stopped
+
+volumes:
+  arcane-data:
