@@ -33,8 +33,8 @@ SELECT
   avgIf(duration_min, status IN ('finished','paid')) AS avgDurationMin,
   countIf(source_event_id LIKE 'synthetic:%') AS synthCount,
   count() AS totalCount
-FROM fact_machine_usage AS u
-INNER JOIN dim_branch AS b ON (u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id)
+FROM fact_machine_usage AS u FINAL
+INNER JOIN dim_branch AS b FINAL ON (u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id)
 WHERE started_at >= {from:String} AND started_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
 GROUP BY date, branchId, branchName
@@ -112,8 +112,8 @@ SELECT
   count() AS cycles,
   countIf(source_event_id LIKE 'synthetic:%') AS synthCount,
   count() AS totalCount
-FROM fact_machine_usage AS u
-INNER JOIN dim_machine AS m ON (u.tenant_id = m.tenant_id AND u.machine_id = m.machine_id)
+FROM fact_machine_usage AS u FINAL
+INNER JOIN dim_machine AS m FINAL ON (u.tenant_id = m.tenant_id AND u.machine_id = m.machine_id)
 WHERE started_at >= {from:String} AND started_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
 GROUP BY hourBucket, machineId, machineCode
@@ -170,7 +170,7 @@ SELECT
   countIf(source_event_id LIKE 'synthetic:%') OVER () AS synthCount,
   count() OVER () AS totalCount
 FROM fact_temperature_sample AS s
-INNER JOIN dim_machine AS m ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
+INNER JOIN dim_machine AS m FINAL ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
 WHERE occurred_at >= {from:String} AND occurred_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(s.branch_id) = {branchId:String})
   AND ({machineId:String} = '' OR s.machine_id = {machineId:String})
@@ -226,7 +226,7 @@ export async function listBranchNames(
   clickhouse: ClickHouseExecutor
 ): Promise<Array<{ branchId: string; branchName: string }>> {
   const rows = await clickhouse<{ branchId: string; branchName: string }>(
-    "SELECT branch_id AS branchId, branch_name AS branchName FROM dim_branch ORDER BY branchName"
+    "SELECT branch_id AS branchId, branch_name AS branchName FROM dim_branch FINAL ORDER BY branchName"
   );
   return rows.map((row) => ({ branchId: row.branchId, branchName: row.branchName }));
 }
