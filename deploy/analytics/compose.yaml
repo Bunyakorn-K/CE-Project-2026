@@ -51,6 +51,7 @@ services:
     volumes:
     - clickhouse-data:/var/lib/clickhouse
     - ./clickhouse-listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+    - ./clickhouse-alias-settings.xml:/etc/clickhouse-server/users.d/alias-settings.xml:ro
   mcp-inspector:
     command: npx -y @modelcontextprotocol/inspector
     environment:

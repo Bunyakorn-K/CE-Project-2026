@@ -1,0 +1,18 @@
+<clickhouse>
+    <!-- Superset virtual datasets (usage_enriched, temp_enriched) wrap the fact
+         tables in a subquery aliased virtual_table. ClickHouse 25.8's analyzer
+         resolves the bare started_at inside GROUP BY dateTrunc(...) against the
+         SELECT alias first, so the SELECT expression no longer matches the GROUP
+         BY key and every time-grain query fails with Code 215 NOT_AN_AGGREGATE
+         (Column virtual_table.started_at is not under aggregate function and
+         not in GROUP BY keys). prefer_column_name_to_alias=1 makes GROUP BY
+         resolve column names before aliases, which restores the pre-analyzer
+         behavior for every client of this server (Superset charts, sql lab,
+         API queries). Applied as a default-profile setting so no query needs
+         an explicit SETTINGS clause. -->
+    <profiles>
+        <default>
+            <prefer_column_name_to_alias>1</prefer_column_name_to_alias>
+        </default>
+    </profiles>
+</clickhouse>
