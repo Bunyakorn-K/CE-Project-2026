@@ -167,7 +167,7 @@ SELECT
   temperature_f AS temperatureF,
   temperature_c AS temperatureC,
   phase,
-  countIf(source_event_id LIKE 'synthetic:%') OVER () AS synthCount,
+  countIf(event_id LIKE 'synthetic:%') OVER () AS synthCount,
   count() OVER () AS totalCount
 FROM fact_temperature_sample AS s
 INNER JOIN dim_machine AS m FINAL ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
