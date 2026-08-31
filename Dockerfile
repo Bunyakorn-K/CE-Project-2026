@@ -26,6 +26,11 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 
+# The build stage is a fresh node image: the pnpm shim lives in /usr/local/bin
+# on the deps image and is NOT carried over by COPY --from=deps, so enable
+# corepack here too or `pnpm --filter ... build` fails with "pnpm: not found".
+RUN corepack enable
+
 COPY --from=deps /app /app
 
 COPY apps apps
