@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars (untracked) and fill in real values.
+# Required (no defaults):
+better_auth_secret       = "CHANGE_ME"
+line_channel_access_token = "CHANGE_ME"
+line_channel_secret       = "CHANGE_ME"
+analytics_read_api_key    = "CHANGE_ME"
+clickhouse_password       = "CHANGE_ME"
+pg_connection_string      = "postgres://user:pass@host:5432/db"
+airflow_admin_password    = "CHANGE_ME"
+superset_secret_key       = "CHANGE_ME"
+
+# Optional overrides (defaults shown):
+app_repo_url           = "https://github.com/Bunyakorn-K/CE-Project-2026.git"
+app_repo_ref           = "main"
+app_install_dir        = "/opt/laundrytwin"
+analytics_install_dir  = "/opt/analytics"
+etl_data_dir           = "/opt/laundrytwin-etl"
+better_auth_url        = "https://api.laundrytwin.duckdns.org"
+cors_origin            = "https://web.laundrytwin.duckdns.org"
+laundrytwin_demo_mode  = false
+clickhouse_url         = "http://analytics-clickhouse-1:8123"
+clickhouse_user        = "admin"
+clickhouse_database    = "laundrytwin_analytics"
+vite_liff_id           = ""
+mcp_access_token       = ""
+mcp_allow_revenue      = false
+openrouter_api_key     = ""
+bot_model              = ""
+bot_mcp_url            = ""
+etl_watermark_path     = "/data/watermark.json"
+etl_since_fallback_days = 30
+etl_usage_batch        = 5000
+etl_temperature_batch = 50000

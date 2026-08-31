@@ -1,0 +1,12 @@
+# Secrets rendered at apply time must never be committed.
+rendered/
+*.tfvars
+terraform.tfvars
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+tofu.tfstate
+tofu.tfstate.backup
+.tofu/
+*.auto.tfvars
