@@ -59,3 +59,43 @@ services:
       DANGEROUSLY_OMIT_AUTH: 'true'
       HOST: 0.0.0.0
     image: node:22-bookworm-slim
+    ports:
+    - 6274:6274
+    restart: unless-stopped
+  redis:
+    command: redis-server --save 60 1 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      interval: 10s
+      retries: 5
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      timeout: 5s
+    image: redis:7-alpine
+    restart: unless-stopped
+  superset:
+    environment:
+      SERVER_WORKER_AMOUNT: '2'
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    healthcheck:
+      interval: 30s
+      retries: 10
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://127.0.0.1:8088/health
+      timeout: 10s
+    image: apache/superset:6.1.0
+    ports:
+    - 8088:8088
+    restart: unless-stopped
+    volumes:
+    - superset-home:/app/superset_home
+    - ./superset_config.py:/app/superset_config.py:ro
+volumes:
+  airflow-data: null
+  clickhouse-data: null
+  superset-home: null
