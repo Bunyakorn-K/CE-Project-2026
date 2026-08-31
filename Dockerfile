@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ WORKDIR /app
 
 COPY apps/etl apps/etl
 
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ ENV VITE_LIFF_ID=$VITE_LIFF_ID
 RUN pnpm --filter @laundrytwin/web build
 RUN pnpm --filter @laundrytwin/playground build
 
-FROM node:22-bookworm-slim AS api
+FROM node:24-bookworm-slim AS api
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -52,21 +52,21 @@ COPY --from=build /app /app
 EXPOSE 8787
 CMD ["pnpm", "--filter", "@laundrytwin/api", "start"]
 
-FROM nginx:1.27-alpine AS web
+FROM nginx:1.30-alpine AS web
 
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 80
 
-FROM nginx:1.27-alpine AS playground
+FROM nginx:1.30-alpine AS playground
 
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/playground/dist /usr/share/nginx/html
 
 EXPOSE 80
 
-FROM node:22-bookworm-slim AS etl
+FROM node:24-bookworm-slim AS etl
 
 WORKDIR /app
 ENV NODE_ENV=production
