@@ -75,6 +75,9 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
   superset:
+    build:
+      context: ./superset-driver
+    image: laundrytwin-superset:6.1.0-clickhouse
     environment:
       SERVER_WORKER_AMOUNT: '2'
       SUPERSET_CONFIG_PATH: /app/superset_config.py
@@ -88,7 +91,6 @@ services:
       - -sf
       - http://127.0.0.1:8088/health
       timeout: 10s
-    image: apache/superset:6.1.0
     ports:
     - 8088:8088
     restart: unless-stopped
