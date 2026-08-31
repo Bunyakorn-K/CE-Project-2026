@@ -1,0 +1,7 @@
+<clickhouse>
+    <!-- IPv4-only listen: after a cold VM boot the docker bridge has no IPv6,
+         and [::] binds fail with EAI errors, putting ClickHouse in a restart loop.
+         listen_try keeps startup resilient if one address fails. -->
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+</clickhouse>
