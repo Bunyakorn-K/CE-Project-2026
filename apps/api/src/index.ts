@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Scalar } from "@scalar/hono-api-reference";
+import { compress } from "hono/compress";
 import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { Hono, type Context } from "hono";
@@ -75,6 +76,10 @@ export function createApp(dependencies: AppDependencies = {}) {
     lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
     clickhouse
   });
+
+  // Compress JSON responses (esp. analytics payloads like the temperature curve).
+  // Node 24 ships CompressionStream, so no extra dependency is needed.
+  app.use("*", compress());
 
   app.use(
     "*",
