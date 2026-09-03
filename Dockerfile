@@ -39,6 +39,7 @@ ARG VITE_LIFF_ID
 ENV VITE_LIFF_ID=$VITE_LIFF_ID
 RUN pnpm --filter @laundrytwin/web build
 RUN pnpm --filter @laundrytwin/playground build
+RUN pnpm --filter @laundrytwin/api build:prod
 
 FROM node:24-bookworm-slim AS api
 
