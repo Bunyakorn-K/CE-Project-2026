@@ -84,3 +84,22 @@ with 1.1M–1.3M samples each.
   `docs/superpowers/specs/2026-08-08-airflow-dag-iris-usage.md`.
 - Superset slice #7: restore `superset.db.bak-20260906` or drop the
   `adhoc_filters` entry from `slices.params` (id=7).
+
+## Addendum 2026-09-06 (evening) — Airflow metadata DB → Postgres (#43)
+
+- Added `postgres:16` service to `deploy/analytics/compose.yaml`
+  (`AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:...@analytics-postgres-1:5432/airflow`,
+  `psycopg2-binary` added to `AIRFLOW__CORE__PIP_PACKAGES`, host port
+  127.0.0.1:5433). Recreated the airflow container; metadata auto-migrated
+  (71 tables in `public`), all health components healthy.
+- **Pitfall hit:** Airflow Variables live in the metadata DB — after switching
+  to a fresh Postgres, `clickhouse_*` variables were gone and the freshness
+  DAG failed auth (run `scheduled__18:25` failed; 18:30/18:35 succeeded after
+  re-seeding). Always re-seed variables on a metadata-DB switch:
+  `airflow variables set clickhouse_host/user/password/database`.
+- The `AIRFLOW_DB_PASSWORD` var was added to `/opt/analytics/.env`
+  (openssl rand -hex 16); the old `airflow-data` volume is kept unmounted for
+  rollback (SQLite history remains there).
+- Known limitation resolved: no more SQLite single-writer lock class for
+  Airflow. (Superset metadata remains SQLite with WAL + busy_timeout — its own
+  bootstrap path is `deploy/analytics/bootstrap-superset.sh`.)
