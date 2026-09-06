@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -114,6 +114,27 @@ export const auditLog = sqliteTable("audit_log", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
 });
 
+export const alertNotification = sqliteTable(
+  "alert_notification",
+  {
+    id: text("id").primaryKey(),
+    irisAlertId: text("iris_alert_id").notNull(),
+    lineUserId: text("line_user_id").notNull(),
+    branchId: text("branch_id"),
+    machineId: text("machine_id"),
+    severity: text("severity").notNull(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    evidence: text("evidence").notNull().default("{}"),
+    status: text("status", { enum: ["sending", "sent", "failed"] }).notNull(),
+    cooldownKey: text("cooldown_key"),
+    attemptedAt: integer("attempted_at", { mode: "timestamp_ms" }).notNull(),
+    deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
+    error: text("error")
+  },
+  (table) => [uniqueIndex("alert_notification_dedup_idx").on(table.irisAlertId, table.lineUserId)]
+);
+
 export const schema = {
   user,
   session,
@@ -124,5 +145,6 @@ export const schema = {
   liffSession,
   liffAccessRequest,
   alertAcknowledgement,
-  auditLog
+  auditLog,
+  alertNotification
 };

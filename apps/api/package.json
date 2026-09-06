@@ -9,6 +9,7 @@
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "alerts:sweep": "tsx scripts/run-alert-sweep.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   },

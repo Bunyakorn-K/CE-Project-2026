@@ -38,6 +38,8 @@ import {
 } from "./iris-read-client";
 import { isDemoModeEnabled } from "./demo-read-client";
 import { createBotHandler } from "./bot";
+import { LineAdapter } from "./bot/line-adapter";
+import { runAlertSweep } from "./alert-engine";
 import { verifyLiffIdToken } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardRevenue } from "./reporting";
 
@@ -361,6 +363,24 @@ export function createApp(dependencies: AppDependencies = {}) {
       return apiError(c, 400, "LAST_OWNER", "Assign another owner before revoking the last owner grant");
     }
     return c.json({ ok: true });
+  });
+
+  app.post("/api/admin/alerts/notify", async (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    try {
+      const alerts = await iris.getAlerts({ from: from.toISOString(), to: now.toISOString() });
+      const summary = await runAlertSweep(alerts.alerts, {
+        adapter: new LineAdapter(lineToken),
+        adapterAvailable: Boolean(lineToken)
+      });
+      return c.json({ scanned: alerts.alerts.length, lineConfigured: Boolean(lineToken), summary });
+    } catch (error) {
+      return irisError(c, error);
+    }
   });
 
   app.post("/webhooks/line", async (c) => {

@@ -107,5 +107,24 @@ export function initializeDatabase() {
       detail text NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS alert_notification (
+      id text PRIMARY KEY NOT NULL,
+      iris_alert_id text NOT NULL,
+      line_user_id text NOT NULL,
+      branch_id text,
+      machine_id text,
+      severity text NOT NULL,
+      title text NOT NULL,
+      message text NOT NULL,
+      evidence text NOT NULL DEFAULT '{}',
+      status text NOT NULL CHECK (status IN ('sending', 'sent', 'failed')),
+      cooldown_key text,
+      attempted_at integer NOT NULL,
+      delivered_at integer,
+      error text,
+      UNIQUE (iris_alert_id, line_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS alert_notification_cooldown_idx ON alert_notification(cooldown_key, attempted_at);
+    CREATE INDEX IF NOT EXISTS alert_notification_status_idx ON alert_notification(status, attempted_at);
   `);
 }

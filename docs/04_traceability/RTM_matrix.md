@@ -23,3 +23,16 @@
 
 - **Developers:** Before building a new feature, find its `F-ID` here. Ensure your code satisfies the linked `R-ID` criteria.
 - **Testers (QA):** Use this matrix to write test cases. A test case for `US-01` must explicitly test the logic in `F-02` and `F-10`.
+
+---
+
+### 📌 Implementation status (as of 2026-09-06)
+
+| Function | Status | Evidence |
+| :------- | :----- | :------- |
+| F-01 State Sync | Partial (read-only live snapshot via IRIS; real-time MQTT telemetry not yet ingested) | `apps/api/src/iris-read-client.ts`, `apps/api/src/reporting.ts` |
+| F-06 RBAC | Implemented | `apps/api/src/access-policy.ts` + tests |
+| F-08 KPI Aggregation | Implemented (ClickHouse) | `apps/api/src/analytics/*` + tests |
+| F-10 Alert Engine (notification arm) | Implemented (idempotent LINE push + cooldown + audit) | `apps/api/src/alert-engine.ts` + `apps/api/src/alert-engine.test.ts` |
+| F-11 Safe Function Calling | Implemented (allow-listed analytics MCP) | `apps/api/src/analytics/mcp.ts` + tests |
+| F-04/F-05 Pipeline | Partial (IRIS Postgres → ClickHouse ETL; no MQTT ingestion yet) | `apps/etl/` |
