@@ -4,7 +4,7 @@
 
 | Domain / Feature                  | User Story (US) | Requirement (R) | System Function (F)                        | Phase     |
 | :-------------------------------- | :-------------- | :-------------- | :----------------------------------------- | :-------- |
-| **MQTT Ingestion & Reliability**  | US-10           | R01, R02        | F-04 (Streaming), F-05 (Data Pipeline)     | **MVP**   |
+| **Telemetry Pipeline (via IRIS)**   | US-10           | R01, R02        | F-04 (State Sync), F-05 (Data Pipeline)     | **MVP**   |
 | **RBAC & Multi-Tenant Security**  | US-09, US-11    | R04             | F-06 (RBAC), F-07 (Audit Log)              | **MVP**   |
 | **Digital Twin (Machine Status)** | US-02           | R02, R04        | F-01 (State Sync)                          | **MVP**   |
 | **Business Dashboard (Revenue)**  | US-04           | R03, R04        | F-08 (KPI Aggregation)                     | **MVP**   |
@@ -35,4 +35,4 @@
 | F-08 KPI Aggregation | Implemented (ClickHouse) | `apps/api/src/analytics/*` + tests |
 | F-10 Alert Engine (notification arm) | Implemented (idempotent LINE push + cooldown + audit) | `apps/api/src/alert-engine.ts` + `apps/api/src/alert-engine.test.ts` |
 | F-11 Safe Function Calling | Implemented (allow-listed analytics MCP) | `apps/api/src/analytics/mcp.ts` + tests |
-| F-04/F-05 Pipeline | Partial (IRIS Postgres → ClickHouse ETL; no MQTT ingestion yet) | `apps/etl/` |
+| F-04/F-05 Pipeline | Implemented via IRIS Postgres → ClickHouse ETL (watermark + ReplacingMergeTree idempotency); direct MQTT ingestion descoped 2026-09-07 — device ingestion is IRIS's responsibility | `apps/etl/` |

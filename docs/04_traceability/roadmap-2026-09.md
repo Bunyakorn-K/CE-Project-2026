@@ -103,10 +103,14 @@ Three deliverables (research → plan → metrics):
    monthly estimate + explicit assumptions (no PII, no vendor quotes without
    verification).
 
-### 5d. MQTT telemetry ingestion — F-04/F-05 (#41)
+### 5d. MQTT telemetry ingestion — F-04/F-05 (#41) — **DESCOPED 2026-09-07**
 
-**Explicitly future scope** (AGENTS.md: telemetry ingestion not in current
-implementation; no hardware changes without approved scope).
+**Closed as not planned.** The live system does not use MQTT: telemetry flows
+IRIS gateway → IRIS Postgres → our ETL → ClickHouse, and device ingestion is
+IRIS's responsibility (see `docs/integration/iris-laundrytwin-read-api.md`).
+A parallel MQTT path would be speculative scope with no verified register map.
+
+If scope ever changes (direct device access after IRIS retires):
 
 1. Design doc extending `docs/03_data_contracts/modbus_frame_analysis.md`:
    MQTT topics, payload envelope, `event_timestamp` vs `received_at`,
