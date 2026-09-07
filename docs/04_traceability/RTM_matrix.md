@@ -36,3 +36,4 @@
 | F-10 Alert Engine (notification arm) | Implemented (idempotent LINE push + cooldown + audit) | `apps/api/src/alert-engine.ts` + `apps/api/src/alert-engine.test.ts` |
 | F-11 Safe Function Calling | Implemented (allow-listed analytics MCP) | `apps/api/src/analytics/mcp.ts` + tests |
 | F-04/F-05 Pipeline | Implemented via IRIS Postgres → ClickHouse ETL (watermark + ReplacingMergeTree idempotency); direct MQTT ingestion descoped 2026-09-07 — device ingestion is IRIS's responsibility | `apps/etl/` |
+| F-12 Weather Context | Implemented (TMD collector live on VM 117 + fact_weather_sample + Superset chart + MCP tool); correlation not yet evaluable — data accumulation in progress, honest NaN verdict recorded | `apps/etl/src/weather.ts`, `apps/api/src/analytics/weather.ts`, `docs/04_traceability/f12-weather-evaluation-2026-09-07.md` |

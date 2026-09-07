@@ -123,3 +123,15 @@ deployed as a long-lived container.
 - Fix shipped: TMD `+07:00` tz suffix stripped before insert (ClickHouse
   DateTime64 cannot parse offsets without a TZ database).
 - Commit: `827aeb1`.
+
+## Superset weather chart + F-12 first evaluation (2026-09-07)
+
+- Chart "Weather (TMD hourly)" (slice 8) added to dashboard "LaundryTwin
+  Analytics" via ORM: dataset 9 `fact_weather_sample` (physical, 6 columns),
+  metrics avg_temp_c / avg_humidity_pct / total_rain_mm; verified the chart's
+  ClickHouse query returns 8 live hourly points (2 provinces × 4 hours).
+- Seed re-exported (15 files) with the weather chart + dataset; database URI
+  masked back to `__CH_PASSWORD__`; bootstrap-compatible.
+- F-12 correlation first evaluation: NaN (no overlapping hours — usage ends
+  09:09, weather starts 13:00 the same day). Honest verdict + re-evaluation
+  query recorded in docs/04_traceability/f12-weather-evaluation-2026-09-07.md.
