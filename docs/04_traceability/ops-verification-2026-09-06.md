@@ -103,3 +103,23 @@ with 1.1M–1.3M samples each.
 - Known limitation resolved: no more SQLite single-writer lock class for
   Airflow. (Superset metadata remains SQLite with WAL + busy_timeout — its own
   bootstrap path is `deploy/analytics/bootstrap-superset.sh`.)
+
+## Weather collector deployment (2026-09-07)
+
+**Scope:** TMD API key moved out of the PoC hardcode into the VM env file
+(`/opt/laundrytwin-etl/.env`, mode 600, never committed); weather collector
+deployed as a long-lived container.
+
+**Evidence:**
+- Disk: PVE `qm resize 117 scsi0 +32G` (48G -> 80G), guest `growpart` +
+  `resize2fs` -> `/dev/sda1` 79G, 41G free (was 100% full — ClickHouse
+  `NOT_ENOUGH_SPACE` during insert).
+- Service: `laundrytwin-weather-1` running, loop every 5 min.
+- First runs: `Weather collection complete: {"fetched":2,"rows":2,
+  "provinces":["เชียงใหม่","ชลบุรี"]}` — TMD hourly endpoint returns a short
+  window per call; rows accumulate over runs.
+- Warehouse: `fact_weather_sample` 6 raw rows -> 4 after `FINAL` (ReplacingMergeTree
+  dedup by (province, timestamp) verified — idempotent re-runs do not duplicate).
+- Fix shipped: TMD `+07:00` tz suffix stripped before insert (ClickHouse
+  DateTime64 cannot parse offsets without a TZ database).
+- Commit: `827aeb1`.
