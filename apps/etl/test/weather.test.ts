@@ -25,7 +25,7 @@ describe("normalizeForecast", () => {
     const rows = normalizeForecast(SAMPLE_RESPONSE, "เชียงใหม่");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual({
-      timestamp: "2026-08-27T15:00:00+07:00",
+      timestamp: "2026-08-27T15:00:00",
       province: "เชียงใหม่",
       weather_temp_c: 33.67,
       weather_humidity_pct: 49.14,
@@ -56,7 +56,7 @@ describe("normalizeForecast", () => {
       "เชียงใหม่",
       now
     );
-    expect(rows[0].timestamp).toBe("2026-08-27T15:00:00.000Z");
+    expect(rows[0].timestamp).toBe("2026-08-27T15:00:00.000");
   });
 });
 

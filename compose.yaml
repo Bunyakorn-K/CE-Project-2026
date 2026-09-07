@@ -56,3 +56,16 @@ services:
     network_mode: host
     restart: unless-stopped
     command: sh -c "while true; do pnpm --filter @laundrytwin/etl start:container; sleep 300; done"
+
+  weather:
+    build:
+      context: .
+      target: weather
+    env_file: ${ETL_ENV_FILE:-/opt/laundrytwin-etl/.env}
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ps -o pid= -p 1 >/dev/null && exit 0 || exit 1"]
+      interval: 5m
+      timeout: 5s
+      retries: 1

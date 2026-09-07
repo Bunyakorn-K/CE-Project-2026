@@ -81,3 +81,21 @@ COPY --from=etl-build /app /app
 # env-file at runtime. Keep the watermark on a host volume so restarts resume
 # from the last committed batch (see /opt/laundrytwin-etl/data on the VM).
 CMD ["pnpm", "--filter", "@laundrytwin/etl", "start:container"]
+
+FROM node:24-bookworm-slim AS weather
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN corepack enable
+
+# The weather collector shares the etl stage's built dependencies (clickhouse
+# client) and adds only its source. ClickHouse schema changes are intentionally
+# NOT applied at runtime — fact_weather_sample is created by deploy/analytics
+# (mirrors apps/etl/src/schema.ts).
+COPY --from=etl-build /app /app
+
+# Collect hourly TMD weather forecasts into fact_weather_sample. The TMD bearer
+# key comes from TMD_API_KEY via the env file (never source). Loop keeps the
+# collector running as a long-lived service (matches the etl 5-minute pattern).
+CMD ["sh", "-c", "while true; do pnpm --filter @laundrytwin/etl start:weather; sleep 300; done"]

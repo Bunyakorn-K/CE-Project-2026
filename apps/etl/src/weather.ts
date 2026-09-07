@@ -72,15 +72,20 @@ export function normalizeForecast(
   const location = raw.WeatherForecasts?.[0];
   if (!location?.forecasts?.length) return [];
 
-  const observedAt = now().toISOString();
-  return location.forecasts.map((point) => ({
-    timestamp: point.time ?? observedAt,
-    province: location.location?.province ?? province,
-    weather_temp_c: point.data?.tc ?? null,
-    weather_humidity_pct: point.data?.rh ?? null,
-    weather_rain_mm: point.data?.rain ?? null,
-    weather_cond: point.data?.cond ?? null
-  }));
+  const observedAt = now().toISOString().replace("Z", "");
+  return location.forecasts.map((point) => {
+    // TMD returns "2026-09-07T15:00:00+07:00" — strip the +07:00 suffix
+    // so ClickHouse DateTime64(3) can parse it without a TZ database.
+    const ts = (point.time ?? observedAt).replace(/[+-]\d{2}:\d{2}$/, "");
+    return {
+      timestamp: ts,
+      province: location.location?.province ?? province,
+      weather_temp_c: point.data?.tc ?? null,
+      weather_humidity_pct: point.data?.rh ?? null,
+      weather_rain_mm: point.data?.rain ?? null,
+      weather_cond: point.data?.cond ?? null
+    };
+  });
 }
 
 /** Parse the TMD_PROVINCES env list ("เชียงใหม่,กรุงเทพฯ") into trimmed names. */
