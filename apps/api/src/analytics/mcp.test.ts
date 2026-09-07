@@ -61,7 +61,7 @@ function contentText(result: { content?: Array<{ type: string; text: string }> }
 const scopedArgs = { from: "2026-08-01", to: "2026-08-31", branchId: "b1", accessScope: { branchIds: ["b1"], canViewRevenue: true } };
 
 describe("MCP data server", () => {
-  it("serves the four allow-listed analytics tools", async () => {
+  it("serves the five allow-listed analytics tools", async () => {
     const transport = createMcpServer({ clickhouse: fakeClickhouse([]), allowRevenue: true });
     const sessionId = await initSession(transport);
     const response = await roundTrip(transport, sessionId, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
@@ -71,7 +71,8 @@ describe("MCP data server", () => {
       "get_cycles_daily",
       "get_revenue_daily",
       "get_temperature_curve",
-      "get_utilization_heatmap"
+      "get_utilization_heatmap",
+      "get_weather_usage_correlation"
     ]);
   });
 

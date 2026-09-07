@@ -18,3 +18,9 @@
 | **Gas Pressure** | `gas_pressure` | External gas pressure sensor | Pressure reading with units, sensor ID, and sampling window. Check reasonable value ranges and flag missing sensor data. | Gas early-warning | **Required before MVP** |
 | **Gas Leak Detected** | `gas_leak_detected` | Dedicated gas-leak detector | Boolean signal from a dedicated physical gas leak sensor (separate from pressure drop estimation). Local alarm must function offline even if cloud disconnects. | Safety alert | *Hardware decision required* |
 | **Alert Rules** | `rule_id` + `rule_version` | Alert configuration | Versioned configuration defining thresholds, cooldowns, recipients, and enabled states. Log every rule evaluation and dispatch outcome. | Notifications, Audit log | **Required before MVP** |
+| **Weather Temp** | `weather_temp_c` | TMD NWP API (collector) | Normalized Celsius. Nullable — a missing reading stays NULL, never fabricated. `fact_weather_sample` (ReplacingMergeTree by `(province, timestamp)`). | F-12 correlation | **Phase 2** |
+| **Weather Humidity** | `weather_humidity_pct` | TMD NWP API | Relative humidity percent. Nullable. | F-12 correlation | **Phase 2** |
+| **Weather Rain** | `weather_rain_mm` | TMD NWP API | Precipitation in mm. Nullable. | F-12 correlation | **Phase 2** |
+| **Weather Condition** | `weather_cond` | TMD NWP API | TMD condition code (integer). Nullable; treat as opaque until TMD's code table is pinned in docs. | F-12 correlation | **Phase 2** |
+| **Weather Source Auth** | `TMD_API_KEY` | TMD account | Bearer token from **env only** — never committed, never sent to the browser. Collector: `apps/etl/src/weather.ts` via `TMD_API_KEY`. | F-12 collector | **Phase 2** |
+| **Weather Correlation Semantics** | — | F-12 output | Correlation only: output must state source range and explicitly deny causation/forecast claims (R12). | Weather analysis | **Phase 2** |

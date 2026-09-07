@@ -81,6 +81,18 @@ const FACT_TEMPERATURE_COLUMNS: Column[] = [
   { name: "extracted_at", ch: "DateTime64(3)" },
 ];
 
+// Weather observations from the TMD NWP API (F-12, Phase 2). Nullable
+// readings: a missing field stays NULL — never fabricated. Versioned by the
+// observation timestamp so a re-run converges to one row per (province, ts).
+const FACT_WEATHER_COLUMNS: Column[] = [
+  { name: "timestamp", ch: "DateTime64(3)" },
+  { name: "province", ch: "String" },
+  { name: "weather_temp_c", ch: "Nullable(Float32)" },
+  { name: "weather_humidity_pct", ch: "Nullable(Float32)" },
+  { name: "weather_rain_mm", ch: "Nullable(Float32)" },
+  { name: "weather_cond", ch: "Nullable(Int32)" },
+];
+
 function ddl(
   table: string,
   columns: Column[],
@@ -113,6 +125,14 @@ export const CREATE_TABLES: string[] = [
     "(tenant_id, branch_id, occurred_at, event_id)",
     "toYYYYMM(occurred_at)"
   ),
+  ddl(
+    "fact_weather_sample",
+    FACT_WEATHER_COLUMNS,
+    "ReplacingMergeTree",
+    "(province, timestamp)",
+    undefined,
+    "timestamp"
+  ),
 ];
 
 export const TABLE_COLUMNS: Record<string, string[]> = {
@@ -120,6 +140,7 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
   dim_machine: DIM_MACHINE_COLUMNS.map((c) => c.name),
   fact_machine_usage: FACT_USAGE_COLUMNS.map((c) => c.name),
   fact_temperature_sample: FACT_TEMPERATURE_COLUMNS.map((c) => c.name),
+  fact_weather_sample: FACT_WEATHER_COLUMNS.map((c) => c.name),
 };
 
 export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as Array<keyof typeof TABLE_COLUMNS>;
