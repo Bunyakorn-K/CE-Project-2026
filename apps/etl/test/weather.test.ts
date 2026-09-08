@@ -21,11 +21,12 @@ const SAMPLE_RESPONSE = {
 };
 
 describe("normalizeForecast", () => {
-  it("maps TMD fields into warehouse rows with the configured province", () => {
+  it("converts TMD +07:00 timestamps to UTC warehouse timestamps", () => {
     const rows = normalizeForecast(SAMPLE_RESPONSE, "เชียงใหม่");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual({
-      timestamp: "2026-08-27T15:00:00",
+      // 15:00 +07:00 = 08:00 UTC
+      timestamp: "2026-08-27 08:00:00.000",
       province: "เชียงใหม่",
       weather_temp_c: 33.67,
       weather_humidity_pct: 49.14,
@@ -49,14 +50,38 @@ describe("normalizeForecast", () => {
     expect(normalizeForecast({}, "เชียงใหม่")).toEqual([]);
   });
 
-  it("falls back to the received-at time when a forecast point has no time", () => {
+  it("falls back to the provided now() time (UTC) when a forecast point has no time", () => {
     const now = () => new Date("2026-08-27T15:00:00.000Z");
     const rows = normalizeForecast(
       { WeatherForecasts: [{ forecasts: [{ data: { tc: 1 } }] }] } as unknown as TmdForecastResponse,
       "เชียงใหม่",
       now
     );
-    expect(rows[0].timestamp).toBe("2026-08-27T15:00:00.000");
+    // now() is already UTC here, so the fallback string is the same instant.
+    expect(rows[0].timestamp).toBe("2026-08-27 15:00:00.000");
+  });
+});
+
+describe("timezone handling (UTC invariant)", () => {
+  it("shifts a +07:00 TMD timestamp back to UTC", () => {
+    const rows = normalizeForecast(
+      {
+        WeatherForecasts: [
+          { location: { province: "เชียงใหม่" }, forecasts: [{ time: "2026-08-27T22:00:00+07:00", data: { tc: 1 } }] }
+        ]
+      },
+      "เชียงใหม่"
+    );
+    // 22:00 +07:00 == 15:00 UTC
+    expect(rows[0].timestamp).toBe("2026-08-27 15:00:00.000");
+  });
+
+  it("produces a UTC literal (space separator, millis, no Z)", () => {
+    const rows = normalizeForecast(SAMPLE_RESPONSE, "เชียงใหม่");
+    expect(rows[0].timestamp).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(rows[0].timestamp).not.toContain("T");
+    expect(rows[0].timestamp).not.toContain("Z");
+    expect(rows[0].timestamp).not.toContain("+");
   });
 });
 

@@ -12,6 +12,7 @@
 // "เชียงใหม่"), CLICKHOUSE_* for the warehouse.
 
 import type { ClickHouseClient } from "./clickhouse";
+import { parseTmdTimestamp, toClickHouseUtc, nowUtc } from "./datetime";
 
 export type TmdForecastPoint = {
   time: string;
@@ -63,22 +64,25 @@ export async function fetchTmdForecast(
  * Normalize a TMD response into warehouse rows. Only the first location's
  * forecasts are used (the API is queried per province). Missing numeric
  * fields map to null — never fabricated.
+ *
+ * TIMEZONE: TMD timestamps carry a `+07:00` offset (Asia/Bangkok). We convert
+ * them to a true UTC instant via date-fns-tz so the warehouse stores UTC
+ * consistently with the rest of the pipeline (see ./datetime). The persisted
+ * `timestamp` is a UTC `DateTime64(3)` literal, NOT local wall-clock.
  */
 export function normalizeForecast(
   raw: TmdForecastResponse,
   province: string,
-  now: () => Date = () => new Date()
+  now: () => Date = nowUtc
 ): WeatherRow[] {
   const location = raw.WeatherForecasts?.[0];
   if (!location?.forecasts?.length) return [];
 
-  const observedAt = now().toISOString().replace("Z", "");
+  const nowDate = now();
   return location.forecasts.map((point) => {
-    // TMD returns "2026-09-07T15:00:00+07:00" — strip the +07:00 suffix
-    // so ClickHouse DateTime64(3) can parse it without a TZ database.
-    const ts = (point.time ?? observedAt).replace(/[+-]\d{2}:\d{2}$/, "");
+    const tsUtc = parseTmdTimestamp(point.time, nowDate);
     return {
-      timestamp: ts,
+      timestamp: toClickHouseUtc(tsUtc),
       province: location.location?.province ?? province,
       weather_temp_c: point.data?.tc ?? null,
       weather_humidity_pct: point.data?.rh ?? null,

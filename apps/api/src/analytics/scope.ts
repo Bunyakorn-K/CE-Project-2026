@@ -1,4 +1,6 @@
 import { canAccessBranch, type AccessGrant } from "../access-policy";
+import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 
 export type ScopeResult =
   | { ok: true; branchId?: string }
@@ -27,8 +29,10 @@ export type RangeResult =
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Analytics ranges are wall-clock calendar dates in the branch's local timezone.
+// We format UTC via date-fns-tz so the date boundary is stable regardless of host TZ.
 function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return formatInTimeZone(date, "UTC", "yyyy-MM-dd");
 }
 
 export function parseAnalyticsRange(from: string | undefined, to: string | undefined, now: Date): RangeResult {
@@ -36,7 +40,8 @@ export function parseAnalyticsRange(from: string | undefined, to: string | undef
     return { ok: false, status: 400, code: "INVALID_RANGE", message: "from and to must be supplied together" };
   }
   if (!from || !to) {
-    return { ok: true, value: { from: toIsoDate(new Date(now.getTime() - 30 * DAY_MS)), to: toIsoDate(now) } };
+    const fallback = new Date(now.getTime() - 30 * DAY_MS);
+    return { ok: true, value: { from: toIsoDate(fallback), to: toIsoDate(now) } };
   }
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
     return { ok: false, status: 400, code: "INVALID_RANGE", message: "from and to must be YYYY-MM-DD dates" };

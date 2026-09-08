@@ -24,6 +24,7 @@ import type {
   TemperatureSampleRow,
   UsageRow,
 } from "./postgres.js";
+import { toClickHouseUtc } from "./datetime";
 
 export type DimBranchRow = {
   tenant_id: string;
@@ -86,9 +87,10 @@ export type FactTemperatureSampleRow = {
 };
 
 // DateTime64(3) wants an ISO-ish string; ClickHouse accepts 'YYYY-MM-DD HH:MM:SS.mmm'
-// or the same with a 'T'. We emit the closest-to-standard 'YYYY-MM-DD HH:MM:SS.mmm'.
+// or the same with a 'T'. We emit the UTC 'YYYY-MM-DD HH:MM:SS.mmm' form via the
+// centralized date-fns helper (warehouse invariant: all timestamps are UTC).
 export function toClickHouseDateTime(value: Date): string {
-  return value.toISOString().replace("T", " ").replace("Z", "");
+  return toClickHouseUtc(value);
 }
 
 // NULL-preserving variant: a missing source timestamp stays NULL in the
