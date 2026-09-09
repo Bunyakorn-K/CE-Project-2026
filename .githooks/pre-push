@@ -1,0 +1,32 @@
+#!/bin/sh
+# LaundroTwin pre-push hook: scan the FULL history of branches being pushed.
+# Second line of defense — catches anything that slipped past pre-commit
+# (e.g. committed with --no-verify, or by a contributor without the hook).
+# Bypass: git push --no-verify (discouraged)
+
+zero="0000000000000000000000000000000000000000"
+while read local_ref local_sha remote_ref remote_sha; do
+    # Skip branch deletions
+    [ "$local_sha" = "$zero" ] && continue
+
+    # Range to scan: commits on local branch not yet on the remote.
+    # For new remote branches remote_sha is all zeros -> scan everything
+    # reachable from local_sha.
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+
+    gitleaks git --redact -v --log-opts="$range"
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo ""
+        echo "✖ gitleaks: secrets found in history being pushed ($range) — push BLOCKED."
+        echo "  Remove the commit(s) (git rebase / filter-repo) or rotate the secret."
+        echo "  Bypass (discouraged): git push --no-verify"
+        exit 1
+    fi
+done
+
+exit 0

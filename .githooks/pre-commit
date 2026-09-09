@@ -1,0 +1,25 @@
+#!/bin/sh
+# LaundroTwin pre-commit hook: block secrets before they enter git history.
+# Installed via .githooks/ (git config core.hooksPath .githooks).
+# Bypass (EMERGENCY ONLY): git commit --no-verify
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -z "$staged_files" ]; then
+    exit 0
+fi
+
+# Scan staged content only (fast). gitleaks exits 1 when it finds leaks.
+gitleaks protect --staged --redact -v
+status=$?
+
+if [ $status -ne 0 ]; then
+    echo ""
+    echo "✖ gitleaks: potential secrets detected in staged changes — commit BLOCKED."
+    echo "  Fix: remove the secret, or move it to .env (gitignored)."
+    echo "  If it is a false positive, add an allowlist entry in .gitleaks.toml."
+    echo "  Bypass (discouraged): git commit --no-verify"
+    exit 1
+fi
+
+exit 0

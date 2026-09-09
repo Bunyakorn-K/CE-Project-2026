@@ -1,0 +1,21 @@
+# Gitleaks allowlist for LaundroTwin (CE-Project-2026)
+#
+# Extend ONLY with documented false positives. Every entry needs a reason.
+# Real secrets never belong here — rotate them instead.
+#
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+[extend]
+# Inherit the default gitleaks ruleset.
+useDefault = true
+
+[allowlist]
+description = "LaundroTwin documented false positives"
+paths = [
+    # Placeholder tokens used in docs (see ops-verification + specs).
+    '''<airflow-admin-password>''',
+    '''<analytics-read-api-key>''',
+    '''<clickhouse-password>''',
+    '''<from-\.env>''',
+    '''__CH_PASSWORD__''',
+]
