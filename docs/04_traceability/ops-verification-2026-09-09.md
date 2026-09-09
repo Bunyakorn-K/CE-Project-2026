@@ -44,3 +44,15 @@ same volume — prior container config captured in session transcript.
   (Sep 1, no laundrytwin sites); live file on Pi has diverged. Not touched.
 - Creds for registry stored locally `~/.creds/laundrytwin-registry.txt` (0600);
   never commit.
+
+## 2026-09-09 (later) — WEATHER_IMAGE param + compose-pull deploy + F-12 re-run
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | `compose.yaml` weather service: `image: ${WEATHER_IMAGE:-laundrytwin-weather:latest}`; VM `/opt/laundrytwin/.env` gets `WEATHER_IMAGE=10.10.0.117:5000/laundrytwin-weather:latest` | compose pull works from internal registry |
+| 2 | `docker compose pull weather && up -d weather` on VM 117 | Recreated; container Up (healthy); digest pulled = pushed `sha256:75f2934f…` |
+| 3 | Weather UTC continuity re-check | 50 rows/province, `2026-09-07 06:00` → `2026-09-09 07:00` UTC, 0 duplicate hours |
+| 4 | TMD outage check | `data.tmd.go.th` unreachable from VM **and** Mac (upstream outage, not our deploy); container retries every 5 min, latest data 07:00 UTC |
+| 5 | F-12 correlation re-run (UTC-aligned, Chiang Mai branch `5e9611c1…`, hourly join) | n=42 h: corr(temp,cycles)=**+0.164**, corr(rh,cycles)=**−0.120**, corr(rain,cycles)=+0.041 — direction stable vs first evaluation; below significance for n=42 (need r≥0.31); keep collecting toward ~7 days |
+
+Rollback: previous weather image tag `laundrytwin-weather:latest` still on VM.

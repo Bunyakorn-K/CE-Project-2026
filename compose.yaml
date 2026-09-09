@@ -58,7 +58,7 @@ services:
     command: sh -c "while true; do pnpm --filter @laundrytwin/etl start:container; sleep 300; done"
 
   weather:
-    image: laundrytwin-weather:latest
+    image: ${WEATHER_IMAGE:-laundrytwin-weather:latest}
     env_file: ${ETL_ENV_FILE:-/opt/laundrytwin-etl/.env}
     network_mode: host
     restart: unless-stopped
