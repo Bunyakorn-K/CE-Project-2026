@@ -134,6 +134,15 @@ pnpm check
 pnpm build
 ```
 
+### Secret scanning (git hooks)
+
+`core.hooksPath` is set to `.githooks/` (enable on a fresh clone with
+`git config core.hooksPath .githooks`). pre-commit runs
+`gitleaks protect --staged --redact`; pre-push scans the pushed history range.
+Both require the `gitleaks` binary (brew install gitleaks). Documented false
+positives go in `.gitleaks.toml` with a reason; bypassing with `--no-verify`
+is discouraged and must never be used to commit a real secret.
+
 Review `git diff --check`, ignored runtime data, and staged secret scanning
 before committing. Deployment, production migration, or live machine actions
 require an explicit user request, a rollback target, and a post-change smoke
