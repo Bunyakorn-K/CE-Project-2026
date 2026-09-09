@@ -21,6 +21,8 @@ apps/etl/.tmp/
 
 # Local tooling
 .impeccable/hook.cache.json
+.firecrawl/
+.claude/
 
 # TypeScript build info
 *.tsbuildinfo

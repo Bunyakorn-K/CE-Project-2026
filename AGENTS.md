@@ -17,7 +17,6 @@ Direct user instructions take precedence over this guide.
 
 - Canonical repository: `https://github.com/Bunyakorn-K/CE-Project-2026`
 - Default branch: `main`
-- Local working copy: `/Users/uunw/programming/final-project`
 
 This directory is now the application repository, not a temporary planning
 workspace. Keep project documentation and implementation changes here. IRIS is
