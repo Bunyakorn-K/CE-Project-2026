@@ -1,0 +1,23 @@
+# Dependabot version updates. Complements the Security tab (Dependabot alerts),
+# which must be enabled from the GitHub UI: Settings -> Code security.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 20
+    commit-message:
+      prefix: "chore(deps)"
+    # CI gates every bump already (.github/workflows/ci.yml runs test/check/build).
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(actions)"
