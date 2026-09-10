@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@heroui/react": "^3.2.2",
-    "@heroui/styles": "^3.2.2",
+    "@heroui/styles": "^3.2.4",
     "@line/liff": "^2.27.2",
     "better-auth": "^1.6.23",
     "react": "^19.2.0",
