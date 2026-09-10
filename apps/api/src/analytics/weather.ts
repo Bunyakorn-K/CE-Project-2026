@@ -6,11 +6,15 @@ import { countSource, type QueryParams } from "./queries";
 // fact_weather_sample. Correlation is descriptive only: R12 requires stating
 // the source range and limits, never claiming causation or forecasting.
 //
+// BRANCH MODEL (2026-09-10): each weather row is tagged with tenant_id +
+// branch_id (collected per registered branch from dim_branch, not per
+// province). The join to usage is on the branch ids, so the correlation is
+// per-branch even though TMD's hourly endpoint returns the same forecast for
+// every province (the old province-proxy duplicated one series).
+//
 // TIMEZONE INVARIANT: both fact_weather_sample.timestamp and
 // fact_machine_usage.started_at are stored as UTC. The join keys on the
-// UTC hour, so no local-time shifting happens in SQL. (Older weather rows
-// collected before the UTC fix carried Bangkok wall-clock; the collector
-// rewrites those on re-insert because fact_weather_sample is ReplacingMergeTree.)
+// UTC hour, so no local-time shifting happens in SQL.
 //
 // Default branch filter is the Chiang Mai branch (about you.wash & dry แม่โจ้ -
 // หลิ่งมื่น, branch_id 5e9611c1-6380-4d58-8ec7-ba4fb8fe4369) per the F-12
@@ -29,14 +33,14 @@ SELECT
   countIf(w.weather_temp_c IS NULL) AS missingTemp,
   countIf(0) AS synthCount,
   count() AS totalCount
-FROM fact_weather_sample AS w
+FROM fact_weather_sample AS w FINAL
+LEFT JOIN dim_branch AS b FINAL
+  ON (w.tenant_id = b.tenant_id AND w.branch_id = b.branch_id)
 LEFT JOIN fact_machine_usage AS u FINAL
   ON toStartOfHour(u.started_at) = toStartOfHour(w.timestamp)
-  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
-LEFT JOIN dim_branch AS b FINAL
-  ON (u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id)
+  AND (u.tenant_id = w.tenant_id AND u.branch_id = w.branch_id)
 WHERE w.timestamp >= {from:String} AND w.timestamp < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
+  AND ({branchId:String} = '' OR toString(w.branch_id) = {branchId:String})
 GROUP BY date, branchName
 ORDER BY date, branchName`;
 

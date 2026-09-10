@@ -1,15 +1,17 @@
 // TMD weather collector — fetches hourly forecasts from the Thai
 // Meteorological Department NWP API and loads them into the analytics
 // warehouse (fact_weather_sample). Idempotent: ReplacingMergeTree versioned
-// by observation timestamp, so re-running converges to one row per
-// (province, timestamp).
+// by observation timestamp, converging to one row per (tenant, branch, ts).
 //
-// Ported from the user's Go PoC (tmd_api.go, Aug 2026) with two hard rules:
+// Since 2026-09-10 weather is collected PER REGISTERED BRANCH: the target
+// list comes from dim_branch (active=1, province set), not from the
+// TMD_PROVINCES env list. Each observation is tagged with tenant_id/branch_id
+// so the F-12 correlation joins usage by branch instead of by a duplicated
+// province label (TMD returned identical values for all provinces).
+//
+// Hard rules:
 //   - The TMD API key comes from TMD_API_KEY env, never from source.
 //   - Missing values stay NULL — we never fabricate a reading.
-//
-// Config: TMD_API_KEY (required), TMD_PROVINCES (comma-separated, default
-// "เชียงใหม่"), CLICKHOUSE_* for the warehouse.
 
 import type { ClickHouseClient } from "./clickhouse";
 import { parseTmdTimestamp, toClickHouseUtc, nowUtc } from "./datetime";
@@ -31,9 +33,18 @@ export type TmdForecastResponse = {
   }>;
 };
 
+/** A registered branch that should have weather collected (from dim_branch). */
+export type WeatherBranch = {
+  tenant_id: string;
+  branch_id: string;
+  province: string;
+};
+
 export type WeatherRow = {
   timestamp: string;
-  province: string;
+  tenant_id: string;
+  branch_id: string;
+  province: string | null;
   weather_temp_c: number | null;
   weather_humidity_pct: number | null;
   weather_rain_mm: number | null;
@@ -61,9 +72,28 @@ export async function fetchTmdForecast(
 }
 
 /**
- * Normalize a TMD response into warehouse rows. Only the first location's
- * forecasts are used (the API is queried per province). Missing numeric
- * fields map to null — never fabricated.
+ * Load the collection targets from the warehouse: every active branch that
+ * carries a `province` label in dim_branch. Branches without a province are
+ * skipped (no fabrication, no geo inference).
+ */
+export async function loadWeatherBranches(warehouse: Pick<ClickHouseClient, "query">): Promise<WeatherBranch[]> {
+  const rows = await warehouse.query<{ tenant_id: string; branch_id: string; province: string }>(
+    `SELECT tenant_id, branch_id, province
+     FROM dim_branch FINAL
+     WHERE active = 1 AND province IS NOT NULL AND province != ''
+     ORDER BY branch_name`
+  );
+  return rows.map((r) => ({
+    tenant_id: String(r.tenant_id),
+    branch_id: String(r.branch_id),
+    province: r.province
+  }));
+}
+
+/**
+ * Normalize a TMD response into warehouse rows for one branch. Only the first
+ * location's forecasts are used (the API is queried per province). Missing
+ * numeric fields map to null — never fabricated.
  *
  * TIMEZONE: TMD timestamps carry a `+07:00` offset (Asia/Bangkok). We convert
  * them to a true UTC instant via date-fns-tz so the warehouse stores UTC
@@ -72,18 +102,21 @@ export async function fetchTmdForecast(
  */
 export function normalizeForecast(
   raw: TmdForecastResponse,
-  province: string,
+  branch: WeatherBranch,
   now: () => Date = nowUtc
 ): WeatherRow[] {
   const location = raw.WeatherForecasts?.[0];
   if (!location?.forecasts?.length) return [];
 
   const nowDate = now();
+  const province = location.location?.province ?? branch.province;
   return location.forecasts.map((point) => {
     const tsUtc = parseTmdTimestamp(point.time, nowDate);
     return {
       timestamp: toClickHouseUtc(tsUtc),
-      province: location.location?.province ?? province,
+      tenant_id: branch.tenant_id,
+      branch_id: branch.branch_id,
+      province,
       weather_temp_c: point.data?.tc ?? null,
       weather_humidity_pct: point.data?.rh ?? null,
       weather_rain_mm: point.data?.rain ?? null,
@@ -92,37 +125,30 @@ export function normalizeForecast(
   });
 }
 
-/** Parse the TMD_PROVINCES env list ("เชียงใหม่,กรุงเทพฯ") into trimmed names. */
-export function parseProvinces(raw: string | undefined, fallback = "เชียงใหม่"): string[] {
-  const value = (raw ?? "").trim();
-  if (!value) return [fallback];
-  const names = value
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  return names.length > 0 ? names : [fallback];
-}
-
-/** Run one collection pass: fetch every configured province and insert rows. */
+/**
+ * Run one collection pass: fetch every registered branch (dim_branch active +
+ * province set) and insert rows keyed by (tenant_id, branch_id, timestamp).
+ * Branches with no forecast rows are skipped silently.
+ */
 export async function runWeatherCollector(input: {
   apiKey: string;
-  provinces: string[];
+  branches: WeatherBranch[];
   warehouse: Pick<ClickHouseClient, "insert">;
   fetchImpl?: typeof fetch;
   now?: () => Date;
-}): Promise<{ fetched: number; rows: number; provinces: string[] }> {
-  const { apiKey, provinces, warehouse } = input;
+}): Promise<{ fetched: number; rows: number; branches: string[] }> {
+  const { apiKey, branches, warehouse } = input;
   const fetchImpl = input.fetchImpl ?? fetch;
   const now = input.now ?? (() => new Date());
   let rows = 0;
 
-  for (const province of provinces) {
-    const raw = await fetchTmdForecast(apiKey, province, fetchImpl);
-    const normalized = normalizeForecast(raw, province, now);
+  for (const branch of branches) {
+    const raw = await fetchTmdForecast(apiKey, branch.province, fetchImpl);
+    const normalized = normalizeForecast(raw, branch, now);
     if (normalized.length > 0) {
       await warehouse.insert("fact_weather_sample", normalized);
       rows += normalized.length;
     }
   }
-  return { fetched: provinces.length, rows, provinces };
+  return { fetched: branches.length, rows, branches: branches.map((b) => b.province) };
 }

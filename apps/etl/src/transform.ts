@@ -34,6 +34,7 @@ export type DimBranchRow = {
   active: number;
   source_updated_at: string;
   extracted_at: string;
+  province: string | null;
 };
 
 export type DimMachineRow = {
@@ -166,6 +167,7 @@ export function toDimBranch(row: BranchRow, extractedAt = new Date()): DimBranch
     active: row.status === "active" ? 1 : 0,
     source_updated_at: toClickHouseDateTime(row.updated_at),
     extracted_at: toClickHouseDateTime(extractedAt),
+    province: null,
   };
 }
 

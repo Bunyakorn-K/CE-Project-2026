@@ -24,8 +24,11 @@ describe("queryWeatherUsageCorrelation", () => {
 
     expect(clickhouse).toHaveBeenCalledWith(WEATHER_USAGE_CORRELATION_SQL, PARAMS);
     expect(WEATHER_USAGE_CORRELATION_SQL).toContain("fact_weather_sample");
-    // Correlation joins weather to usage on the UTC hour (timezone-safe).
+    // Correlation joins weather to usage on the UTC hour (timezone-safe) and
+    // on the branch ids (weather is tagged per registered branch since 2026-09-10).
     expect(WEATHER_USAGE_CORRELATION_SQL).toContain("toStartOfHour(u.started_at) = toStartOfHour(w.timestamp)");
+    expect(WEATHER_USAGE_CORRELATION_SQL).toContain("u.tenant_id = w.tenant_id AND u.branch_id = w.branch_id");
+    expect(WEATHER_USAGE_CORRELATION_SQL).toContain("toString(w.branch_id) = {branchId:String}");
     expect(result.rows[0]).toEqual({
       date: "2026-08-27",
       branchName: "สาขาเชียงใหม่",

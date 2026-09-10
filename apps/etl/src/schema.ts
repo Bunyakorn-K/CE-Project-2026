@@ -29,6 +29,7 @@ const DIM_BRANCH_COLUMNS: Column[] = [
   { name: "active", ch: "UInt8" },
   { name: "source_updated_at", ch: "DateTime64(3)" },
   { name: "extracted_at", ch: "DateTime64(3)" },
+  { name: "province", ch: "Nullable(String)" },
 ];
 
 const DIM_MACHINE_COLUMNS: Column[] = [
@@ -83,10 +84,14 @@ const FACT_TEMPERATURE_COLUMNS: Column[] = [
 
 // Weather observations from the TMD NWP API (F-12, Phase 2). Nullable
 // readings: a missing field stays NULL — never fabricated. Versioned by the
-// observation timestamp so a re-run converges to one row per (province, ts).
+// observation timestamp so a re-run converges to one row per (branch, ts).
+// tenant_id/branch_id link the observation to a registered branch (dim_branch);
+// province is retained as the source-location label returned by TMD.
 const FACT_WEATHER_COLUMNS: Column[] = [
   { name: "timestamp", ch: "DateTime64(3)" },
-  { name: "province", ch: "String" },
+  { name: "tenant_id", ch: "UUID" },
+  { name: "branch_id", ch: "UUID" },
+  { name: "province", ch: "Nullable(String)" },
   { name: "weather_temp_c", ch: "Nullable(Float32)" },
   { name: "weather_humidity_pct", ch: "Nullable(Float32)" },
   { name: "weather_rain_mm", ch: "Nullable(Float32)" },
@@ -129,7 +134,7 @@ export const CREATE_TABLES: string[] = [
     "fact_weather_sample",
     FACT_WEATHER_COLUMNS,
     "ReplacingMergeTree",
-    "(province, timestamp)",
+    "(tenant_id, branch_id, timestamp)",
     undefined,
     "timestamp"
   ),

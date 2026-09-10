@@ -1,15 +1,14 @@
 #!/usr/bin/env node
-// TMD weather collector CLI — one pass: fetch hourly forecasts for the
-// configured provinces and load them into the ClickHouse warehouse.
-// Idempotent (ReplacingMergeTree keyed by province + timestamp), safe to
-// run on a timer.
+// TMD weather collector CLI — one pass: fetch hourly forecasts for every
+// REGISTERED branch (dim_branch active=1 with a province label) and load
+// them into the ClickHouse warehouse. Idempotent (ReplacingMergeTree keyed
+// by tenant_id + branch_id + timestamp), safe to run on a timer.
 //
-// Config: TMD_API_KEY (required), TMD_PROVINCES (comma list, default
-// "เชียงใหม่"), CLICKHOUSE_URL/USER/PASSWORD/DATABASE.
+// Config: TMD_API_KEY (required), CLICKHOUSE_URL/USER/PASSWORD/DATABASE.
+// TMD_PROVINCES is no longer used — the target list comes from dim_branch.
 
-import { resolve } from "node:path";
 import { ClickHouseClient } from "./clickhouse.js";
-import { parseProvinces, runWeatherCollector } from "./weather.js";
+import { loadWeatherBranches, runWeatherCollector } from "./weather.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -19,17 +18,20 @@ function requireEnv(name: string): string {
 
 async function main(): Promise<void> {
   const apiKey = requireEnv("TMD_API_KEY");
-  const provinces = parseProvinces(process.env.TMD_PROVINCES);
   const warehouse = new ClickHouseClient({
     url: process.env.CLICKHOUSE_URL,
     user: process.env.CLICKHOUSE_USER,
     password: process.env.CLICKHOUSE_PASSWORD,
     database: process.env.CLICKHOUSE_DATABASE
   });
-  const watermarkPath = resolve(process.env.ETL_WATERMARK_PATH ?? "./weather-watermark.json");
-  void watermarkPath; // weather inserts are idempotent; no watermark needed
 
-  const result = await runWeatherCollector({ apiKey, provinces, warehouse });
+  const branches = await loadWeatherBranches(warehouse);
+  if (branches.length === 0) {
+    console.log("Weather collection skipped: no active branches with a province label in dim_branch");
+    return;
+  }
+
+  const result = await runWeatherCollector({ apiKey, branches, warehouse });
   console.log(`Weather collection complete: ${JSON.stringify(result)}`);
 }
 
