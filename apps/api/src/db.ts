@@ -126,5 +126,27 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS alert_notification_cooldown_idx ON alert_notification(cooldown_key, attempted_at);
     CREATE INDEX IF NOT EXISTS alert_notification_status_idx ON alert_notification(status, attempted_at);
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      id text PRIMARY KEY NOT NULL DEFAULT 'default',
+      base_url text NOT NULL,
+      api_key_encrypted text,
+      model text NOT NULL,
+      system_prompt text NOT NULL,
+      temperature integer NOT NULL DEFAULT 70,
+      updated_by_user_id text REFERENCES user(id) ON DELETE SET NULL,
+      updated_at integer NOT NULL,
+      created_at integer NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chat_message (
+      id text PRIMARY KEY NOT NULL,
+      thread_id text NOT NULL,
+      user_id text NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      role text NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+      content text NOT NULL,
+      model text,
+      created_at integer NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS chat_message_thread_idx ON chat_message(thread_id, created_at);
+    CREATE INDEX IF NOT EXISTS chat_message_purge_idx ON chat_message(created_at);
   `);
 }

@@ -42,6 +42,7 @@ import { LineAdapter } from "./bot/line-adapter";
 import { runAlertSweep } from "./alert-engine";
 import { verifyLiffIdToken } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardRevenue } from "./reporting";
+import { registerAiRoutes } from "./ai-routes";
 
 type AppVariables = {
   principal: Principal | null;
@@ -73,8 +74,6 @@ export function createApp(dependencies: AppDependencies = {}) {
   const botHandler = createBotHandler({
     mcpUrl: process.env.BOT_MCP_URL ?? "http://127.0.0.1:8787/mcp",
     mcpToken: mcpAccessToken,
-    openRouterKey: process.env.OPENROUTER_API_KEY ?? "",
-    model: process.env.BOT_MODEL ?? "openai/gpt-4o-mini",
     lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
     clickhouse
   });
@@ -182,6 +181,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   registerAnalyticsRoutes(app, dependencies.analyticsDeps ?? { clickhouse: createClickHouseClient() });
+  registerAiRoutes(app);
 
   app.get("/api/me", (c) => {
     const principal = requirePrincipal(c);

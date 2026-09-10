@@ -135,6 +135,37 @@ export const alertNotification = sqliteTable(
   (table) => [uniqueIndex("alert_notification_dedup_idx").on(table.irisAlertId, table.lineUserId)]
 );
 
+// AI console settings (backoffice, 2026-09-10). Single-row config for the
+// LLM gateway: base_url + api_key let an owner point LaundroTwin at any
+// OpenAI-compatible endpoint (default: Bifrost https://llm.kovaspire.com).
+// The key is stored encrypted-at-rest (see ai-settings.ts) and NEVER sent to
+// the browser; only `hasApiKey` masks are returned. Model selection +
+// system prompt template drive bot/conversation.ts.
+export const aiSettings = sqliteTable("ai_settings", {
+  id: text("id").primaryKey().default("default"),
+  baseUrl: text("base_url").notNull(),
+  apiKeyEncrypted: text("api_key_encrypted"),
+  model: text("model").notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  temperature: integer("temperature").notNull().default(70), // 0-100, /100 at call time
+  updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+// Chat history for the AI playground (30-day retention; purge job in ai.ts).
+export const chatMessage = sqliteTable("chat_message", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
+  content: text("content").notNull(),
+  model: text("model"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
 export const schema = {
   user,
   session,
@@ -146,5 +177,7 @@ export const schema = {
   liffAccessRequest,
   alertAcknowledgement,
   auditLog,
-  alertNotification
+  alertNotification,
+  aiSettings,
+  chatMessage
 };

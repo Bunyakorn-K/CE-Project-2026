@@ -1,0 +1,75 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { Button, Card, Input } from "@heroui/react";
+import { useState } from "react";
+import { apiUrl } from "../lib/api/client";
+
+export const Route = createFileRoute("/login")({
+  component: LoginPage
+});
+
+function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(apiUrl("/api/auth/sign-in/email"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(data?.message ?? "Login failed");
+      }
+      window.location.href = "/dashboard";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <div className="p-4">
+          <h1 className="mb-1 text-xl font-bold">LaundroTwin</h1>
+          <p className="mb-4 text-sm text-default-500">Backoffice sign in</p>
+          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Email</span>
+              <Input
+                placeholder="Email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Password</span>
+              <Input
+                placeholder="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <Button type="submit" isDisabled={loading}>
+              {loading ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </div>
+      </Card>
+    </div>
+  );
+}

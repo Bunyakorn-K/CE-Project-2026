@@ -8,7 +8,22 @@ const accessStore = vi.hoisted(() => ({
   recordPendingLiffAccessRequest: vi.fn()
 }));
 
+const aiSettings = vi.hoisted(() => ({
+  getAiSettingsWithKey: vi.fn(() => ({
+    baseUrl: "http://gateway.test",
+    apiKey: "test-key",
+    model: "test-model",
+    systemPrompt: "test-prompt",
+    temperature: 70
+  })),
+  updateAiSettings: vi.fn(),
+  addChatMessage: vi.fn(),
+  listChatMessages: vi.fn(),
+  isOwner: vi.fn(() => true)
+}));
+
 vi.mock("../access-store", () => accessStore);
+vi.mock("../ai-settings", () => aiSettings);
 
 import { resolveLineIdentity, roleLabel, scopeForPrincipal } from "./identity";
 import { answerForMessage } from "./conversation";
@@ -78,7 +93,7 @@ describe("bot conversation loop", () => {
 
     const answer = await answerForMessage(
       { userText: "รายได้เท่าไหร่", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
-      { mcp, openRouterKey: "key", model: "test-model", fetchImpl }
+      { mcp, fetchImpl }
     );
 
     expect(answer).toBe("รายได้รวม 184,000 บาท");
@@ -113,7 +128,7 @@ describe("bot conversation loop", () => {
 
     const answer = await answerForMessage(
       { userText: "รอบซักวันนี้กี่รอบ", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
-      { mcp, openRouterKey: "key", model: "test-model", fetchImpl }
+      { mcp, fetchImpl }
     );
 
     expect(answer).toBe("มีรอบการซัก 31 รอบ");
@@ -137,7 +152,7 @@ describe("bot webhook handler", () => {
   it("rejects an invalid signature before processing events", async () => {
     const adapter = { platform: "line" as const, sendText: vi.fn().mockResolvedValue(undefined) };
     const handler = createBotHandler(
-      { mcpUrl: "", mcpToken: "", openRouterKey: "", model: "m", lineChannelAccessToken: undefined, clickhouse: vi.fn() },
+      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn() },
       adapter
     );
 
@@ -150,7 +165,7 @@ describe("bot webhook handler", () => {
   it("pushes a no-access reply to an unknown LINE user", async () => {
     const adapter = { platform: "line" as const, sendText: vi.fn().mockResolvedValue(undefined) };
     const handler = createBotHandler(
-      { mcpUrl: "", mcpToken: "", openRouterKey: "", model: "m", lineChannelAccessToken: undefined, clickhouse: vi.fn() },
+      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn() },
       adapter
     );
     accessStore.findLiffUser.mockReturnValue(null);
@@ -182,8 +197,6 @@ describe("bot webhook handler", () => {
       {
         mcpUrl: "",
         mcpToken: "",
-        openRouterKey: "key",
-        model: "m",
         lineChannelAccessToken: undefined,
         clickhouse: vi.fn().mockResolvedValue([]),
         fetchImpl

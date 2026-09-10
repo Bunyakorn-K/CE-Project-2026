@@ -12,8 +12,6 @@ import { McpClient, type McpClientLike } from "./mcp-client";
 export type BotDeps = {
   mcpUrl: string;
   mcpToken: string;
-  openRouterKey: string;
-  model: string;
   lineChannelAccessToken: string | undefined;
   clickhouse: ClickHouseExecutor;
   fetchImpl?: typeof fetch;
@@ -67,7 +65,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
           branchContext,
           scope: identity.scope
         },
-        { mcp, openRouterKey: deps.openRouterKey, model: deps.model, fetchImpl: deps.fetchImpl }
+        { mcp, fetchImpl: deps.fetchImpl }
       );
       await adapter.sendText(userId, answer);
     } catch (error) {

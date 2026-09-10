@@ -1,7 +1,6 @@
 import type { AccessScope } from "./identity";
 import type { McpClientLike } from "./mcp-client";
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+import { getAiSettingsWithKey } from "../ai-settings";
 
 export type ConversationContext = {
   userText: string;
@@ -12,12 +11,10 @@ export type ConversationContext = {
 
 export type ConversationDeps = {
   mcp: McpClientLike;
-  openRouterKey: string;
-  model: string;
   fetchImpl?: typeof fetch;
 };
 
-function systemPrompt(ctx: ConversationContext): string {
+function buildSystemPrompt(ctx: ConversationContext): string {
   const branches = ctx.scope.branchIds.includes("*")
     ? "ทุกสาขา"
     : ctx.branchContext || ctx.scope.branchIds.join(", ");
@@ -42,18 +39,24 @@ type ChatMessage = {
 
 type ToolResultItem = { type?: string; text?: string };
 
+type McpCallResultLike = { content?: ToolResultItem[]; isError?: boolean };
+
 async function chatOnce(
-  deps: ConversationDeps,
+  baseUrl: string,
+  apiKey: string,
+  model: string,
   messages: ChatMessage[],
-  tools: Array<Record<string, unknown>>
+  tools: Array<Record<string, unknown>>,
+  temperature: number,
+  fetchImpl: typeof fetch = fetch
 ) {
-  const response = await (deps.fetchImpl ?? fetch)(OPENROUTER_URL, {
+  const response = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${deps.openRouterKey}` },
-    body: JSON.stringify({ model: deps.model, messages, tools, tool_choice: "auto" })
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, messages, tools, tool_choice: "auto", temperature })
   });
   if (!response.ok) {
-    throw new Error(`OpenRouter request failed with status ${response.status}`);
+    throw new Error(`Gateway request failed with status ${response.status}`);
   }
   return response.json() as Promise<{
     choices?: Array<{ message?: { role?: string; content?: string | null; tool_calls?: Array<Record<string, unknown>> } }>;
@@ -70,9 +73,14 @@ function toolResultText(result: McpCallResultLike): string {
   return JSON.stringify(result);
 }
 
-type McpCallResultLike = { content?: ToolResultItem[]; isError?: boolean };
-
 export async function answerForMessage(ctx: ConversationContext, deps: ConversationDeps): Promise<string> {
+  // The gateway config is now DB-driven (ai_settings) — the bot reads the
+  // same baseURL/apiKey/model/prompt that the backoffice AI console manages.
+  const settings = getAiSettingsWithKey();
+  if (!settings.apiKey) {
+    return "ขออภัย ยังไม่ได้ตั้งค่า API key ของผู้ช่วย กรุณาให้ผู้ดูแลระบบตั้งค่าในหน้า AI Console";
+  }
+
   const tools = await deps.mcp.listTools();
   const openAiTools = tools.map((tool) => ({
     type: "function",
@@ -84,11 +92,19 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
   }));
 
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt(ctx) },
+    { role: "system", content: buildSystemPrompt(ctx) },
     { role: "user", content: ctx.userText }
   ];
 
-  const first = await chatOnce(deps, messages, openAiTools);
+  const first = await chatOnce(
+    settings.baseUrl,
+    settings.apiKey,
+    settings.model,
+    messages,
+    openAiTools,
+    settings.temperature / 100,
+    deps.fetchImpl
+  );
   const firstMessage = first.choices?.[0]?.message;
   if (!firstMessage) return "ขออภัย เกิดข้อผิดพลาดในการติดต่อผู้ช่วย";
 
@@ -113,6 +129,14 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
     messages.push({ role: "tool", tool_call_id: call.id as string, content: toolResultText(result) });
   }
 
-  const second = await chatOnce(deps, messages, openAiTools);
+  const second = await chatOnce(
+    settings.baseUrl,
+    settings.apiKey,
+    settings.model,
+    messages,
+    openAiTools,
+    settings.temperature / 100,
+    deps.fetchImpl
+  );
   return second.choices?.[0]?.message?.content ?? "ขออภัย ไม่สามารถหาคำตอบได้";
 }
