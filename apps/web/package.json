@@ -13,12 +13,12 @@
     "@heroui/styles": "^3.2.2",
     "@line/liff": "^2.27.2",
     "better-auth": "^1.6.23",
-    "react": "^19.2.0",
+    "react": "^19.2.8",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.17",
-    "@types/react": "^19.2.2",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.1",
     "tailwindcss": "^4.1.17",
