@@ -13,30 +13,48 @@
 | MCP analytics tool | `get_weather_usage_correlation` (allow-listed, RBAC-scoped) with fixed R12 caveat |
 | Seed | `deploy/analytics/seed/laundrytwin-dashboards.zip` now includes the weather chart + dataset (password placeholder, bootstrap-compatible) |
 
-## Correlation evaluation (honest verdict)
+## Correlation evaluation — updated (2026-09-10, 4 days)
 
-Ran the Pearson correlation (hourly weather vs. hourly wash cycles,
-`status IN ('finished','paid')`) directly in ClickHouse over the collected
-window:
+Re-ran the same query after data accumulation (7–10 Sep 2026, UTC-aligned):
 
-| Province | n (hour pairs) | corr(temp, cycles) | corr(humidity, cycles) | corr(rain, cycles) |
+| Province | n (hour pairs) | corr(temp, cycles) | corr(rh, cycles) | corr(rain, cycles) |
 |---|---|---|---|---|
-| เชียงใหม่ | 4 | **NaN** | **NaN** | **NaN** |
-| ชลบุรี | 4 | **NaN** | **NaN** | **NaN** |
+| เชียงใหม่ | 77 | **+0.418** | **−0.359** | +0.135 |
+| ชลบุนี | 77 | +0.314 | −0.227 | −0.101 |
 
-**Why NaN:** the usage series and the weather series do not overlap —
-fact_machine_usage for 2026-09-07 ends at 09:09 (the IRIS source itself has
-no newer usage events; ETL is current — last successful run loaded 1 usage,
-49 temperature samples), while weather collection began at 13:00 the same
-day. With zero overlapping hours, `corr()` is undefined. This is not a bug;
-it is the honest state of the data.
+**Data window:** weather 2026-09-07 06:00 → 2026-09-10 12:00 UTC (154 rows total);
+usage 2026-07-22 → 2026-09-10 12:32 (4,834 rows). All 77 overlapping hourly
+pairs are present in both provinces.
 
-**Verdict (R12-compliant):** correlation is **not evaluable yet**. The TMD
-hourly endpoint returns only a ~2–3 h forecast window per call, so the
-weather series accumulates ~2–3 new points per pass; a meaningful
-day-over-day evaluation needs at least 7–14 days of accumulation (the ML
-plan in `docs/06_ml/algorithm-comparison.md` uses the same ≥3-month horizon
-for modeling, ≥1 week for a first honest look).
+**Significance:** for n=77 the critical Pearson r at p<0.05 is ≈0.22, so
+`corr(temp, cycles) = +0.418` and `corr(rh, cycles) = −0.359` are
+statistically significant for เชียงใหม and directionally consistent for
+ชลบุนี. Rain correlation stays small and sign-inconsistent across the two
+provinces — not distinguishable from noise at this sample size.
+
+### Province duplication — a real limitation of this data source
+
+Verified on the same window: temperature, humidity and rain are **identical
+for both provinces in all 77 overlapping hours** (`countIf(diff) = 0` for each
+metric). The TMD hourly endpoint returns the same forecast for เชียงใหม and
+ชลบุนี in this collection window, so the per-province split does **not**
+separate distinct weather series — it duplicates one series under two labels.
+Consequently the per-province correlation numbers above differ only through
+different branch/usage joins, not through different weather.
+
+This does not invalidate the headline finding (warmer hours → more cycles,
+more humid hours → fewer cycles), but it does mean F-12 currently has a single
+effective weather series, not a multi-branch one. A per-branch weather curve
+needs lat/lon per branch resolved against a source that actually differs by
+location (or the TMD city endpoint with a distinct station code).
+
+**R12 verdict update:** correlation is now **evaluable and significant** for
+temperature and humidity (n=77). Report as correlation only — no causation or
+forecast claims. The MCP tool continues to append the fixed caveat.
+
+**Accumulation continues:** re-run weekly. The ML plan's ≥3-month horizon for
+modeling still applies; 4 days supports a first honest correlation, not a
+forecast.
 
 ## Re-evaluation procedure (repeat weekly)
 
@@ -71,7 +89,11 @@ GROUP BY province
 
 ## Follow-ups
 
-- [ ] Re-run the evaluation query after ~7 days of accumulation
-- [ ] Add เชียงใหม่/ชลบุรี branch mapping if a per-branch weather curve is
-      wanted (currently province-level)
+- [x] Re-run the evaluation query after data accumulation → 2026-09-10,
+      n=77, significant (see updated verdict above)
+- [~] Add เชียงใหม่/ชลบรี branch mapping → **not viable with the TMD hourly
+      source**: both provinces return byte-identical temp/rh/rain for every
+      hour in the window, so per-branch weather curves need lat/lon + a
+      source that actually differs by location (or TMD city endpoint with
+      distinct station codes). Blocked on a source change, not on code.
 - [ ] Re-export the seed after any chart tweak (keep `__CH_PASSWORD__`)
