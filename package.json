@@ -12,7 +12,7 @@
     "db:push": "pnpm --filter @laundrytwin/api db:push"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.5"
   },
   "pnpm": {
     "overrides": {
