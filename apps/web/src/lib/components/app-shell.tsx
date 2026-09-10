@@ -1,5 +1,5 @@
 import { useAuth } from "../atoms/auth";
-import { useAbility } from "../abilities";
+import { apiUrl } from "../api/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
@@ -16,6 +16,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const pathname = window.location.pathname;
   const grants = user?.grants ?? [];
+  const isOwner = grants.some((g: { role: string }) => g.role === "owner");
+
+  async function handleSignOut() {
+    try {
+      await fetch(apiUrl("/api/auth/sign-out"), { method: "POST", credentials: "include" });
+    } catch {
+      // ignore — local state reset below still applies
+    }
+    signOut();
+    window.location.href = "/login";
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -40,25 +51,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span>{item.label}</span>
               </a>
             ))}
-            {grants.some((g: { role: string }) => g.role === "owner") && adminNavItems.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  pathname === item.href
-                    ? "bg-primary/10 text-primary"
-                    : "text-default-500 hover:bg-default-100"
-                }`}
-              >
-                <span>{item.icon}</span>
-                <span>{item.label}</span>
-              </a>
-            ))}
+            {isOwner &&
+              adminNavItems.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+                    pathname === item.href
+                      ? "bg-primary/10 text-primary"
+                      : "text-default-500 hover:bg-default-100"
+                  }`}
+                >
+                  <span>{item.icon}</span>
+                  <span>{item.label}</span>
+                </a>
+              ))}
           </div>
           <div className="flex items-center gap-3">
+            {isOwner && (
+              <a
+                href="/admin"
+                className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+              >
+                Go to backoffice
+              </a>
+            )}
             <span className="hidden text-sm text-default-500 sm:inline">{user?.name}</span>
             <button
-              onClick={() => void signOut()}
+              onClick={() => void handleSignOut()}
               className="rounded-lg px-3 py-2 text-sm text-default-500 hover:bg-default-100"
             >
               Sign out

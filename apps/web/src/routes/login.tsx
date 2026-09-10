@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Button, Card, Input } from "@heroui/react";
 import { useState } from "react";
+import { useAtom } from "jotai";
 import { apiUrl } from "../lib/api/client";
+import { authAtom } from "../lib/atoms/auth";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage
@@ -12,6 +14,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [, setUser] = useAtom(authAtom);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,6 +30,23 @@ function LoginPage() {
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { message?: string } | null;
         throw new Error(data?.message ?? "Login failed");
+      }
+
+      // Populate the shared auth atom so the backoffice shell renders nav
+      // immediately, then go to the dashboard.
+      const me = await fetch(apiUrl("/api/me"), { credentials: "include" });
+      if (me.ok) {
+        const data = (await me.json()) as {
+          user: { id: string; name: string; email: string };
+          grants: Array<{ role: string; branchId: string | null }>;
+        };
+        setUser({
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          roles: data.grants.map((g) => g.role),
+          grants: data.grants
+        });
       }
       window.location.href = "/dashboard";
     } catch (err) {
