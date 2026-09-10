@@ -91,20 +91,20 @@ describe("timezone handling (UTC invariant)", () => {
 });
 
 describe("loadWeatherBranches", () => {
-  it("loads active branches that carry a province label", async () => {
-    const query = vi.fn(async () => [
+  it("loads active branches that have a provisioned location row", async () => {
+    const query = vi.fn(async (): Promise<Array<{ tenant_id: string; branch_id: string; province: string }>> => [
       { tenant_id: "9069c13d-f590-402e-a200-08fe26bde21c", branch_id: "5e9611c1-6380-4d58-8ec7-ba4fb8fe4369", province: "เชียงใหม่" }
     ]);
     const branches = await loadWeatherBranches({ query } as unknown as Pick<ClickHouseClient, "query">);
     expect(branches).toEqual([{ tenant_id: "9069c13d-f590-402e-a200-08fe26bde21c", branch_id: "5e9611c1-6380-4d58-8ec7-ba4fb8fe4369", province: "เชียงใหม่" }]);
     const args = vi.mocked(query).mock.calls.at(0) as unknown[] | undefined;
     const sql = String(args?.[0]);
+    expect(sql).toContain("dim_branch_location");
     expect(sql).toContain("dim_branch");
-    expect(sql).toContain("active = 1");
-    expect(sql).toContain("province IS NOT NULL");
+    expect(sql).toContain("b.active = 1");
   });
 
-  it("returns [] when no branch has a province (nothing fabricated)", async () => {
+  it("returns [] when no branch has a provisioned location (nothing fabricated)", async () => {
     const query = vi.fn(async (): Promise<Array<{ tenant_id: string; branch_id: string; province: string }>> => []);
     const branches = await loadWeatherBranches({ query } as unknown as Pick<ClickHouseClient, "query">);
     expect(branches).toEqual([]);

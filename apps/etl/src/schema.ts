@@ -29,7 +29,18 @@ const DIM_BRANCH_COLUMNS: Column[] = [
   { name: "active", ch: "UInt8" },
   { name: "source_updated_at", ch: "DateTime64(3)" },
   { name: "extracted_at", ch: "DateTime64(3)" },
-  { name: "province", ch: "Nullable(String)" },
+];
+
+// Weather source location per branch (F-12, per-branch collection since
+// 2026-09-10). NOT part of the IRIS-synced dim_branch: the ETL transform
+// emits only what the source provides (province/lat/lon are provisioned
+// here manually, never guessed), so this table is written by ops, not ETL.
+const DIM_BRANCH_LOCATION_COLUMNS: Column[] = [
+  { name: "tenant_id", ch: "UUID" },
+  { name: "branch_id", ch: "UUID" },
+  { name: "province", ch: "String" },
+  { name: "lat", ch: "Float64" },
+  { name: "lon", ch: "Float64" },
 ];
 
 const DIM_MACHINE_COLUMNS: Column[] = [
@@ -114,6 +125,7 @@ function ddl(
 
 export const CREATE_TABLES: string[] = [
   ddl("dim_branch", DIM_BRANCH_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "source_updated_at"),
+  ddl("dim_branch_location", DIM_BRANCH_LOCATION_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "province"),
   ddl("dim_machine", DIM_MACHINE_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id, machine_id)", undefined, "source_updated_at"),
   ddl(
     "fact_machine_usage",
@@ -142,6 +154,7 @@ export const CREATE_TABLES: string[] = [
 
 export const TABLE_COLUMNS: Record<string, string[]> = {
   dim_branch: DIM_BRANCH_COLUMNS.map((c) => c.name),
+  dim_branch_location: DIM_BRANCH_LOCATION_COLUMNS.map((c) => c.name),
   dim_machine: DIM_MACHINE_COLUMNS.map((c) => c.name),
   fact_machine_usage: FACT_USAGE_COLUMNS.map((c) => c.name),
   fact_temperature_sample: FACT_TEMPERATURE_COLUMNS.map((c) => c.name),

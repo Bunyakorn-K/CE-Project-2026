@@ -50,7 +50,6 @@ describe("transform", () => {
       active: 1,
       source_updated_at: "2026-08-29 01:00:00.000",
       extracted_at: "2026-08-29 08:00:00.000",
-      province: null,
     });
   });
 

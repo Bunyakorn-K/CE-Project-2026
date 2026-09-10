@@ -72,16 +72,20 @@ export async function fetchTmdForecast(
 }
 
 /**
- * Load the collection targets from the warehouse: every active branch that
- * carries a `province` label in dim_branch. Branches without a province are
- * skipped (no fabrication, no geo inference).
+ * Load the collection targets: every branch that has a provisioned location
+ * row in dim_branch_location (ops-written — the ETL transform only mirrors
+ * IRIS dim_branch and must not guess a province) and is still active in
+ * dim_branch. Branches without a location are skipped (no fabrication, no
+ * geo inference).
  */
 export async function loadWeatherBranches(warehouse: Pick<ClickHouseClient, "query">): Promise<WeatherBranch[]> {
   const rows = await warehouse.query<{ tenant_id: string; branch_id: string; province: string }>(
-    `SELECT tenant_id, branch_id, province
-     FROM dim_branch FINAL
-     WHERE active = 1 AND province IS NOT NULL AND province != ''
-     ORDER BY branch_name`
+    `SELECT l.tenant_id, l.branch_id, l.province
+     FROM dim_branch_location AS l FINAL
+     INNER JOIN dim_branch AS b FINAL
+       ON (l.tenant_id = b.tenant_id AND l.branch_id = b.branch_id)
+     WHERE b.active = 1
+     ORDER BY b.branch_name`
   );
   return rows.map((r) => ({
     tenant_id: String(r.tenant_id),
