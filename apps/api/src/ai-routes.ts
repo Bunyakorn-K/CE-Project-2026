@@ -15,6 +15,7 @@ import {
   updateAiSettings
 } from "./ai-settings";
 import { randomUUID } from "node:crypto";
+import { plainChat } from "./llm-client";
 
 type AppEnv = { Variables: { principal: Principal | null } };
 
@@ -108,29 +109,14 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     addChatMessage({ threadId, userId: owner.user.id, role: "user", content: parsed.data.message, model: settings.model });
 
     try {
-      const res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${settings.apiKey}`
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          messages: [
-            { role: "system", content: settings.systemPrompt },
-            { role: "user", content: parsed.data.message }
-          ],
-          temperature: settings.temperature / 100
-        })
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        return c.json({ error: { code: `gateway_${res.status}`, message: text.slice(0, 500) } }, 502);
-      }
-      const data = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const reply = data.choices?.[0]?.message?.content ?? "(no reply)";
+      const reply = await plainChat(
+        settings.baseUrl,
+        settings.apiKey,
+        settings.model,
+        settings.systemPrompt,
+        parsed.data.message,
+        { temperature: settings.temperature }
+      );
       addChatMessage({
         threadId,
         userId: owner.user.id,

@@ -86,10 +86,13 @@ describe("bot conversation loop", () => {
 
   it("returns the LLM answer when no tool call is requested", async () => {
     const mcp = { listTools: vi.fn().mockResolvedValue(mcpTools), callTool: vi.fn() };
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ choices: [{ message: { role: "assistant", content: "รายได้รวม 184,000 บาท" } }] })
-    });
+    // AI SDK Chat Completions streaming: one text delta, then DONE.
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        `data: {"choices":[{"delta":{"content":"รายได้รวม 184,000 บาท"},"finish_reason":null}]}\n\ndata: [DONE]\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      )
+    );
 
     const answer = await answerForMessage(
       { userText: "รายได้เท่าไหร่", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
@@ -109,22 +112,18 @@ describe("bot conversation loop", () => {
     };
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          choices: [{
-            message: {
-              role: "assistant",
-              content: "",
-              tool_calls: [{ id: "call_1", type: "function", function: { name: "get_cycles_daily", arguments: '{"from":"2026-08-01","to":"2026-08-31","branchId":"b1"}' } }]
-            }
-          }]
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ choices: [{ message: { role: "assistant", content: "มีรอบการซัก 31 รอบ" } }] })
-      });
+      .mockResolvedValueOnce(
+        new Response(
+          `data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_cycles_daily","arguments":"{\\"from\\":\\"2026-08-01\\",\\"to\\":\\"2026-08-31\\",\\"branchId\\":\\"b1\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n`,
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          `data: {"choices":[{"delta":{"content":"มีรอบการซัก 31 รอบ"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
 
     const answer = await answerForMessage(
       { userText: "รอบซักวันนี้กี่รอบ", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
@@ -189,10 +188,12 @@ describe("bot webhook handler", () => {
       ]),
       callTool: vi.fn()
     };
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ choices: [{ message: { role: "assistant", content: "สาขา SYNTH-A มี 31 รอบ" } }] })
-    });
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        `data: {"choices":[{"delta":{"content":"สาขา SYNTH-A มี 31 รอบ"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      )
+    );
     const handler = createBotHandler(
       {
         mcpUrl: "",

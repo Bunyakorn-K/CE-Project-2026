@@ -1,6 +1,7 @@
 import type { AccessScope } from "./identity";
 import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
+import { agenticAnswer } from "../llm-client";
 
 export type ConversationContext = {
   userText: string;
@@ -41,28 +42,6 @@ type ToolResultItem = { type?: string; text?: string };
 
 type McpCallResultLike = { content?: ToolResultItem[]; isError?: boolean };
 
-async function chatOnce(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-  messages: ChatMessage[],
-  tools: Array<Record<string, unknown>>,
-  temperature: number,
-  fetchImpl: typeof fetch = fetch
-) {
-  const response = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages, tools, tool_choice: "auto", temperature })
-  });
-  if (!response.ok) {
-    throw new Error(`Gateway request failed with status ${response.status}`);
-  }
-  return response.json() as Promise<{
-    choices?: Array<{ message?: { role?: string; content?: string | null; tool_calls?: Array<Record<string, unknown>> } }>;
-  }>;
-}
-
 function toolResultText(result: McpCallResultLike): string {
   if (Array.isArray(result.content)) {
     return result.content
@@ -82,61 +61,20 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
   }
 
   const tools = await deps.mcp.listTools();
-  const openAiTools = tools.map((tool) => ({
-    type: "function",
-    function: {
+  // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
+  // whose execute routes back to the MCP data server.
+  return agenticAnswer(settings.baseUrl, settings.apiKey, settings.model, {
+    instructions: buildSystemPrompt(ctx),
+    input: ctx.userText,
+    tools: tools.map((tool) => ({
       name: tool.name,
-      description: tool.description ?? "",
-      parameters: tool.inputSchema ?? { type: "object", properties: {} }
-    }
-  }));
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(ctx) },
-    { role: "user", content: ctx.userText }
-  ];
-
-  const first = await chatOnce(
-    settings.baseUrl,
-    settings.apiKey,
-    settings.model,
-    messages,
-    openAiTools,
-    settings.temperature / 100,
-    deps.fetchImpl
-  );
-  const firstMessage = first.choices?.[0]?.message;
-  if (!firstMessage) return "ขออภัย เกิดข้อผิดพลาดในการติดต่อผู้ช่วย";
-
-  const toolCalls = firstMessage.tool_calls;
-  if (!toolCalls || toolCalls.length === 0) {
-    return firstMessage.content ?? "ขออภัย ไม่สามารถหาคำตอบได้";
-  }
-
-  // Single tool round-trip in v1 — enough for a branch-scoped question.
-  messages.push({ role: "assistant", content: firstMessage.content ?? "", tool_calls: toolCalls });
-  for (const call of toolCalls) {
-    const name = (call.function as { name?: string } | undefined)?.name ?? "";
-    let args: Record<string, unknown> = {};
-    try {
-      const raw = (call.function as { arguments?: string } | undefined)?.arguments ?? "{}";
-      const parsed: unknown = JSON.parse(raw);
-      args = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-    } catch {
-      args = {};
-    }
-    const result = await deps.mcp.callTool(name, args);
-    messages.push({ role: "tool", tool_call_id: call.id as string, content: toolResultText(result) });
-  }
-
-  const second = await chatOnce(
-    settings.baseUrl,
-    settings.apiKey,
-    settings.model,
-    messages,
-    openAiTools,
-    settings.temperature / 100,
-    deps.fetchImpl
-  );
-  return second.choices?.[0]?.message?.content ?? "ขออภัย ไม่สามารถหาคำตอบได้";
+      description: tool.description,
+      parameters: tool.inputSchema as Record<string, unknown> | undefined
+    })),
+    execute: async (name, args) => toolResultText(await deps.mcp.callTool(name, args)),
+    temperature: settings.temperature,
+    // Single tool round-trip in v1 — enough for a branch-scoped question.
+    maxSteps: 2,
+    fetchImpl: deps.fetchImpl
+  });
 }
