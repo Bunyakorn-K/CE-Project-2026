@@ -37,8 +37,8 @@ importers:
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
       '@scalar/hono-api-reference':
-        specifier: ^0.11.16
-        version: 0.11.16(hono@4.13.7)
+        specifier: ^0.12.0
+        version: 0.12.0(hono@4.13.7)
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.3)(pg@8.23.0))(pg@8.23.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.11(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.1)))
@@ -225,6 +225,12 @@ packages:
 
   '@adobe/react-spectrum@3.47.2':
     resolution: {integrity: sha512-QxsE7bPBGpzwYofACF0RAL/Zs3p0u9HNvCDf9LEN87rEGFpkagIB+T+TSZ0xbl6BJ6z7S02m3zAFk3s9FoHJpQ==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
+  '@adobe/react-spectrum@3.47.5':
+    resolution: {integrity: sha512-iTbAwwMijVnQjwjwbvkWn82AyRAbFNSJzt/VawWp1vXRIxVIO9COZ1pPG5Fj88xXgqlG8maVcv58p74vqqy5HA==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
@@ -770,11 +776,20 @@ packages:
   '@internationalized/date@3.12.2':
     resolution: {integrity: sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw==}
 
+  '@internationalized/date@3.12.4':
+    resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
+
   '@internationalized/message@3.1.10':
     resolution: {integrity: sha512-nc0Or6EdWHqZRcsXb6P9hBIpLsfSl/ILh0rk5h/OVBpzmhdExXtPy2cQtWsq8XKRBpRHwDNnAHt4OpolcB7dog==}
 
   '@internationalized/number@3.6.7':
     resolution: {integrity: sha512-3ji1fcrT+FPAK86UqEhB/psHixYo6niWPJtt7+qRaYFynt/BaJG8GhAPimtWUpEiVSTq8ZM8L5psMxGquiB/Vg==}
+
+  '@internationalized/number@3.6.8':
+    resolution: {integrity: sha512-8UmMFia46DUt+k97zKd9fKWXcWHR+k8ae3eYzILETuT2KbIvLyOfac7zesw+sJdRAAZ7Q9pM1Mk22aXp2LD0Ig==}
+
+  '@internationalized/string@3.2.10':
+    resolution: {integrity: sha512-PDx6//vHSpRnHfxqMqto11zQvhsaU74O3mKv2F/0eicGZcl9NLjQmGlbHz/LsJh5tLKp4A4L7ZVTzN1/MmMTvA==}
 
   '@internationalized/string@3.2.9':
     resolution: {integrity: sha512-kzP/M/mbQxODlmOt4bIQZ2SBVUWUSqMLXooXixnX7noche8WHaQcA+nwFN1K2KCF/cp+LDUhcJsCicwkvhD1pg==}
@@ -1210,6 +1225,11 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
+  '@react-types/shared@3.36.1':
+    resolution: {integrity: sha512-AzsuD9OfxTOZMMvTRhlN3oHBwOmFN7tDh27LzqmHt4+uOgPhJT7ZM7/kVs/8/o0WxayMUIk3hBmCFRHv1FUoag==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
   '@rolldown/pluginutils@1.0.0-rc.3':
     resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
 
@@ -1351,26 +1371,26 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@scalar/client-side-rendering@0.3.9':
-    resolution: {integrity: sha512-Gg+VLhreiWHmHN0i9uatEoIxzsr0FaJoq0x+PkypmFgZFniD477DVCAnmWqx+KXlpFg0VtDanDHARIJXZ1fIeQ==}
+  '@scalar/client-side-rendering@0.3.10':
+    resolution: {integrity: sha512-FlUByzYhsas54zIvsiTJ7UgAZiVUQmErWvrQm+CKTBnIvSmIb5eWowJ4/O0bbkUa8rsOIdmCcX+HtX+EDdf0CA==}
     engines: {node: '>=22'}
 
-  '@scalar/helpers@0.11.1':
-    resolution: {integrity: sha512-Knwbe0IYqFk0PPDoOKLasqglBHfyf9/zwWWqFsSNi/AtdjM29wSZXN6p8DFid6iB5B9epYH9YiSgJ6tpD00TEw==}
+  '@scalar/helpers@0.11.2':
+    resolution: {integrity: sha512-IgHW/hIj1XAvsPIBKiOgmK87qbyDjaQQg9S/auXU4MUtvnwKKpOeIOJc0NC71FkMdr4Mok0SSVI748cmlptoXQ==}
     engines: {node: '>=22'}
 
-  '@scalar/hono-api-reference@0.11.16':
-    resolution: {integrity: sha512-y0duqBJF2yQhkkk7xMFyWSx06+Y0ImOLtVKDH3d+jgTaVGbAtyxwkuKmj+Dd7eq3t9P7XnZx4YgBJ0S9WzsIQQ==}
+  '@scalar/hono-api-reference@0.12.0':
+    resolution: {integrity: sha512-K8WA0NTDnwCmTvh33AmkHuoolDuxEW7Jst/Am7+tcijPgFcsGE0l3O7Vk9RkNMMQT643Vy9nJDyhfnkMIWA5vQ==}
     engines: {node: '>=22'}
     peerDependencies:
       hono: ^4.12.5
 
-  '@scalar/schemas@0.8.3':
-    resolution: {integrity: sha512-cTjgiJxXFXMqXlFZafXOyTOKm1lUfbDTbe9La+dPcQPe6q0zXAiVtys0IKILQWNrjXPidY0eaB9Va/rd16bfxw==}
+  '@scalar/schemas@0.8.4':
+    resolution: {integrity: sha512-gbx/UjAswjJc+OZp/vcVRIopjqoJ62pOkrKLvVHa1MuMRoVxcPyNzW2/SQmnvdJku7C7a6PsKaPUQ6gZXGA4eg==}
     engines: {node: '>=22'}
 
-  '@scalar/types@0.18.2':
-    resolution: {integrity: sha512-q7fGMn0IygdLbYk9W4quM0w1caHDfL9FIxsYXNsgIep6uuO0T/t4BOStyf0qyzQ3pjt0B7rWFxO//EM9I7F/Tw==}
+  '@scalar/types@0.18.3':
+    resolution: {integrity: sha512-hPLLxVt/ah4RpCVp5UrLEpnBEgTwf+RvPtRiSEty3QqfBJUfADMXHz+oWK6UAa/vALg2AWuJLCD8hRlyQ2ET9w==}
     engines: {node: '>=22'}
 
   '@scalar/validation@0.6.3':
@@ -1384,8 +1404,22 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
+  '@spectrum-icons/ui@3.7.2':
+    resolution: {integrity: sha512-7IuSHO+Ck8gJUIGIXqDcDIU4R8RHRUZhlfz8AwN1rSdCEvdgp6DWYN0LDTMrWh7TN/H5hrJ7oDO/gUpR3TnBjw==}
+    peerDependencies:
+      '@adobe/react-spectrum': ^3.47.0
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
   '@spectrum-icons/workflow@4.3.1':
     resolution: {integrity: sha512-kDF+/EbFVyLGytotqqdYt4uSij4j/PQmDQO5km/C6DyzKjyuic3FnSBFinR+mA6oFv1OjMcLvrrDBqK3wbqRlA==}
+    peerDependencies:
+      '@adobe/react-spectrum': ^3.47.0
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
+  '@spectrum-icons/workflow@4.3.2':
+    resolution: {integrity: sha512-UkVg8Kp9rInjfqtG27in9p7RWfN9JFSvZr7ZOpN2n9jkrQ1y88hZpK8dKce8lgVb7jALXtsi2p0rjyaWzO0QsA==}
     peerDependencies:
       '@adobe/react-spectrum': ^3.47.0
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
@@ -2663,8 +2697,20 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
+  react-aria-components@1.21.1:
+    resolution: {integrity: sha512-J88WflYY0z+EhLX0ce+GjFlQ3ag3ubIgfUTjpKSrBQBu92Xtl4Ub9o118HItUddtbk1Ido0jzyPy94/klZy1hg==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
   react-aria@3.50.0:
     resolution: {integrity: sha512-S0Os6QZk33fzUAKu1QLT9afoUaCBt1ZNdoiq0n2YMVgKIdNIQS8zxiZ8O9hYE6QyDkHKjD6q39LQZ+qaSAIgjw==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+      react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
+  react-aria@3.52.1:
+    resolution: {integrity: sha512-fdZZruC9/x/joCg0mhKGs5aHpwrXLCSZ4GOJmhhYyiE0ffyEsk9MLFt9LCOCF9tn8ErTD+UDQP4oDUSlZkmpCg==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
@@ -2683,6 +2729,11 @@ packages:
 
   react-stately@3.48.0:
     resolution: {integrity: sha512-ImicSAG+lTotAe5izcs1fz49Zk48w7pDusqYg04WaPhCoej8BJ24soMu3iLXIrsi273s4P1gZrYGrqReMfgEEA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
+  react-stately@3.50.0:
+    resolution: {integrity: sha512-TnckvpDQGU0672wEaLZqdzvhuSeXWjgW6vijMWxiKOxc8CosQUfPGISdcZyfHqjX3XMjEtRxj4w9HumvX4h4mw==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
@@ -2936,8 +2987,8 @@ packages:
   tw-animate-css@1.4.0:
     resolution: {integrity: sha512-7bziOlRqH0hJx80h/3mbicLW7o8qLsH5+RaLR2t+OHM3D0JlWGODQKQ4cxbK7WlvmUxpcj6Kgu6EKqjrGFe3QQ==}
 
-  type-fest@5.8.0:
-    resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
+  type-fest@5.9.0:
+    resolution: {integrity: sha512-yANm3Jr3GiJ1qgJlxGAVxTOIcEOk1rhQHamlXtnrCK7EHP4HeM9OGxtMg/W7HFdrVzw/ZWJKGVIJusVH85sLtw==}
     engines: {node: '>=20'}
 
   type-is@2.1.0:
@@ -3170,6 +3221,23 @@ snapshots:
       react-aria-components: 1.19.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.48.0(react@19.2.7)
+      react-transition-group: 4.4.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      use-sync-external-store: 1.6.0(react@19.2.7)
+
+  '@adobe/react-spectrum@3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@internationalized/date': 3.12.4
+      '@react-types/shared': 3.36.1(react@19.2.7)
+      '@spectrum-icons/ui': 3.7.2(@adobe/react-spectrum@3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@spectrum-icons/workflow': 4.3.2(@adobe/react-spectrum@3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@swc/helpers': 0.5.23
+      client-only: 0.0.1
+      clsx: 2.1.1
+      react: 19.2.7
+      react-aria: 3.52.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-aria-components: 1.21.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
+      react-stately: 3.50.0(react@19.2.7)
       react-transition-group: 4.4.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
@@ -3594,12 +3662,24 @@ snapshots:
     dependencies:
       '@swc/helpers': 0.5.23
 
+  '@internationalized/date@3.12.4':
+    dependencies:
+      '@swc/helpers': 0.5.23
+
   '@internationalized/message@3.1.10':
     dependencies:
       '@swc/helpers': 0.5.23
       intl-messageformat: 10.7.18
 
   '@internationalized/number@3.6.7':
+    dependencies:
+      '@swc/helpers': 0.5.23
+
+  '@internationalized/number@3.6.8':
+    dependencies:
+      '@swc/helpers': 0.5.23
+
+  '@internationalized/string@3.2.10':
     dependencies:
       '@swc/helpers': 0.5.23
 
@@ -4300,7 +4380,7 @@ snapshots:
 
   '@react-spectrum/provider@3.11.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@adobe/react-spectrum': 3.47.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum': 3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@swc/helpers': 0.5.23
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
@@ -4329,6 +4409,10 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
 
   '@react-types/shared@3.36.0(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
+
+  '@react-types/shared@3.36.1(react@19.2.7)':
     dependencies:
       react: 19.2.7
 
@@ -4409,29 +4493,29 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
 
-  '@scalar/client-side-rendering@0.3.9':
+  '@scalar/client-side-rendering@0.3.10':
     dependencies:
-      '@scalar/schemas': 0.8.3
-      '@scalar/types': 0.18.2
+      '@scalar/schemas': 0.8.4
+      '@scalar/types': 0.18.3
       '@scalar/validation': 0.6.3
 
-  '@scalar/helpers@0.11.1': {}
+  '@scalar/helpers@0.11.2': {}
 
-  '@scalar/hono-api-reference@0.11.16(hono@4.13.7)':
+  '@scalar/hono-api-reference@0.12.0(hono@4.13.7)':
     dependencies:
-      '@scalar/client-side-rendering': 0.3.9
+      '@scalar/client-side-rendering': 0.3.10
       hono: 4.13.7
 
-  '@scalar/schemas@0.8.3':
+  '@scalar/schemas@0.8.4':
     dependencies:
-      '@scalar/helpers': 0.11.1
+      '@scalar/helpers': 0.11.2
       '@scalar/validation': 0.6.3
 
-  '@scalar/types@0.18.2':
+  '@scalar/types@0.18.3':
     dependencies:
-      '@scalar/helpers': 0.11.1
+      '@scalar/helpers': 0.11.2
       nanoid: 5.1.16
-      type-fest: 5.8.0
+      type-fest: 5.9.0
       zod: 4.4.3
 
   '@scalar/validation@0.6.3': {}
@@ -4445,9 +4529,26 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
+  '@spectrum-icons/ui@3.7.2(@adobe/react-spectrum@3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@adobe/react-spectrum': 3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum-ui': 1.2.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@babel/runtime': 7.29.7
+      '@swc/helpers': 0.5.23
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+
   '@spectrum-icons/workflow@4.3.1(@adobe/react-spectrum@3.47.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@adobe/react-spectrum': 3.47.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum-workflow': 2.3.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@swc/helpers': 0.5.23
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+
+  '@spectrum-icons/workflow@4.3.2(@adobe/react-spectrum@3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@adobe/react-spectrum': 3.47.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@adobe/react-spectrum-workflow': 2.3.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@swc/helpers': 0.5.23
       react: 19.2.7
@@ -5623,6 +5724,18 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.48.0(react@19.2.7)
 
+  react-aria-components@1.21.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+    dependencies:
+      '@internationalized/date': 3.12.4
+      '@internationalized/string': 3.2.10
+      '@react-types/shared': 3.36.1(react@19.2.7)
+      '@swc/helpers': 0.5.23
+      client-only: 0.0.1
+      react: 19.2.7
+      react-aria: 3.52.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
+      react-stately: 3.50.0(react@19.2.7)
+
   react-aria@3.50.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@internationalized/date': 3.12.2
@@ -5635,6 +5748,20 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.48.0(react@19.2.7)
+      use-sync-external-store: 1.6.0(react@19.2.7)
+
+  react-aria@3.52.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+    dependencies:
+      '@internationalized/date': 3.12.4
+      '@internationalized/number': 3.6.8
+      '@internationalized/string': 3.2.10
+      '@react-types/shared': 3.36.1(react@19.2.7)
+      '@swc/helpers': 0.5.23
+      aria-hidden: 1.2.6
+      clsx: 2.1.1
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      react-stately: 3.50.0(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
   react-dom@19.2.7(react@19.2.7):
@@ -5652,6 +5779,16 @@ snapshots:
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-types/shared': 3.36.0(react@19.2.7)
+      '@swc/helpers': 0.5.23
+      react: 19.2.7
+      use-sync-external-store: 1.6.0(react@19.2.7)
+
+  react-stately@3.50.0(react@19.2.7):
+    dependencies:
+      '@internationalized/date': 3.12.4
+      '@internationalized/number': 3.6.8
+      '@internationalized/string': 3.2.10
+      '@react-types/shared': 3.36.1(react@19.2.7)
       '@swc/helpers': 0.5.23
       react: 19.2.7
       use-sync-external-store: 1.6.0(react@19.2.7)
@@ -5931,7 +6068,7 @@ snapshots:
 
   tw-animate-css@1.4.0: {}
 
-  type-fest@5.8.0:
+  type-fest@5.9.0:
     dependencies:
       tagged-tag: 1.0.0
 
