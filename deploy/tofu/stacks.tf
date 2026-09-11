@@ -30,20 +30,24 @@ resource "null_resource" "analytics_stack" {
   }
 }
 
-# App stack: api/web/playground/etl built from the repo root Dockerfile + compose.
+# App stack: api/web/playground/etl deployed from registry images built with
+# per-app Dockerfiles (apps/*/Dockerfile) via turbo prune; compose pulls from
+# the internal registry (10.10.0.117:5000).
 resource "null_resource" "app_stack" {
   depends_on = [null_resource.install_envs, null_resource.analytics_stack]
   triggers = {
-    ref        = var.app_repo_ref
-    app_dir    = local.app_dir
-    dockerfile = filemd5("${path.module}/../../Dockerfile")
-    compose    = filemd5("${path.module}/../../compose.yaml")
+    ref          = var.app_repo_ref
+    app_dir      = local.app_dir
+    api_docker   = filemd5("${path.module}/../../apps/api/Dockerfile")
+    web_docker   = filemd5("${path.module}/../../apps/web/Dockerfile")
+    etl_docker   = filemd5("${path.module}/../../apps/etl/Dockerfile")
+    compose      = filemd5("${path.module}/../../compose.yaml")
   }
   provisioner "local-exec" {
     command = <<-EOT
       set -euo pipefail
       cd "${local.app_dir}"
-      sudo docker compose build
+      sudo docker compose pull api web playground etl weather
       sudo docker compose up -d
       echo "app stack up"
     EOT

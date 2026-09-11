@@ -1,8 +1,6 @@
 services:
   api:
-    build:
-      context: .
-      target: api
+    image: ${API_IMAGE:-laundrytwin-api:latest}
     env_file: .env
     environment:
       NODE_ENV: production
@@ -21,11 +19,7 @@ services:
       start_period: 5s
 
   web:
-    build:
-      context: .
-      target: web
-      args:
-        VITE_LIFF_ID: ${VITE_LIFF_ID:-}
+    image: ${WEB_IMAGE:-laundrytwin-web:latest}
     depends_on:
       api:
         condition: service_healthy
@@ -34,11 +28,7 @@ services:
     restart: unless-stopped
 
   playground:
-    build:
-      context: .
-      target: playground
-      args:
-        VITE_LIFF_ID: ${VITE_LIFF_ID:-}
+    image: ${PLAYGROUND_IMAGE:-laundrytwin-playground:latest}
     depends_on:
       api:
         condition: service_healthy
@@ -47,15 +37,12 @@ services:
     restart: unless-stopped
 
   etl:
-    build:
-      context: .
-      target: etl
+    image: ${ETL_IMAGE:-laundrytwin-etl:latest}
     env_file: ${ETL_ENV_FILE:-/opt/laundrytwin-etl/.env}
     volumes:
       - /opt/laundrytwin-etl/data:/data
     network_mode: host
     restart: unless-stopped
-    command: sh -c "while true; do pnpm --filter @laundrytwin/etl start:container; sleep 300; done"
 
   weather:
     image: ${WEATHER_IMAGE:-laundrytwin-weather:latest}
