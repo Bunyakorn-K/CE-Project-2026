@@ -30,9 +30,10 @@ resource "null_resource" "analytics_stack" {
   }
 }
 
-# App stack: api/web/playground/etl deployed from registry images built with
+# App stack: api/web/etl deployed from registry images built with
 # per-app Dockerfiles (apps/*/Dockerfile) via turbo prune; compose pulls from
-# the internal registry (10.10.0.117:5000).
+# the internal registry (10.10.0.117:5000). The old standalone playground
+# app was merged into web as the /playground route.
 resource "null_resource" "app_stack" {
   depends_on = [null_resource.install_envs, null_resource.analytics_stack]
   triggers = {
@@ -47,7 +48,7 @@ resource "null_resource" "app_stack" {
     command = <<-EOT
       set -euo pipefail
       cd "${local.app_dir}"
-      sudo docker compose pull api web playground etl weather
+      sudo docker compose pull api web etl weather
       sudo docker compose up -d
       echo "app stack up"
     EOT
@@ -83,7 +84,7 @@ resource "null_resource" "smoke" {
       }
       check api        http://127.0.0.1:8787/health 200
       check web        http://127.0.0.1:8080/        200
-      check playground http://127.0.0.1:8082/        200
+      check web_playground http://127.0.0.1:8080/playground 200
       check clickhouse http://127.0.0.1:8123/ping    200
       check airflow    http://127.0.0.1:8081/api/v2/monitor/health 200
       check superset   http://127.0.0.1:8088/health  200

@@ -11,8 +11,7 @@ output "local_endpoints" {
   description = "Local ports serving each component (front with a reverse proxy for public access)."
   value = {
     api        = "http://127.0.0.1:8787"
-    web        = "http://127.0.0.1:8080"
-    playground = "http://127.0.0.1:8082"
+    web        = "http://127.0.0.1:8080 (includes /playground)"
     clickhouse = "http://127.0.0.1:8123"
     superset   = "http://127.0.0.1:8088"
     airflow    = "http://127.0.0.1:8081"

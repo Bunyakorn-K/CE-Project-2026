@@ -8,7 +8,7 @@ build and start both docker-compose stacks and smoke-test them.
 
 | Path | Contents |
 |---|---|
-| `/opt/laundrytwin` | app repo + compose (api, web, playground, etl) |
+| `/opt/laundrytwin` | app repo + compose (api, web, etl) |
 | `/opt/analytics` | analytics compose (clickhouse 26.3, superset 6.1, airflow 3.3.1, redis 8, mcp) |
 | `/opt/laundrytwin-etl` | ETL .env + watermark data |
 
@@ -23,7 +23,7 @@ tofu apply                                      # checkout + envs + build + up +
 ```
 
 The final `null_resource.smoke` curls the local ports and fails the apply if any
-service answers wrong (api 8787, web 8080, playground 8082, clickhouse 8123,
+service answers wrong (api 8787, web 8080 incl. /playground, clickhouse 8123,
 superset 8088, airflow 8081).
 
 ## What tofu manages vs what it does not

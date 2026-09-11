@@ -4,7 +4,8 @@ import { apiUrl } from "../api/client";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/machines", label: "Machines", icon: "🧺" },
-  { href: "/analytics", label: "Analytics", icon: "📈" }
+  { href: "/analytics", label: "Analytics", icon: "📈" },
+  { href: "/playground", label: "Playground", icon: "🧪" }
 ];
 
 const adminNavItems = [
