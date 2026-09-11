@@ -9,7 +9,7 @@ await build({
   outfile: 'dist/index.mjs',
   // CJS packages that do dynamic require() internally break when inlined into ESM.
   // Node loads them natively at runtime instead (they live in node_modules).
-  external: ['better-sqlite3', 'dotenv', 'drizzle-kit'],
+  external: ['better-sqlite3', 'dotenv', 'drizzle-kit', 'ai', '@ai-sdk/*', '@vercel/oidc'],
   logLevel: 'warning',
   sourcemap: false
 })
