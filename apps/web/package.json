@@ -11,7 +11,7 @@
   "dependencies": {
     "@casl/ability": "^7.0.1",
     "@heroui/react": "^3.2.2",
-    "@heroui/styles": "^3.2.2",
+    "@heroui/styles": "^3.2.4",
     "@line/liff": "^2.27.2",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.34",
