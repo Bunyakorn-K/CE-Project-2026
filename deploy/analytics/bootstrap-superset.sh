@@ -107,13 +107,17 @@ PY
 docker exec "$CONTAINER" superset import-dashboards -p /tmp/seed-dashboards.zip -u "$ADMIN_USER"
 
 log "4/4 verify metadata"
-docker exec -i "$CONTAINER" python3 - <<'PY'
-import sqlite3
-con = sqlite3.connect('/app/superset_home/superset.db')
-dash = con.execute("SELECT count(*) FROM dashboards WHERE dashboard_title != '[ untitled dashboard ]'").fetchone()[0]
-charts = con.execute("SELECT count(*) FROM slices").fetchone()[0]
-dsets = con.execute("SELECT count(*) FROM tables WHERE table_name IN ('usage_enriched','temp_enriched')").fetchone()[0]
-dbs = con.execute("SELECT count(*) FROM dbs WHERE database_name='laundrytwin_analytics'").fetchone()[0]
+# flask shell is a line-by-line REPL: multi-line blocks fail with
+# IndentationError/NameError silently. Use one-line comprehensions only.
+docker exec -i "$CONTAINER" superset shell <<'PY'
+from superset.extensions import db
+from superset.models.dashboard import Dashboard
+from superset.models.slice import Slice
+from superset.models.core import Database, Table
+dash = db.session.query(Dashboard).filter(Dashboard.dashboard_title != '[ untitled dashboard ]').count()
+charts = db.session.query(Slice).count()
+dsets = db.session.query(Table).filter(Table.table_name.in_(['usage_enriched', 'temp_enriched'])).count()
+dbs = db.session.query(Database).filter(Database.database_name == 'laundrytwin_analytics').count()
 print(f"dashboards={dash} charts={charts} virtual_datasets={dsets} clickhouse_db={dbs}")
 assert dash >= 1 and charts >= 7 and dsets == 2 and dbs == 1, "bootstrap verification failed"
 print("[bootstrap] OK")

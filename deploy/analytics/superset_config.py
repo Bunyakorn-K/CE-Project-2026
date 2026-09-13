@@ -54,11 +54,16 @@ EXPLORE_FORM_DATA_CACHE_CONFIG = {
 }
 
 SQLLAB_QUERY_COST_ESTIMATE_TIMEOUT = 60
-# Metadata DB: Superset ships a SQLite file under superset_home. Its default rollback journal
-# (journal_mode=delete) locks the whole database file for every write, and with SERVER_WORKER_AMOUNT=2
-# plus parallel dashboard requests the role/permission lookups intermittently fail with
-# sqlite3.OperationalError: database is locked. WAL keeps the file readable while a writer holds
-# the write lock, and busy_timeout makes lock waits retry for up to 10 s instead of failing at once.
+# Metadata DB: default SQLite under superset_home. Its rollback journal locks
+# the whole file for every write (with SERVER_WORKER_AMOUNT=2 + parallel
+# dashboard loads this intermittently fails with `database is locked`). The
+# durable fix is Postgres: point SUPERSET_DATABASE_URI at the analytics
+# postgres service (see deploy/analytics/compose.yaml). SQLite WAL pragmas
+# below are then inert (they only fire for sqlite3 connections).
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    "SUPERSET_DATABASE_URI",
+    "sqlite:////app/superset_home/superset.db?check_same_thread=false",
+)
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine

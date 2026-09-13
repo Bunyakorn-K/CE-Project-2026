@@ -1,30 +1,96 @@
 name: analytics
 services:
-  airflow:
-    command: standalone
-    environment:
-      AIRFLOW__API__BASE_URL: http://analytics-airflow-1:8080
+  airflow-init:
+    command: db migrate
+    environment: &airflow-env
+      AIRFLOW__API__BASE_URL: http://127.0.0.1:8080
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__PIP_PACKAGES: clickhouse-driver==0.2.6,requests==2.32.3,psycopg2-binary==2.9.10
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@analytics-postgres-1:5432/airflow
       AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
       _AIRFLOW_WWW_USER_USERNAME: admin
+    image: apache/airflow:3.3.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+    - airflow-data:/opt/airflow
+    - ./dags:/opt/airflow/dags
+  airflow-webserver:
+    command: api-server
+    environment: *airflow-env
     healthcheck:
       interval: 30s
-      retries: 10
+      retries: 30
       test:
       - CMD
       - curl
       - -sf
       - http://127.0.0.1:8080/api/v2/monitor/health
       timeout: 10s
+      start_period: 60s
     image: apache/airflow:3.3.1
     depends_on:
+      airflow-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     ports:
     - 8081:8080
+    restart: unless-stopped
+    volumes:
+    - airflow-data:/opt/airflow
+    - ./dags:/opt/airflow/dags
+  airflow-scheduler:
+    command: scheduler
+    environment:
+      <<: *airflow-env
+      AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
+    image: apache/airflow:3.3.1
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+    - airflow-data:/opt/airflow
+    - ./dags:/opt/airflow/dags
+  airflow-triggerer:
+    command: triggerer
+    environment:
+      <<: *airflow-env
+      AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
+    image: apache/airflow:3.3.1
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+    - airflow-data:/opt/airflow
+    - ./dags:/opt/airflow/dags
+  airflow-dag-processor:
+    command: dag-processor
+    environment:
+      <<: *airflow-env
+      AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
+    image: apache/airflow:3.3.1
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
     - airflow-data:/opt/airflow
@@ -105,6 +171,10 @@ services:
       SERVER_WORKER_AMOUNT: '2'
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_DATABASE_URI: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@analytics-postgres-1:5432/superset
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       interval: 30s
       retries: 10

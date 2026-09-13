@@ -15,5 +15,6 @@ USER root
 RUN uv pip install --no-cache-dir \
     sqlalchemy==1.4.54 \
     clickhouse-sqlalchemy==0.2.4 \
-    clickhouse-driver==0.2.6
+    clickhouse-driver==0.2.6 \
+    psycopg2-binary==2.9.10
 USER superset
