@@ -220,6 +220,66 @@ export async function queryTemperatureCurve(
   };
 }
 
+// ---- Off-peak windows (R09, Phase 2 baseline) ----
+// Buckets are Asia/Bangkok LOCAL hours: started_at is stored UTC and Thailand
+// is fixed UTC+7 (no DST), so both hour and weekday come from the +7 shift —
+// the day boundary is Thai midnight, not UTC.
+
+export const OFFPEAK_SQL = `
+SELECT
+  toHour(addHours(started_at, 7)) AS hourOfDay,
+  toDayOfWeek(addHours(started_at, 7)) AS dayOfWeek,
+  u.branch_id AS branchId,
+  b.branch_name AS branchName,
+  countIf(status IN ('finished','paid')) AS cycles,
+  sumIf(duration_min, status IN ('finished','paid')) AS totalDurationMin,
+  countIf(source_event_id LIKE 'synthetic:%') AS synthCount,
+  count() AS totalCount
+FROM fact_machine_usage AS u FINAL
+INNER JOIN dim_branch AS b FINAL ON (u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id)
+WHERE started_at >= {from:String} AND started_at < plus(toDate({to:String}), 1)
+  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
+GROUP BY hourOfDay, dayOfWeek, branchId, branchName
+ORDER BY cycles ASC, totalDurationMin ASC, dayOfWeek, hourOfDay`;
+
+export type OffPeakRow = {
+  hourOfDay: string;
+  dayOfWeek: string;
+  branchId: string;
+  branchName: string;
+  cycles: string;
+  totalDurationMin: string;
+  synthCount: string;
+  totalCount: string;
+};
+
+export type OffPeakResultRow = {
+  hourOfDay: number;
+  dayOfWeek: number;
+  branchId: string;
+  branchName: string;
+  cycles: number;
+  totalDurationMin: number;
+};
+
+export async function queryOffPeakWindows(
+  clickhouse: ClickHouseExecutor,
+  params: QueryParams
+): Promise<{ rows: OffPeakResultRow[] } & SourceCount> {
+  const rows = await clickhouse<OffPeakRow>(OFFPEAK_SQL, params);
+  return {
+    rows: rows.map((row) => ({
+      hourOfDay: Number(row.hourOfDay),
+      dayOfWeek: Number(row.dayOfWeek),
+      branchId: row.branchId,
+      branchName: row.branchName,
+      cycles: Number(row.cycles),
+      totalDurationMin: Number(row.totalDurationMin)
+    })),
+    ...countSource(rows)
+  };
+}
+
 // ---- Branch reference (for assistant context, not a fact table) ----
 
 export async function listBranchNames(

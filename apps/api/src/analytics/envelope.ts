@@ -4,6 +4,9 @@ export type AnalyticsMeta = {
   range: { from: string; to: string };
   branchId: string | null;
   dataSource: DataSourceTag;
+  method?: string;
+  rules?: Record<string, unknown>;
+  caveats?: string[];
 };
 
 export function dataSourceFromCounts(totalRows: number, syntheticRows: number): DataSourceTag {
