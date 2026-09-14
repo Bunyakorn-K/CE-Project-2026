@@ -40,7 +40,7 @@ import { isDemoModeEnabled } from "./demo-read-client";
 import { createBotHandler } from "./bot";
 import { LineAdapter } from "./bot/line-adapter";
 import { runAlertSweep } from "./alert-engine";
-import { verifyLiffIdToken } from "./liff-auth";
+import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
 
@@ -118,7 +118,11 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (!idToken) return apiError(c, 400, "INVALID_LIFF_TOKEN", "A LINE ID token is required");
 
     try {
-      const profile = await liffVerifier({ idToken, channelId: process.env.LINE_LOGIN_CHANNEL_ID });
+      const profile = await liffVerifier({
+        idToken,
+        channelIds: parseChannelIds(process.env.LINE_LOGIN_CHANNEL_IDS) ,
+        channelId: process.env.LINE_LOGIN_CHANNEL_ID
+      });
       const knownUser = findLiffUser(profile.userId);
       if (!knownUser) {
         recordPendingLiffAccessRequest({ lineUserId: profile.userId, displayName: profile.displayName });
