@@ -2,7 +2,7 @@
 
 **Scope:** how the deployed stack is reachable publicly, where TLS terminates,
 and what to do when something breaks. This documents the *observed* topology
-(verified 2026-09-06). The TLS edge intentionally lives **outside** the repo's
+(verified 2026-09-14). The TLS edge intentionally lives **outside** the repo's
 OpenTofu module (see `deploy/tofu/README.md` out-of-scope notes) — it is the
 home-lab Pi's job.
 
@@ -17,16 +17,27 @@ Home-lab Pi  (Caddy — TLS edge, Let's Encrypt, HTTP→HTTPS)
    ▼
 VM 117  (172.30.191.48, host "laundrytwin")
    ├─ laundrytwin-web-1        :8080  (nginx → SPA + /api/ → api:8787)
-   ├─ laundrytwin-api-1        :8787  (Hono API, demo mode by design)
+   ├─ laundrytwin-api-1        :8787  (Hono API + MCP server /mcp, demo mode by design)
+   ├─ laundrytwin-etl-1        host   (batch ETL loop, IRIS Postgres → ClickHouse)
+   ├─ laundrytwin-weather-1    host   (TMD weather collector loop, every 5 min)
+   ├─ laundrytwin-registry     :5000  (docker registry v2, htpasswd auth)
    ├─ analytics-superset-1     :8088  (Superset, fronted by Authentik SSO)
-   ├─ analytics-airflow-1      :8081  (Airflow webserver)
+   ├─ analytics-airflow-webserver-1   :8081  (Airflow 3.x api-server — UI/API)
+   ├─ analytics-airflow-scheduler-1   (scheduler, per-role service)
+   ├─ analytics-airflow-triggerer-1   (triggerer, per-role service)
+   ├─ analytics-airflow-dag-processor-1 (dag processor, per-role service)
+   ├─ analytics-postgres-1     :5433  (Airflow + Superset metadata)
+   ├─ analytics-clickhouse-1   :8123  (HTTP interface — ZeroTier only)
+   ├─ analytics-redis-1        (Superset cache)
    ├─ analytics-mcp-inspector-1:6274  (MCP Inspector)
-   └─ analytics-clickhouse-1   :8123  (HTTP interface — ZeroTier only)
+   ├─ LibreChat                :3080  (chat.laundrytwin.duckdns.org)
+   ├─ chat-mongodb / chat-meilisearch  (LibreChat metadata + search)
+   └─ arcane                   (companion app)
 ```
 
 ## DNS (duckdns.org)
 
-All four hosts resolve to the same public IP (verified `dig`):
+All hosts resolve to the same public IP (verified `dig`):
 
 | Host | A record |
 | :--- | :------- |
@@ -34,6 +45,8 @@ All four hosts resolve to the same public IP (verified `dig`):
 | `superset.laundrytwin.duckdns.org` | 161.246.5.47 |
 | `airflow.laundrytwin.duckdns.org` | 161.246.5.47 |
 | `mcp.laundrytwin.duckdns.org` | 161.246.5.47 |
+| `chat.laundrytwin.duckdns.org` | 161.246.5.47 |
+| `registry.laundrytwin.duckdns.org` | 161.246.5.47 |
 
 Add/remove hosts at https://duckdns.org (token is per-domain; keep it in the
 Pi's duckdns updater, not in this repo).
@@ -44,8 +57,10 @@ Pi's duckdns updater, not in this repo).
 | :-- | :------------ | :---- |
 | `https://laundrytwin.duckdns.org` | web :8080 | SPA + `location /api/` → api:8787 (in-stack nginx, `deploy/nginx.conf`); `location = /webhooks/line` → api |
 | `https://superset.laundrytwin.duckdns.org` | superset :8088 | **Authentik SSO in front** — Caddy → Authentik outpost (`auth.notnotik.duckdns.org/application/o/authorize/...`) → superset. Only members of the `final project member` group can sign in. |
-| `https://airflow.laundrytwin.duckdns.org` | airflow :8081 | Airflow login (`admin` + `AIRFLOW_ADMIN_PASSWORD` from `/opt/analytics/.env`) |
+| `https://airflow.laundrytwin.duckdns.org` | airflow-webserver :8081 | Airflow 3.x login (`admin` + `AIRFLOW_ADMIN_PASSWORD` from `/opt/analytics/.env`) |
 | `https://mcp.laundrytwin.duckdns.org` | mcp-inspector :6274 | MCP Inspector; `ALLOWED_ORIGINS` already set to this origin in compose |
+| `https://chat.laundrytwin.duckdns.org` | LibreChat :3080 | LibreChat UI; users/passwords in MongoDB db `LibreChat` (ops recipe: `references/librechat-ops.md`) |
+| `https://registry.laundrytwin.duckdns.org` | registry :5000 | docker registry v2, htpasswd (user `laundrytwin`); **no double auth on Caddy** or `docker login` breaks |
 
 ## TLS / certificates (verified 2026-09-06)
 
@@ -75,6 +90,12 @@ airflow.laundrytwin.duckdns.org {
 mcp.laundrytwin.duckdns.org {
     reverse_proxy http://172.30.191.48:6274
 }
+chat.laundrytwin.duckdns.org {
+    reverse_proxy http://172.30.191.48:3080
+}
+registry.laundrytwin.duckdns.org {
+    reverse_proxy http://172.30.191.48:5000
+}
 ```
 
 If Authentik is in front of Superset, replace the superset block with the
@@ -83,7 +104,7 @@ outpost's own proxy settings (Authentik outpost normally handles it).
 ## Operational notes
 
 - **ZeroTier is load-bearing:** the Pi reaches the VM over 172.30.191.0/24.
-  If the VM drops off ZeroTier, all four public hosts go down even though the
+  If the VM drops off ZeroTier, all public hosts go down even though the
   containers are healthy. First check: `zerotier-cli listpeers` on the Pi and
   `sudo zerotier-cli status` on the VM.
 - **Demo mode is intentional:** `LAUNDRYTWIN_DEMO_MODE=true` on
@@ -91,6 +112,17 @@ outpost's own proxy settings (Authentik outpost normally handles it).
   The browser must never receive upstream credentials (AGENTS.md boundary).
 - **No TLS inside the stack:** `deploy/nginx.conf` listens on :80 only; TLS
   terminates on the Pi. Do not add TLS to the in-stack nginx.
+- **Registry pull from the VM:** the VM cannot reach the registry via the
+  public duckdns IP (NAT loopback fails) — compose pulls use the internal
+  `127.0.0.1:5000` (daemon.json allowlists it as insecure). The Mac pushes via
+  `registry.laundrytwin.duckdns.org`.
+- **Airflow is per-role services since 2026-09-13:** `airflow standalone`
+  does not respawn a crashed scheduler; each role now runs as its own
+  container with `restart: unless-stopped`. Health:
+  `curl http://127.0.0.1:8081/api/v2/monitor/health` (all of
+  metadatabase/scheduler/triggerer/dag_processor should be healthy with fresh
+  heartbeats). Metadata lives on `analytics-postgres-1` (db `airflow`), and
+  Superset metadata on the same Postgres (db `superset`).
 - **SSH access:**
   - VM 117: `ssh uunw@172.30.191.48` (key-based, `sudo` passwordless).
   - Pi: SSH is open on 192.168.88.10 but requires the Pi's authorized key —
@@ -105,3 +137,6 @@ outpost's own proxy settings (Authentik outpost normally handles it).
 | Cert expired | Caddy renewal blocked (HTTP-01 needs port 80 through) | `curl -vI ... \| grep -i expire`; Pi Caddy logs |
 | Superset login loops | Authentik outpost / group membership | `auth.notnotik.duckdns.org` reachable; user in `final project member` |
 | App shows demo data | By design | `https://laundrytwin.duckdns.org/health` → `"demoMode":true` |
+| Airflow DAGs not running | Scheduler heartbeat stale | `curl http://127.0.0.1:8081/api/v2/monitor/health` — restart the stale role container |
+| `database is locked` anywhere | SQLite metadata (should be gone) | Airflow + Superset metadata must live on analytics-postgres-1 |
+| docker login to registry fails | Double auth on Caddy | Caddy block for registry must NOT add basic_auth |

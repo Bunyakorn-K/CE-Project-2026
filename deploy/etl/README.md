@@ -15,6 +15,4 @@ Manual run (one-shot, no loop): `sudo docker run --rm --network=host --env-file=
 
 Logs: `sudo docker compose -f /opt/laundrytwin/compose.yaml logs -f etl`
 
-Update code: sync `apps/etl`, `apps/etl/Dockerfile`, `compose.yaml`, and lockfile to `/opt/laundrytwin`, then build+push the image from the Mac (`docker buildx build --platform linux/amd64 -f apps/etl/Dockerfile -t 10.10.0.117:5000/laundrytwin-etl:latest --push .`) and `sudo docker compose pull etl && sudo docker compose up -d etl` on the VM.
-
-Alternative image path (cross-arch from Mac): `docker build --platform linux/amd64 --target etl -t 127.0.0.1:5001/laundrytwin-etl:latest . && docker push 127.0.0.1:5001/laundrytwin-etl:latest` then pull on the VM via ZeroTier registry `172.30.115.153:5001`, or `docker save | ssh` for large images.
+Update code: sync `apps/etl`, `apps/etl/Dockerfile`, `compose.yaml`, and lockfile to `/opt/laundrytwin`, then build+push the image from the Mac (`docker buildx build --platform linux/amd64 -f apps/etl/Dockerfile -t registry.laundrytwin.duckdns.org/laundrytwin-etl:latest --push .` with `~/.creds/laundrytwin-registry.txt` creds; the Mac cannot push via the internal `10.10.0.117:5000` IP) and `sudo docker compose pull etl && sudo docker compose up -d etl` on the VM (the VM pulls via `127.0.0.1:5000`, the same registry — the public duckdns IP fails from the VM, no NAT loopback).

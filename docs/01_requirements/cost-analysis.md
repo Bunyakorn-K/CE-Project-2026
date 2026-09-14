@@ -5,10 +5,11 @@ vs cloud equivalents. All figures are estimates with explicit assumptions —
 no vendor quotes were obtained; verify before procurement.
 
 **Assumption snapshot:** deployment on VM 117 (PVE virtual machine, host CPU
-AMD FX-8350, 8 cores, ~125 W TDP), four compose stacks under `/opt`
-(laundrytwin, analytics, arcane, librechat), ZeroTier overlay, duckdns domain,
-LINE Official Account (Messaging API). Data volumes (2026-09-06): 4.3k
-usages, 3.49M temperature samples; freshness DAG runs every 5 min.
+AMD FX-8350, 8 cores, ~125 W TDP), compose stacks under `/opt`
+(laundrytwin, analytics, arcane, librechat), internal docker registry on the
+same VM, ZeroTier overlay, duckdns domain, LINE Official Account (Messaging
+API). Data volumes (2026-09-06): 4.3k usages, 3.49M temperature samples;
+freshness DAG runs every 5 min.
 
 ## 1. Self-hosted baseline (current)
 
@@ -18,8 +19,10 @@ usages, 3.49M temperature samples; freshness DAG runs every 5 min.
 | Host amortization | Refurb FX-8350 board+CPU+RAM+SSD ≈ 6,000–10,000 ฿ / 36 mo | ~200–280 ฿ (~$6–9) |
 | Domain (duckdns) | Free (dynamic DNS) | 0 |
 | TLS (Let's Encrypt via Caddy) | Free | 0 |
+| Docker registry (self-hosted, `registry:2`) | Free (same VM) | 0 |
+| LLM API (OpenRouter free tier + Bifrost gateway) | Free model used for testing (`inclusionai/ling-3.0-flash-fin:free`); paid usage only if a paid model is chosen | 0 (baseline) |
 | LINE Official Account + Messaging API | Free tier (push via Messaging API, no LINE Notify) | 0 |
-| Storage | ClickHouse data + Superset/Airflow metadata on host disks | included in amortization |
+| Storage | ClickHouse data + Postgres metadata (Airflow/Superset) + Mongo/Meili (LibreChat) on host disks | included in amortization |
 | **Total self-hosted** | | **~555–715 ฿ (~$17–22)/mo** |
 
 Notes:
@@ -29,6 +32,8 @@ Notes:
 - No PII/hardware purchase beyond the existing host is assumed.
 - Backups: `/opt/backups` volume on same host — a second disk would add
   ~100–200 ฿/mo (not included).
+- Since 2026-09-13 the Airflow + Superset metadata live on a local Postgres
+  (`analytics-postgres-1`) instead of SQLite — same host, no new cost.
 
 ## 2. Cloud equivalent (comparator — what it would cost managed)
 
@@ -38,9 +43,11 @@ Notes:
 | ClickHouse Cloud (small, ~50 GB) | analytics warehouse | $50–100 (dev tier can be lower) |
 | Managed Airflow (Astronomer/cloud) | DAG orchestration | $50–150 |
 | Superset as-a-service | BI | $0–50 (self-host in same VM) |
-| Postgres managed | Airflow metadata | $10–25 |
+| Postgres managed (×2: Airflow + Superset) | metadata | $10–50 |
+| Mongo Atlas / managed search | LibreChat metadata + Meilisearch | $10–30 |
+| Managed docker registry (ECR/GHCR) | image registry | $0–5 |
 | Domain + TLS + CDN | duckdns + Caddy + Let's Encrypt | $0–12 |
-| **Total managed** | | **~$120–350/mo** |
+| **Total managed** | | **~$130–370/mo** |
 
 The managed path is roughly **7–20× the self-hosted cost**; the self-hosted
 stack is therefore the cost-optimal choice for a capstone/small-franchise
@@ -61,11 +68,14 @@ the app on a small VM.
 
 ## 4. Mitigations already in place (keep running cost low)
 
-- gzip API responses + esbuild bundle (`34df5fb`, `15138c4`) → lower egress/CPU.
+- gzip API responses + esbuild bundle → lower egress/CPU.
 - Redis-backed Superset caches → chart queries are cached, not re-run.
 - ETL watermark → incremental loads only (no full re-scan).
 - Freshness DAG every 5 min → bounded polling cost.
 - ZeroTier for admin paths → public edge serves only the demo UI.
+- Per-app images via turbo prune + minimal alpine runtime (~29–69 MB) →
+  registry traffic/storage stays small.
+- Free OpenRouter model pinned for tool-testing agents.
 
 ## Maintenance rules
 

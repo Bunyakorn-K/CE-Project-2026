@@ -6,10 +6,11 @@ product turns existing MQTT and Modbus data into a multi-branch Digital Twin,
 business intelligence, safe AI-assisted analysis, and event-driven alerts.
 
 This repository combines the CE Project requirements and data contracts with
-the existing LaundryTwin implementation. LaundryTwin is currently a read-only,
-mobile-first LINE LIFF reporting application backed by a Hono API and local
-SQLite. It is an implementation starting point, not evidence that every
-LaundroTwin MVP requirement is complete.
+the LaundryTwin implementation. LaundryTwin is a read-only, mobile-first
+LINE LIFF reporting application backed by a Hono API and local SQLite, with a
+server-side analytics warehouse (ClickHouse), MCP assistant, LINE bot, and a
+DB-driven AI console. It is an implementation starting point, not evidence
+that every LaundroTwin MVP requirement is complete.
 
 ## Sources of truth
 
@@ -35,25 +36,37 @@ Read these documents before changing behavior or data models:
 | Local owner, manager, and technician access workflow | Implemented |
 | Explicit, labeled demo mode | Implemented |
 | Read-only IRIS reporting integration | Client implemented; upstream API required |
-| Direct MQTT ingestion and normalized time-series storage | Not implemented in this repository |
-| Complete Digital Twin and alert engine from CE requirements | Not implemented |
-| Safe AI Executive Assistant | Not implemented |
+| Analytics warehouse (ETL → ClickHouse) | Implemented + deployed (usage, temperature, weather) |
+| Superset BI dashboard | Implemented + deployed (metadata on Postgres) |
+| Airflow freshness DAGs | Implemented + deployed (per-role services on Postgres) |
+| MCP analytics tools (5, allow-listed + RBAC-scoped) | Implemented + verified from LibreChat agents |
+| AI Executive Assistant console (DB-driven gateway) | Implemented (Vercel AI SDK + Bifrost gateway) |
+| LINE bot (agentic, MCP-backed) | Implemented |
+| Direct MQTT ingestion and normalized time-series storage | Not implemented (descoped 2026-09-07 — telemetry flows via IRIS) |
+| Complete Digital Twin and alert engine from CE requirements | Partially implemented (alert ack local to LaundryTwin) |
 
 ## Current application architecture
 
 ```text
-LINE LIFF or local owner account
-              |
-              v
-    LaundryTwin React mobile web
-              |
-              v
-    LaundryTwin Hono API + local SQLite
-              |
-              | X-LaundryTwin-Read-Key (server only)
-              v
-    Optional IRIS read-only reporting API
+LINE LIFF / web / LibreChat agent
+        |                      |
+        v                      v
+LaundryTwin React web    LibreChat (chat.laundrytwin.duckdns.org)
+        |                      |  MCP tools (5, Bearer token)
+        v                      v
+LaundryTwin Hono API    └─ MCP server (analytics, allow-listed tools)
+        |                      |
+        | ClickHouse (warehouse)  <- ETL <- IRIS Postgres (read-only)
+        v
+Optional IRIS read-only reporting API
 ```
+
+Deployment topology, DNS, and troubleshooting live in
+[`docs/02_architecture/deploy-runbook.md`](docs/02_architecture/deploy-runbook.md).
+The AI console, MCP gateway, and demo-login notes are under "Backoffice AI
+console" in the ops skill; the LibreChat MCP/agent wiring is verified and
+documented in
+[`docs/04_traceability/ops-verification-2026-09-14-librechat-tools.md`](docs/04_traceability/ops-verification-2026-09-14-librechat-tools.md).
 
 The current application never sends machine commands, writes payment data,
 or exposes upstream credentials to the browser.
@@ -61,19 +74,25 @@ or exposes upstream credentials to the browser.
 ## Repository layout
 
 ```text
-apps/api/                 Hono API, authentication, RBAC, and reporting client
-apps/web/                 React/Vite LINE LIFF application
-deploy/                   Container deployment configuration
+apps/api/                 Hono API, auth/RBAC, reporting, analytics MCP server, LINE bot, AI console
+apps/web/                 React/Vite LINE LIFF application (includes /playground route)
+apps/etl/                 Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather)
+apps/playground/          (merged into web — see apps/web /playground)
+deploy/                   Container deployment config (per-app Dockerfiles, compose, tofu, nginx)
+deploy/analytics/         Analytics compose (clickhouse, superset, airflow, postgres, redis, mcp)
+deploy/analytics/seed/    Superset dashboard seed (committed, placeholder password)
 docs/01_requirements/     CE Project requirements and user stories
 docs/02_architecture/     Target data model and Mermaid workflow diagrams
 docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
-docs/04_traceability/     Requirements Traceability Matrix
+docs/04_traceability/     Requirements Traceability Matrix + ops verification records
+docs/06_ml/               ML algorithm comparison (Phase 2 research)
 docs/integration/         Current IRIS read-only integration contract
 ```
 
 ## Run locally
 
-1. Install Node.js 22+ and pnpm 10+.
+1. Install Node.js 24 (see `.nvmrc`; better-sqlite3 is compiled for ABI 137)
+   and pnpm 10+.
 2. Copy `.env.example` to `.env`.
 3. Set a unique `BETTER_AUTH_SECRET` and a
    `LAUNDRYTWIN_BOOTSTRAP_ADMIN_EMAIL`.
@@ -82,20 +101,24 @@ docs/integration/         Current IRIS read-only integration contract
 5. Run `pnpm install` and `pnpm dev`.
 
 The web application runs at `http://localhost:5173`; the API runs at
-`http://localhost:8787`. Without the IRIS read settings, authenticated users
-see an explicit reporting-source-unavailable state rather than fabricated
-metrics or machine statuses.
+`http://localhost:8787` (and serves the MCP endpoint at `/mcp`). Without the
+IRIS read settings, authenticated users see an explicit
+reporting-source-unavailable state rather than fabricated metrics or machine
+statuses.
 
 ## Demo mode
 
 Set `LAUNDRYTWIN_DEMO_MODE=true` only for local preview or stakeholder demos.
 Demo mode is visibly labeled, uses simulated branches, machines, and alerts,
-and never acts as an automatic fallback for unavailable production data.
+and never acts as an automatic fallback for unavailable production data. On
+the deployed stack, the backoffice login uses an explicit "Sign in as Demo
+Owner" button (`POST /api/demo/session`), never an automatic fallback.
 
 ## Access workflow
 
-1. Create or sign in to the local owner account using the bootstrap email.
-2. Open `/mange` to review LINE access requests and active grants.
+1. Create or sign in to the local owner account using the bootstrap email
+   (or the demo owner session on the deployed stack).
+2. Open `/manage` to review LINE access requests and active grants.
 3. A LINE user opens the LIFF application and the API verifies their ID token.
 4. The owner approves the request as `owner`, `manager`, or `technician`.
 5. The user receives a short-lived, HttpOnly LaundryTwin session cookie.
@@ -116,9 +139,11 @@ ID-token verification. Channel secrets, access tokens, upstream read keys, and
 the Better Auth secret must remain server-side.
 
 `POST /webhooks/line` is optional and remains disabled until the LINE Messaging
-API variables are configured. For container deployment, copy
-`deploy/.env.production.example` to the deployment host's `.env`, populate the
-required values, and run `docker compose up -d --build`. Back up
+API variables are configured. For container deployment, each app builds from
+its own `apps/<pkg>/Dockerfile` (turbo prune + minimal runtime, ~29–69 MB
+compressed) and images are pushed to the internal registry
+(`registry.laundrytwin.duckdns.org`; VM pulls via `10.10.0.117:5000`), then
+`docker compose pull <svc> && up -d <svc>` on the VM. Back up
 `data/laundrytwin.sqlite` before replacing the host or persistent volume.
 
 ## Verification
