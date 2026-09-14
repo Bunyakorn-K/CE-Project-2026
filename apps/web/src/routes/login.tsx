@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import { apiUrl } from "../lib/api/client";
 import { authAtom } from "../lib/atoms/auth";
+import { connectLiff } from "../liff";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage
@@ -35,7 +36,37 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [lineLoading, setLineLoading] = useState(false);
   const [, setUser] = useAtom(authAtom);
+
+  async function onLineSignIn() {
+    const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
+    if (!liffId) {
+      setError("ยังไม่ได้ตั้งค่า VITE_LIFF_ID สำหรับ LINE LIFF");
+      return;
+    }
+    setLineLoading(true);
+    setError(null);
+    try {
+      const identity = await connectLiff(liffId);
+      if (!identity) return;
+      const res = await fetch(apiUrl("/api/auth/liff/exchange"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken: identity.idToken })
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        throw new Error(data?.error?.message ?? "LINE sign-in failed");
+      }
+      await fetchMeAndSet(setUser);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "LINE sign-in failed");
+    } finally {
+      setLineLoading(false);
+    }
+  }
 
   useEffect(() => {
     fetch(apiUrl("/health"), { credentials: "include" })
@@ -106,6 +137,10 @@ function LoginPage() {
 
           <Button variant="primary" onPress={() => void onDemoSignIn()} isDisabled={demoLoading}>
             {demoLoading ? "Signing in…" : "Sign in as Demo Owner"}
+          </Button>
+
+          <Button variant="outline" onPress={() => void onLineSignIn()} isDisabled={lineLoading}>
+            {lineLoading ? "Connecting to LINE…" : "Sign in with LINE"}
           </Button>
 
           <div className="flex items-center gap-2 text-xs text-default-400">
