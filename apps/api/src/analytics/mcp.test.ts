@@ -61,7 +61,7 @@ function contentText(result: { content?: Array<{ type: string; text: string }> }
 const scopedArgs = { from: "2026-08-01", to: "2026-08-31", branchId: "b1", accessScope: { branchIds: ["b1"], canViewRevenue: true } };
 
 describe("MCP data server", () => {
-  it("serves the five allow-listed analytics tools", async () => {
+  it("serves the six allow-listed analytics tools", async () => {
     const transport = createMcpServer({ clickhouse: fakeClickhouse([]), allowRevenue: true });
     const sessionId = await initSession(transport);
     const response = await roundTrip(transport, sessionId, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
@@ -69,11 +69,65 @@ describe("MCP data server", () => {
     const tools = response.body?.result?.tools as Array<{ name: string }>;
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "get_cycles_daily",
+      "get_off_peak_windows",
       "get_revenue_daily",
       "get_temperature_curve",
       "get_utilization_heatmap",
       "get_weather_usage_correlation"
     ]);
+  });
+
+  it("calls get_off_peak_windows and returns ranked local-hour buckets", async () => {
+    const clickhouse = fakeClickhouse([
+      {
+        match: /toHour\(addHours\(started_at, 7\)\)/,
+        rows: [
+          { hourOfDay: "21", dayOfWeek: "6", branchId: "b1", branchName: "B1", cycles: "3", totalDurationMin: "120", synthCount: "0", totalCount: "3" },
+          { hourOfDay: "10", dayOfWeek: "2", branchId: "b1", branchName: "B1", cycles: "40", totalDurationMin: "1600", synthCount: "0", totalCount: "40" }
+        ]
+      }
+    ]);
+    const transport = createMcpServer({ clickhouse, allowRevenue: true });
+    const sessionId = await initSession(transport);
+    const result = await callTool(transport, sessionId, "get_off_peak_windows", {
+      ...scopedArgs,
+      minCycles: 1,
+      percentile: 50
+    });
+
+    expect(result.isError).toBeUndefined();
+    const envelope = JSON.parse(contentText(result));
+    expect(envelope.meta.method).toBe("offpeak_percentile");
+    expect(envelope.meta.rules).toEqual({ minCycles: 1, percentile: 50, eligibleBuckets: 2, returnedBuckets: 1 });
+    expect(envelope.meta.caveats).toContain("buckets are Asia/Bangkok local hours (UTC+7, no DST)");
+    expect(envelope.data[0]).toMatchObject({ rank: 1, dayOfWeek: 6, weekday: "Sat", hourOfDay: 21, cycles: 3 });
+  });
+
+  it("rejects an out-of-scope branch for get_off_peak_windows before querying", async () => {
+    const clickhouse = fakeClickhouse([{ match: /./, rows: [] }]);
+    const transport = createMcpServer({ clickhouse, allowRevenue: true });
+    const sessionId = await initSession(transport);
+    const result = await callTool(transport, sessionId, "get_off_peak_windows", {
+      ...scopedArgs,
+      branchId: "b2"
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(contentText(result))).toEqual({ error: { code: "branch_out_of_scope", message: "The requested branch is outside the caller's scope" } });
+    expect(clickhouse).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid percentile for get_off_peak_windows", async () => {
+    const transport = createMcpServer({ clickhouse: fakeClickhouse([]), allowRevenue: true });
+    const sessionId = await initSession(transport);
+    const result = await callTool(transport, sessionId, "get_off_peak_windows", {
+      ...scopedArgs,
+      percentile: 0
+    });
+
+    // zod schema validation rejects at the SDK layer (message, not a JSON envelope).
+    expect(result.isError).toBe(true);
+    expect(contentText(result)).toMatch(/MCP error/i);
   });
 
   it("rejects revenue calls without canViewRevenue in the scope", async () => {

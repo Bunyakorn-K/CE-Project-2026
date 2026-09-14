@@ -8,9 +8,11 @@ import {
   queryDailyCycles,
   queryDailyRevenue,
   queryTemperatureCurve,
-  queryUtilizationHeatmap
+  queryUtilizationHeatmap,
+  queryOffPeakWindows
 } from "./queries";
 import { queryWeatherUsageCorrelation, WEATHER_CAVEAT } from "./weather";
+import { rankOffPeakBuckets } from "./offpeak";
 import { parseAnalyticsRange } from "./scope";
 
 // The MCP data server exposes only allow-listed, parameterized analytics queries
@@ -218,6 +220,50 @@ function registerTools(server: McpServer, deps: McpDeps): void {
           result.rows
         );
         return textResult({ ...envelope, caveats: WEATHER_CAVEAT });
+      } catch (error) {
+        return analyticsErrorResult(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_off_peak_windows",
+    {
+      title: "Off-peak windows",
+      description:
+        "Rank (hour-of-day, weekday) buckets by lowest paid-cycle usage over a date range. " +
+        "Buckets with fewer than minCycles cycles are excluded; the bottom `percentile`% of " +
+        "remaining buckets are returned with rank 1 = most off-peak. Descriptive baseline, not a forecast (R09).",
+      inputSchema: {
+        from: z.string().describe("YYYY-MM-DD, inclusive start"),
+        to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
+        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
+        accessScope: accessScopeSchema,
+        minCycles: z.number().int().min(1).optional().describe("Minimum paid cycles for a bucket to be ranked (default 10)"),
+        percentile: z.number().int().min(1).max(99).optional().describe("Bottom percentage of eligible buckets to return (default 25)")
+      }
+    },
+    async (args) => {
+      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
+      if (scope) return scope;
+      const range = parseAnalyticsRange(args.from, args.to, new Date());
+      if (!range.ok) return errorResult(range.code, range.message);
+      const minCycles = args.minCycles ?? 10;
+      const percentile = args.percentile ?? 25;
+      try {
+        const result = await queryOffPeakWindows(deps.clickhouse, {
+          from: range.value.from,
+          to: range.value.to,
+          branchId: args.branchId
+        });
+        const ranked = rankOffPeakBuckets(result.rows, { minCycles, percentile });
+        const meta = {
+          ...dataSourceEnvelope(rangeMeta(range.value.from, range.value.to, args.branchId), result),
+          method: ranked.meta.method,
+          rules: ranked.meta.rules,
+          caveats: ["buckets are Asia/Bangkok local hours (UTC+7, no DST)"]
+        };
+        return textResult(analyticsEnvelope(meta, ranked.data));
       } catch (error) {
         return analyticsErrorResult(error);
       }
