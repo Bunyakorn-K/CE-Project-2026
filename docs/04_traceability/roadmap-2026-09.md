@@ -79,18 +79,20 @@ Evidence: `docs/04_traceability/ops-verification-2026-09-13-airflow-superset.md`
    Limitation: TMD hourly returns byte-identical per-province series — a
    location-specific source is needed before per-branch weather curves.
 
-### 5b. ML recommendation — Epic 4 (#35) — research stage
+### 5b. ML recommendation — Epic 4 (#35) — baseline shipped 2026-09-14
 
-Three deliverables (research → plan → metrics):
+MCP tool **`get_off_peak_windows`** (R09 baseline) implemented, tested and
+deployed — sixth allow-listed analytics tool:
 
-1. **Algorithm comparison doc** (`docs/06_ml/algorithm-comparison.md`):
-   ARIMA vs Prophet vs simple heuristics (percentile threshold) for
-   "off-peak window" detection, evaluated on existing usage history in
-   ClickHouse (4.3k rows today — note data-volume limitation).
-2. **ML dev plan** with phases: offline eval on historical usage →
-   rule-based baseline → model candidate → A/B.
-3. **Metrics:** offline MAE + hit-rate@k for window ranking; business metric
-   = utilization lift during promoted windows; documented as Phase 2.
+1. **Baseline = percentile heuristic** (per `docs/06_ml/algorithm-comparison.md`):
+   bucket by (hour × weekday) in Asia/Bangkok local hours, drop buckets under
+   `minCycles`, sort by paid-cycle usage ascending, return bottom
+   `percentile`% with rank 1 = most off-peak. Output carries the rule used
+   (R09 acceptance).
+2. **Evidence:** `ops-verification-2026-09-14-r09-offpeak.md` — live call on
+   Chiang Mai branch returns Mon 03:00 as #1 off-peak (business-sensible).
+3. **Remaining phases** (research doc): Phase B evaluation harness, Phase C
+   model candidate (≥ 3 months history), Phase D promotion A/B — all future.
 
 ### 5c. Cost Analysis — Epic 1 (#39) — DONE 2026-09-06
 
