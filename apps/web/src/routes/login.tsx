@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import { apiUrl } from "../lib/api/client";
 import { authAtom } from "../lib/atoms/auth";
-import { connectLiff } from "../liff";
+import { connectLiff, initLiff } from "../liff";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage
@@ -73,6 +73,37 @@ function LoginPage() {
       .then((r) => r.json().catch(() => null))
       .then((d) => setDemoMode(Boolean(d?.demoMode)))
       .catch(() => {});
+  }, []);
+
+  // Auto-resume: when LINE redirects back after liff.login() the page reloads.
+  // If a LINE session already exists, complete the exchange without another press.
+  useEffect(() => {
+    const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
+    if (!liffId) return;
+    let cancelled = false;
+    void (async () => {
+      const liff = await initLiff(liffId);
+      if (cancelled || !liff || !liff.isLoggedIn()) return;
+      const identity = await connectLiff(liffId);
+      if (cancelled || !identity) return;
+      const res = await fetch(apiUrl("/api/auth/liff/exchange"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken: identity.idToken })
+      });
+      if (cancelled) return;
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(data?.error?.message ?? "LINE sign-in failed");
+        return;
+      }
+      await fetchMeAndSet(setUser);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Demo sign-in (explicit — the deploy runs in demo mode; no password
