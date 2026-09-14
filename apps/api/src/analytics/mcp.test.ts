@@ -77,6 +77,45 @@ describe("MCP data server", () => {
     ]);
   });
 
+  it("exposes accessScope as optional with field descriptions in every tool schema", async () => {
+    const transport = createMcpServer({ clickhouse: fakeClickhouse([]), allowRevenue: true });
+    const sessionId = await initSession(transport);
+    const response = await roundTrip(transport, sessionId, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+
+    const tools = response.body?.result?.tools as Array<{ name: string; inputSchema: { properties?: Record<string, unknown>; required?: string[] } }>;
+    for (const tool of tools) {
+      const props = tool.inputSchema?.properties ?? {};
+      expect(props.accessScope, `${tool.name} accessScope missing`).toBeTruthy();
+      // optional: accessScope must NOT be in the required array
+      const required = (tool.inputSchema?.required as string[] | undefined) ?? [];
+      expect(required, `${tool.name} accessScope should be optional`).not.toContain("accessScope");
+      // descriptions on the scope fields so models know what to send
+      const scopeSchema = props.accessScope as { properties?: Record<string, unknown> };
+      const scopeProps = (scopeSchema?.properties ?? {}) as Record<string, { description?: string }>;
+      expect(String(scopeProps.branchIds?.description ?? "")).toContain("tenant-wide");
+      expect(String(scopeProps.canViewRevenue?.description ?? "")).toContain("revenue");
+    }
+  });
+
+  it("defaults to tenant-wide scope when accessScope is omitted", async () => {
+    const clickhouse = fakeClickhouse([
+      { match: /toHour\(addHours\(started_at, 7\)\)/, rows: [{ hourOfDay: "21", dayOfWeek: "6", branchId: "b1", branchName: "B1", cycles: "3", totalDurationMin: "120", synthCount: "0", totalCount: "3" }] }
+    ]);
+    const transport = createMcpServer({ clickhouse, allowRevenue: true });
+    const sessionId = await initSession(transport);
+    const result = await callTool(transport, sessionId, "get_off_peak_windows", {
+      from: "2026-08-01",
+      to: "2026-08-31",
+      branchId: "b1",
+      minCycles: 1
+    });
+
+    expect(result.isError).toBeUndefined();
+    const envelope = JSON.parse(contentText(result));
+    expect(envelope.meta.method).toBe("offpeak_percentile");
+    expect(envelope.data[0]).toMatchObject({ rank: 1, hourOfDay: 21, cycles: 3 });
+  });
+
   it("calls get_off_peak_windows and returns ranked local-hour buckets", async () => {
     const clickhouse = fakeClickhouse([
       {

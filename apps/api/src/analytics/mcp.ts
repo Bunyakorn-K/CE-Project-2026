@@ -36,11 +36,20 @@ export type McpTransport = {
 };
 
 const accessScopeSchema = z.object({
-  branchIds: z.array(z.string()),
-  canViewRevenue: z.boolean().optional()
+  branchIds: z
+    .array(z.string())
+    .describe("Branch ids the caller may query, or ['*'] for tenant-wide (owner scope). Must include the requested branchId."),
+  canViewRevenue: z.boolean().optional().describe("True for owner/manager callers. Required only by revenue tools.")
 });
 
 type AccessScope = z.infer<typeof accessScopeSchema>;
+
+// Direct MCP callers (e.g. LibreChat agents, AI console) may omit accessScope;
+// the MCP bearer token is the trust boundary, so a missing scope defaults to
+// tenant-wide — exactly what a token holder could declare anyway. The LINE bot
+// always passes an explicit scope derived from server-resolved grants, which is
+// still enforced when present.
+const TENANT_WIDE_SCOPE: AccessScope = { branchIds: ["*"], canViewRevenue: true };
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -55,12 +64,13 @@ function errorResult(code: string, message: string): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify({ error: { code, message } }) }], isError: true };
 }
 
-function scopeErrorResult(branchId: string, scope: AccessScope, requiresRevenue: boolean): ToolResult | null {
-  const tenantWide = scope.branchIds.includes("*");
-  if (!tenantWide && !scope.branchIds.includes(branchId)) {
+function scopeErrorResult(branchId: string, scope: AccessScope | undefined, requiresRevenue: boolean): ToolResult | null {
+  const effective: AccessScope = scope ?? TENANT_WIDE_SCOPE;
+  const tenantWide = effective.branchIds.includes("*");
+  if (!tenantWide && !effective.branchIds.includes(branchId)) {
     return errorResult("branch_out_of_scope", "The requested branch is outside the caller's scope");
   }
-  if (requiresRevenue && !scope.canViewRevenue) {
+  if (requiresRevenue && !effective.canViewRevenue) {
     return errorResult("revenue_forbidden", "Revenue data requires an owner or manager scope");
   }
   return null;
@@ -88,7 +98,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema
+        accessScope: accessScopeSchema.optional()
       }
     },
     async (args) => {
@@ -115,7 +125,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema
+        accessScope: accessScopeSchema.optional()
       }
     },
     async (args) => {
@@ -141,7 +151,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema
+        accessScope: accessScopeSchema.optional()
       }
     },
     async (args) => {
@@ -168,7 +178,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
         machineId: z.string().optional().describe("Optional machine id filter"),
-        accessScope: accessScopeSchema
+        accessScope: accessScopeSchema.optional()
       }
     },
     async (args) => {
@@ -201,7 +211,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema
+        accessScope: accessScopeSchema.optional()
       }
     },
     async (args) => {
@@ -238,7 +248,7 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema,
+        accessScope: accessScopeSchema.optional(),
         minCycles: z.number().int().min(1).optional().describe("Minimum paid cycles for a bucket to be ranked (default 10)"),
         percentile: z.number().int().min(1).max(99).optional().describe("Bottom percentage of eligible buckets to return (default 25)")
       }
