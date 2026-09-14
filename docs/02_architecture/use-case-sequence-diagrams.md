@@ -1,10 +1,10 @@
 # LaundroTwin MVP — Use Case and Sequence Diagrams
 
 Scope: the **current implementation** (read-only LINE LIFF reporting surface,
-RBAC, ClickHouse analytics, MCP assistant, LINE bot, alert engine). The target
-design's activity flows live in `data-and-activity-diagrams.md`; where this
-document and that one differ, this document describes what the code actually
-does today.
+RBAC, ClickHouse analytics, MCP assistant, LINE bot, alert engine, AI console,
+weather collector). The target design's activity flows live in
+`data-and-activity-diagrams.md`; where this document and that one differ, this
+document describes what the code actually does today.
 
 ## Actors
 
@@ -29,6 +29,8 @@ flowchart LR
         A4["Approve / revoke access grants (F-06, US-11)"]
         A5["Trigger alert sweep (F-10)"]
         A6["View & acknowledge alerts (F-10)"]
+        A7["AI console: chat + model settings (F-11, /admin/ai)"]
+        A8["Weather demand analysis (F-12)"]
     end
 
     subgraph MGR_UC["Branch Manager"]
@@ -51,12 +53,17 @@ flowchart LR
         S1["ETL: IRIS → ClickHouse (F-05)"]
         S2["Alert engine sweep → LINE push (F-10)"]
         S3["Webhook: LINE bot conversation (F-11)"]
+        S4["MCP server: 5 allow-listed analytics tools (F-11)"]
+        S5["Weather collector: TMD → fact_weather_sample (F-12)"]
     end
 
     A1 --- A2
     A3 --> S3
+    A3 --> S4
     A5 --> S2
     A6 --> S2
+    A7 --> S4
+    A8 --> S5
     M1 --- M2
     M3 --> S2
     T2 --> S2
@@ -101,6 +108,17 @@ flowchart LR
 ### UC-06: Request access from LIFF (F-06, US-11)
 - **Primary actor:** LINE User (LIFF)
 - **Flow:** Unknown user exchanges LINE ID token → `liff_access_request` pending row created → owner approves (UC-04) → `liff_identity` + grant created; subsequent sign-in resolves a real principal.
+
+### UC-07: AI console — chat + model settings (F-11, /admin/ai)
+- **Primary actor:** Owner only (role gate `owner`)
+- **Flow:** Owner opens `/admin/ai` → gateway settings (base URL/model) loaded from `ai_settings` DB row (API key mask `hasApiKey` only) → chat streams via Vercel AI SDK (`createOpenAICompatible` + `streamText`) with MCP analytics tools as `dynamicTool`s → owner can pick a model from the auto-discovered list.
+- **Postconditions:** Gateway key never leaves the server; only streaming responses used (Bifrost/KiosAPI non-stream fails); step-count bound on agentic loops.
+- **Failure:** missing gateway config → surfaced setup prompt; upstream 4xx/5xx → error bubble in console.
+
+### UC-08: Weather demand analysis (F-12)
+- **Primary actor:** Owner, Branch Manager (scoped)
+- **Flow:** TMD collector loop (`laundrytwin-weather-1`, every 5 min) writes `fact_weather_sample` for branches in `dim_branch_location` × active `dim_branch` → MCP tool `get_weather_usage_correlation` (period + branch params, RBAC-scoped) returns `{correlation, sample_size, period, caveats}`.
+- **Constraints:** correlation only, never causation/forecast (R12); per-province series currently identical for both provinces (TMD limitation — one effective series).
 
 ## Sequence Diagrams
 
@@ -230,6 +248,37 @@ sequenceDiagram
     A->>D: create liff_identity + access_grant; audit access_request.approved
     A-->>O: 200 {user}
 ```
+
+### SD-5: MCP analytics tool call (agent / AI console)
+
+```mermaid
+sequenceDiagram
+    actor U as Owner
+    participant C as LibreChat agent / AI console
+    participant M as LaundroTwin MCP server (api :8787 /mcp)
+    participant A as access scope (RBAC)
+    participant CH as ClickHouse
+
+    U->>C: "show daily cycles for branch b1"
+    C->>M: initialize (Bearer MCP_ACCESS_TOKEN) → tools/list
+    M-->>C: 5 tools (get_cycles_daily, get_revenue_daily, ...)
+    C->>M: tools/call get_cycles_daily_mcp_laundrytwin-analytics {branchId, from, to, accessScope}
+    M->>A: resolve scope (branchIds, canViewRevenue)
+    alt out-of-scope branch
+        A-->>M: branch_out_of_scope (no query)
+    else revenue without grant
+        A-->>M: revenue_forbidden
+    else granted
+        M->>CH: allow-listed analytics query
+        CH-->>M: aggregates (integer satang, UTC)
+        M-->>C: envelope {meta: dataSource/range, data}
+    end
+    C-->>U: answer composed from tool result only
+```
+
+> Verified end-to-end 2026-09-14 from LibreChat agents: the model called
+> `get_cycles_daily_mcp_laundrytwin-analytics` with real args and answered
+> from the tool result (see `ops-verification-2026-09-14-librechat-tools.md`).
 
 ## Maintenance rules
 

@@ -14,8 +14,8 @@ pnpm check    # tsc across all packages
 pnpm build    # production builds
 ```
 
-Current state (2026-09-06): 109 automated tests green
-(api 84 / web 2 / etl 23), `check` and `build` pass.
+Current state (2026-09-14): 124 automated tests green
+(api 87 / web 2 / etl 35), `check` and `build` pass.
 
 ---
 
@@ -183,10 +183,11 @@ idempotent batch load, watermark advance after commit, null preservation).
 | `apps/api/src/iris-read-client.test.ts` | + | IRIS contract + errors |
 | `apps/api/src/reporting.test.ts` | + | revenue redaction |
 | `apps/api/src/bot/bot.test.ts` | 9 | identity, conversation, webhook |
-| `apps/etl/test/*.test.ts` | 23 | pipeline |
+| `apps/api/src/analytics/mcp.test.ts` + `weather.test.ts` | + | MCP allow-list/auth/scope, weather correlation |
+| `apps/etl/test/*.test.ts` | 35 | pipeline (run/schema/transform/watermark/weather) |
 | `apps/web/src/dashboard-metrics.test.ts` | 2 | web formatting |
 
-Total: **109 tests green** (`pnpm test`), `pnpm check` + `pnpm build` clean.
+Total: **124 tests green** (`pnpm test`), `pnpm check` + `pnpm build` clean.
 
 ## Maintenance rules
 

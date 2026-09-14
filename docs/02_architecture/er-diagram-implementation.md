@@ -134,6 +134,8 @@ erDiagram
     DIM_MACHINE ||--o{ FACT_MACHINE_USAGE : "runs"
     DIM_BRANCH ||--o{ FACT_TEMPERATURE_SAMPLE : "scopes"
     DIM_MACHINE ||--o{ FACT_TEMPERATURE_SAMPLE : "emits"
+    DIM_BRANCH ||--o| DIM_BRANCH_LOCATION : "weather source location"
+    DIM_BRANCH ||--o{ FACT_WEATHER_SAMPLE : "scopes"
 
     DIM_BRANCH {
         UUID tenant_id
@@ -191,6 +193,23 @@ erDiagram
         String phase
         DateTime64 extracted_at
     }
+    DIM_BRANCH_LOCATION {
+        UUID tenant_id
+        UUID branch_id
+        String province
+        Float64 lat
+        Float64 lon
+    }
+    FACT_WEATHER_SAMPLE {
+        DateTime64 timestamp
+        UUID tenant_id
+        UUID branch_id
+        String province
+        Nullable Float32 weather_temp_c
+        Nullable Float32 weather_humidity_pct
+        Nullable Float32 weather_rain_mm
+        Nullable Int32 weather_cond
+    }
 ```
 
 Notes:
@@ -198,6 +217,13 @@ Notes:
 - `dim_*` tables are `ReplacingMergeTree` versioned by `source_updated_at`;
   `fact_machine_usage` is also `ReplacingMergeTree` (idempotent re-insert),
   `fact_temperature_sample` is `MergeTree` partitioned by month.
+- `fact_weather_sample` (F-12) is `ReplacingMergeTree` keyed by
+  `(province, timestamp)` — a re-run converges to one row per observation;
+  its nullable weather fields stay NULL, never fabricated.
+- `dim_branch_location` is **ops-provisioned** (province/lat/lon per branch)
+  and NOT written by the ETL — `dim_branch` itself is IRIS-mirrored and any
+  manual column there gets overwritten with NULL on the next sync. The weather
+  collector joins `dim_branch_location` × `dim_branch active=1` for targets.
 - Nulls are preserved (`Nullable(...)`); the ETL never fabricates a value.
 - `amount_satang` stays integer satang until presentation (engineering
   invariant).
