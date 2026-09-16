@@ -1,5 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Outlet } from "@tanstack/react-router";
+import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import type { AuthUser } from "../lib/atoms/auth";
@@ -7,6 +6,25 @@ import { authAtom } from "../lib/atoms/auth";
 import { apiUrl } from "../lib/api/client";
 
 export const Route = createFileRoute("/_authenticated")({
+  // Auth guard lives in beforeLoad so the redirect happens in the router
+  // before anything renders. A hard window.location reload (the old approach)
+  // would discard React state and re-fire the login page's LIFF effects on
+  // every bounce, looping with the LINE redirect flow.
+  beforeLoad: async ({ location }) => {
+    let authenticated = false;
+    try {
+      const res = await fetch(apiUrl("/api/me"), { credentials: "include" });
+      authenticated = res.ok;
+    } catch {
+      authenticated = false;
+    }
+    if (!authenticated) {
+      throw redirect({
+        to: "/login",
+        search: { redirect: location.pathname + location.search }
+      });
+    }
+  },
   component: AuthenticatedLayout
 });
 
@@ -41,8 +59,10 @@ function AuthenticatedLayout() {
   }
 
   if (user === null) {
-    const path = window.location.pathname + window.location.search;
-    window.location.href = `/login?redirect=${encodeURIComponent(path)}`;
+    // beforeLoad already redirected here; this branch is only reachable if
+    // the session expired after mount. Reload once so the guard re-runs
+    // instead of bouncing forever inside the router.
+    window.location.reload();
     return null;
   }
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import { apiUrl } from "../lib/api/client";
 import { authAtom } from "../lib/atoms/auth";
-import { connectLiff, initLiff } from "../liff";
+import { connectLiff, initLiff, resetLiffLoginGuard } from "../liff";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage
@@ -47,6 +47,8 @@ function LoginPage() {
     }
     setLineLoading(true);
     setError(null);
+    // A manual press always retries, even if an earlier auto-resume gave up.
+    resetLiffLoginGuard();
     try {
       const identity = await connectLiff(liffId);
       if (!identity) return;
@@ -77,6 +79,9 @@ function LoginPage() {
 
   // Auto-resume: when LINE redirects back after liff.login() the page reloads.
   // If a LINE session already exists, complete the exchange without another press.
+  // Guarded: exchange only runs once per page, and connectLiff itself only sends
+  // the user to LINE once per session, so a cancelled/failed LINE login cannot
+  // loop the page forever.
   useEffect(() => {
     const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
     if (!liffId) return;
