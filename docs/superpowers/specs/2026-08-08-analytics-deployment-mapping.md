@@ -4,13 +4,21 @@
 
 ## Verified operating boundaries (2026-08-14)
 
-- `clickhouse.laundrytwin.duckdns.org` is an Authentik-protected Caddy route to
-  the ClickHouse HTTP interface on the analytics VM. It is not an
-  unauthenticated public database endpoint. Do not bypass Authentik, expose a
-  second ClickHouse port, or bind the HTTP port to localhost while Caddy is on
-  the Pi; that breaks the upstream route with HTTP 502.
-- Caddy removes the non-ClickHouse `fbclid` query parameter before proxying.
-  Do not configure arbitrary URL parameters as ClickHouse settings.
+- `clickhouse.laundrytwin.duckdns.org` is an Authentik-free Caddy route to the
+  ClickHouse HTTP interface on the analytics VM (changed 2026-09-18, see
+  `clickhouse-reader.xml` in this directory). Access control is Caddy
+  `basic_auth` plus a least-privilege ClickHouse `reader` account; the route
+  must never point at the `admin` credential, which can DROP tables and read
+  `system.*`. Keep `uri query -fbclid` — Caddy strips that non-ClickHouse
+  parameter before proxying, and arbitrary URL parameters must not be treated
+  as ClickHouse settings.
+- The compose port for ClickHouse stays `8123:8123` (all interfaces) for a
+  reason: the API container (`laundrytwin_default`, gateway `172.18.0.1`) and
+  the ETL/weather services (`network_mode: host`) reach ClickHouse through the
+  host's bridge/loopback addresses. A `127.0.0.1:8123` bind breaks both —
+  verified 2026-09-18. Docker Compose rejects CIDR in `ports:` (only plain IPs
+  are allowed), so network scoping must be done in `clickhouse-reader.xml`
+  (`<networks>`), not in the compose port binding.
 - `fact_machine_usage` contains one synthetic smoke-test row only. It is not
   IRIS production data, pipeline-freshness evidence, or representative
   dashboard validation data. Machine-event and temperature-sample fact tables

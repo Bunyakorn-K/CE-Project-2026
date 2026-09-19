@@ -1,0 +1,39 @@
+<clickhouse>
+  <!-- Defines the privileged `admin` account with a restricted network scope.
+
+      This file is the ONLY definition of `admin`. The docker image entrypoint
+      would otherwise write users.d/default-user.xml declaring admin with
+      <networks><ip>::/0</ip></networks> (internet-wide, full privileges).
+      CLICKHOUSE_SKIP_USER_SETUP: 1 in compose.yaml suppresses that, so this
+      file owns the user completely. Never let two users.d files define the
+      same user — the merge silently breaks and every login fails with
+      Code: 516 AUTHENTICATION_FAILED.
+
+      The password is read from the environment (from_env) so no secret is
+      stored in this repository; compose.yaml supplies CLICKHOUSE_PASSWORD.
+
+      Networks allowed:
+        127.0.0.1      host-networked services (ETL, weather ingest) + local ops
+        172.16.0.0/12  docker bridges for API/Superset/Airflow, plus the
+                       172.30.x ZeroTier overlay used for ops access
+
+      The public route (Pi Caddy -> VM) arrives as 10.10.0.1, the VM LAN
+      gateway, which is NOT in this list — so admin cannot be reached over the
+      public ClickHouse endpoint. The `reader` account (SELECT-only) is the one
+      the API uses and stays open. -->
+  <users>
+    <default remove="remove">
+    </default>
+
+    <admin>
+      <profile>default</profile>
+      <networks>
+        <ip>127.0.0.1</ip>
+        <ip>172.16.0.0/12</ip>
+      </networks>
+      <password from_env="CLICKHOUSE_PASSWORD"/>
+      <quota>default</quota>
+      <access_management>1</access_management>
+    </admin>
+  </users>
+</clickhouse>

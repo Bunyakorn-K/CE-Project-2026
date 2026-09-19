@@ -116,6 +116,12 @@ services:
   clickhouse:
     environment:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      # Stop the image entrypoint from writing users.d/default-user.xml, which
+      # defines `admin` with <networks><ip>::/0</ip></networks> (internet-wide).
+      # admin is instead created by clickhouse-admin-networks.xml below, scoped
+      # to 127.0.0.1 + 172.16.0.0/12. Two users.d files defining the same user
+      # makes ClickHouse fail auth with 516, so there must be exactly one.
+      CLICKHOUSE_SKIP_USER_SETUP: 1
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       CLICKHOUSE_USER: admin
     healthcheck:
@@ -140,6 +146,8 @@ services:
     - clickhouse-data:/var/lib/clickhouse
     - ./clickhouse-listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
     - ./clickhouse-alias-settings.xml:/etc/clickhouse-server/users.d/alias-settings.xml:ro
+    - ./clickhouse-admin-networks.xml:/etc/clickhouse-server/users.d/admin-networks.xml:ro
+    - ./clickhouse-reader.xml:/etc/clickhouse-server/users.d/reader.xml:ro
   mcp-inspector:
     command: npx -y @modelcontextprotocol/inspector
     environment:
@@ -149,7 +157,7 @@ services:
       HOST: 0.0.0.0
     image: node:24-bookworm-slim
     ports:
-    - 6274:6274
+    - 127.0.0.1:6274:6274
     restart: unless-stopped
   redis:
     command: redis-server --save 60 1 --maxmemory 256mb --maxmemory-policy allkeys-lru

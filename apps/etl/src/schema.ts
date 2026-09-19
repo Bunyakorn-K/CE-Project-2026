@@ -35,12 +35,20 @@ const DIM_BRANCH_COLUMNS: Column[] = [
 // 2026-09-10). NOT part of the IRIS-synced dim_branch: the ETL transform
 // emits only what the source provides (province/lat/lon are provisioned
 // here manually, never guessed), so this table is written by ops, not ETL.
+//
+// `version` is a monotonically increasing revision counter (ops bumps it when
+// it re-provisions a row). It must NOT be `province`: ReplacingMergeTree
+// requires the version column to be an integer or Date/DateTime, and a String
+// version column makes the CREATE fail with Code 169 BAD_TYPE_OF_FIELD, which
+// aborts runEtl before any fact table exists (see the ETL startup order in
+// ./run.ts: every CREATE runs first, then the load).
 const DIM_BRANCH_LOCATION_COLUMNS: Column[] = [
   { name: "tenant_id", ch: "UUID" },
   { name: "branch_id", ch: "UUID" },
   { name: "province", ch: "String" },
   { name: "lat", ch: "Float64" },
   { name: "lon", ch: "Float64" },
+  { name: "version", ch: "UInt32" },
 ];
 
 const DIM_MACHINE_COLUMNS: Column[] = [
@@ -125,7 +133,7 @@ function ddl(
 
 export const CREATE_TABLES: string[] = [
   ddl("dim_branch", DIM_BRANCH_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "source_updated_at"),
-  ddl("dim_branch_location", DIM_BRANCH_LOCATION_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "province"),
+  ddl("dim_branch_location", DIM_BRANCH_LOCATION_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "version"),
   ddl("dim_machine", DIM_MACHINE_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id, machine_id)", undefined, "source_updated_at"),
   ddl(
     "fact_machine_usage",

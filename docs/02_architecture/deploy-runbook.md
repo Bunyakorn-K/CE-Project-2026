@@ -57,6 +57,7 @@ Pi's duckdns updater, not in this repo).
 | :-- | :------------ | :---- |
 | `https://laundrytwin.duckdns.org` | web :8080 | SPA + `location /api/` → api:8787 (in-stack nginx, `deploy/nginx.conf`); `location = /webhooks/line` → api |
 | `https://superset.laundrytwin.duckdns.org` | superset :8088 | **Authentik SSO in front** — Caddy → Authentik outpost (`auth.notnotik.duckdns.org/application/o/authorize/...`) → superset. Only members of the `final project member` group can sign in. |
+| `https://clickhouse.laundrytwin.duckdns.org` | analytics-clickhouse :8123 | **Authentik removed 2026-09-18.** Caddy `basic_auth` (`reader`) + least-privilege ClickHouse `reader` user (SELECT on `laundrytwin_analytics` only). Never point this route at the `admin` credential. |
 | `https://airflow.laundrytwin.duckdns.org` | airflow-webserver :8081 | Airflow 3.x login (`admin` + `AIRFLOW_ADMIN_PASSWORD` from `/opt/analytics/.env`) |
 | `https://mcp.laundrytwin.duckdns.org` | mcp-inspector :6274 | MCP Inspector; `ALLOWED_ORIGINS` already set to this origin in compose |
 | `https://chat.laundrytwin.duckdns.org` | LibreChat :3080 | LibreChat UI; users/passwords in MongoDB db `LibreChat` (ops recipe: `references/librechat-ops.md`) |
@@ -100,6 +101,35 @@ registry.laundrytwin.duckdns.org {
 
 If Authentik is in front of Superset, replace the superset block with the
 outpost's own proxy settings (Authentik outpost normally handles it).
+
+The `clickhouse.laundrytwin.duckdns.org` block is intentionally NOT
+Authentik-protected (changed 2026-09-18). Reference shape:
+
+```caddyfile
+clickhouse.laundrytwin.duckdns.org {
+    import hide-server
+    uri query -fbclid
+    basic_auth {
+        reader <bcrypt hash, kept only in this file on the Pi>
+    }
+    reverse_proxy 10.10.0.117:8123
+}
+```
+
+The bcrypt hash and the matching ClickHouse plaintext live only on the Pi
+(`basic_auth`) and VM 117 (`/opt/analytics/clickhouse-reader.local.xml`,
+mode 600, git-ignored). The placeholder version in this repo is
+`deploy/analytics/clickhouse-reader.xml`.
+
+The privileged `admin` account is network-scoped, not password-only:
+`deploy/analytics/clickhouse-admin-networks.xml` mounts into
+`users.d/admin-networks.xml` and allows only `127.0.0.1` (host-networked
+ETL/weather) and `172.16.0.0/12` (docker bridges + ZeroTier overlay).
+`CLICKHOUSE_SKIP_USER_SETUP: 1` in `compose.yaml` stops the image entrypoint
+from writing its own `admin` with `<ip>::/0</ip>` — two `users.d` files
+defining the same user make ClickHouse fail every login with Code 516, so
+`admin` must have exactly one definition. Public traffic arrives as
+`10.10.0.1` (the VM LAN gateway) and is therefore denied; `reader` stays open.
 
 ## Operational notes
 

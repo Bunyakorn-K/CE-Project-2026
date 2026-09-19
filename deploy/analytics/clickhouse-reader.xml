@@ -1,0 +1,42 @@
+<clickhouse>
+    <!-- Read-only warehouse reader for external SDKs and notebooks.
+
+         CREATE: 2026-09-18. The `admin` user (created by the compose env,
+         /etc/clickhouse-server/users.d/default-user.xml) is the only account
+         with access_management; it is used by the ETL, API, Airflow and
+         Superset, all of which connect from the same host. This file adds a
+         least-privilege reader so ad-hoc ClickHouse SDK / Play UI access
+         never needs the admin credential, which can DROP tables and read
+         system.* (query_log, parts, disks, users).
+
+         Verified 2026-09-18 on VM 117 (ClickHouse 26.3.26):
+           - SELECT on laundrytwin_analytics.*: 200 OK
+           - SELECT on system.users / system.query_log: ACCESS_DENIED (497)
+           - CREATE TABLE / DROP TABLE / INSERT: ACCESS_DENIED (497)
+           - CREATE USER: ACCESS_DENIED (497)
+           - tables in other databases: UNKNOWN_TABLE (no grant)
+
+         Scope:
+           - SELECT only, on the analytics database (system.* stays blocked)
+           - no access_management, no DDL/DML
+           - networks left open here (::/0): the real network control is the
+             compose port binding + the Caddy/Authentik route in front of it.
+             Add <ip> entries below to restrict further if you widen the port.
+
+         Rotate with openssl rand -base64 24; update this file, the clients,
+         and `SYSTEM RELOAD CONFIG` (or recreate the container). -->
+    <users>
+        <reader>
+            <profile>default</profile>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <password>REPLACE_WITH_ROTATED_PASSWORD</password>
+            <quota>default</quota>
+            <access_management>0</access_management>
+            <grants>
+                <query>GRANT SELECT ON laundrytwin_analytics.*</query>
+            </grants>
+        </reader>
+    </users>
+</clickhouse>

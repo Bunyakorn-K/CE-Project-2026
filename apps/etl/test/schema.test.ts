@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TABLE_COLUMNS } from "../src/schema.js";
+import { CREATE_TABLES, TABLE_COLUMNS } from "../src/schema.js";
 import {
   toDimBranch,
   toDimMachine,
@@ -107,5 +107,22 @@ describe("schema alignment", () => {
   it("fact_temperature_sample transform output matches the DDL columns", () => {
     const row: FactTemperatureSampleRow = toFactTemperatureSample(tempRow(), TO);
     expect(keys(row)).toEqual([...TABLE_COLUMNS.fact_temperature_sample].sort());
+  });
+});
+
+// ReplacingMergeTree rejects a String version column with Code 169
+// BAD_TYPE_OF_FIELD. That error aborts runEtl at CREATE time, before any fact
+// table exists — the whole warehouse stays empty, not just one table.
+describe("ReplacingMergeTree version columns", () => {
+  it("every version column is an integer or DateTime, never a String", () => {
+    // DDL shape: CREATE TABLE IF NOT EXISTS t (\n ... \n) ENGINE = ReplacingMergeTree(ver)\n PARTITION BY p\n ORDER BY o
+    const versionPattern = /ENGINE = ReplacingMergeTree\(([^)]+)\)/;
+    for (const ddl of CREATE_TABLES) {
+      const version = versionPattern.exec(ddl)?.[1];
+      if (!version) continue; // MergeTree, no version
+      const declared = new RegExp(`\\s${version}\\s+([A-Za-z0-9_(]+)`).exec(ddl)?.[1];
+      expect(declared, `${version} should be declared in the DDL`).toBeTruthy();
+      expect(declared).toMatch(/^(UInt|Int|Date|DateTime)/);
+    }
   });
 });
