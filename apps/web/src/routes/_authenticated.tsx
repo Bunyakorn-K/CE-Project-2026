@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_authenticated")({
   // before anything renders. A hard window.location reload (the old approach)
   // would discard React state and re-fire the login page's LIFF effects on
   // every bounce, looping with the LINE redirect flow.
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async () => {
     let authenticated = false;
     try {
       const res = await fetch(apiUrl("/api/me"), { credentials: "include" });
@@ -19,10 +19,9 @@ export const Route = createFileRoute("/_authenticated")({
       authenticated = false;
     }
     if (!authenticated) {
-      throw redirect({
-        to: "/login",
-        search: { redirect: location.pathname + location.search }
-      });
+      // No search params: /login has no validateSearch schema, so passing an
+      // object throws "Cannot convert object to primitive value".
+      throw redirect({ to: "/login" });
     }
   },
   component: AuthenticatedLayout
