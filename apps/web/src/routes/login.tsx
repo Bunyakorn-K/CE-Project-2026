@@ -62,6 +62,7 @@ function LoginPage() {
         const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
         throw new Error(data?.error?.message ?? "LINE sign-in failed");
       }
+      resetLiffLoginGuard();
       await fetchMeAndSet(setUser);
     } catch (err) {
       setError(err instanceof Error ? err.message : "LINE sign-in failed");
@@ -103,6 +104,7 @@ function LoginPage() {
         setError(data?.error?.message ?? "LINE sign-in failed");
         return;
       }
+      resetLiffLoginGuard();
       await fetchMeAndSet(setUser);
     })();
     return () => {
