@@ -184,10 +184,10 @@ idempotent batch load, watermark advance after commit, null preservation).
 | `apps/api/src/reporting.test.ts` | + | revenue redaction |
 | `apps/api/src/bot/bot.test.ts` | 9 | identity, conversation, webhook |
 | `apps/api/src/analytics/mcp.test.ts` + `weather.test.ts` | + | MCP allow-list/auth/scope, weather correlation |
-| `apps/etl/test/*.test.ts` | 35 | pipeline (run/schema/transform/watermark/weather) |
+| `apps/etl/test/*.test.ts` | 37 | pipeline (run/schema/transform/watermark/weather) |
 | `apps/web/src/dashboard-metrics.test.ts` | 2 | web formatting |
 
-Total: **124 tests green** (`pnpm test`), `pnpm check` + `pnpm build` clean.
+Total: **126 tests green** (`pnpm test`), `pnpm check` + `pnpm build` clean.
 
 ## Maintenance rules
 

@@ -45,6 +45,8 @@ export type WeatherRow = {
   tenant_id: string;
   branch_id: string;
   province: string | null;
+  sub_district: string | null;
+  district: string | null;
   weather_temp_c: number | null;
   weather_humidity_pct: number | null;
   weather_rain_mm: number | null;
@@ -117,14 +119,16 @@ export function normalizeForecast(
   return location.forecasts.map((point) => {
     const tsUtc = parseTmdTimestamp(point.time, nowDate);
     return {
-      timestamp: toClickHouseUtc(tsUtc),
-      tenant_id: branch.tenant_id,
-      branch_id: branch.branch_id,
-      province,
-      weather_temp_c: point.data?.tc ?? null,
-      weather_humidity_pct: point.data?.rh ?? null,
-      weather_rain_mm: point.data?.rain ?? null,
-      weather_cond: point.data?.cond ?? null
+    timestamp: toClickHouseUtc(tsUtc),
+    tenant_id: branch.tenant_id,
+    branch_id: branch.branch_id,
+    province,
+    sub_district: null,
+    district: null,
+    weather_temp_c: point.data?.tc ?? null,
+    weather_humidity_pct: point.data?.rh ?? null,
+    weather_rain_mm: point.data?.rain ?? null,
+    weather_cond: point.data?.cond ?? null
     };
   });
 }

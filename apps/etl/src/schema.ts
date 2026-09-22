@@ -33,8 +33,9 @@ const DIM_BRANCH_COLUMNS: Column[] = [
 
 // Weather source location per branch (F-12, per-branch collection since
 // 2026-09-10). NOT part of the IRIS-synced dim_branch: the ETL transform
-// emits only what the source provides (province/lat/lon are provisioned
-// here manually, never guessed), so this table is written by ops, not ETL.
+// emits only what the source provides (province/lat/lon/sub_district
+// are provisioned here manually, never guessed), so this table is
+// written by ops, not ETL.
 //
 // `version` is a monotonically increasing revision counter (ops bumps it when
 // it re-provisions a row). It must NOT be `province`: ReplacingMergeTree
@@ -46,6 +47,8 @@ const DIM_BRANCH_LOCATION_COLUMNS: Column[] = [
   { name: "tenant_id", ch: "UUID" },
   { name: "branch_id", ch: "UUID" },
   { name: "province", ch: "String" },
+  { name: "sub_district", ch: "Nullable(String)" },
+  { name: "district", ch: "Nullable(String)" },
   { name: "lat", ch: "Float64" },
   { name: "lon", ch: "Float64" },
   { name: "version", ch: "UInt32" },
@@ -106,11 +109,14 @@ const FACT_TEMPERATURE_COLUMNS: Column[] = [
 // observation timestamp so a re-run converges to one row per (branch, ts).
 // tenant_id/branch_id link the observation to a registered branch (dim_branch);
 // province is retained as the source-location label returned by TMD.
+// sub_district and district are reserved for future per-position data (nullable).
 const FACT_WEATHER_COLUMNS: Column[] = [
   { name: "timestamp", ch: "DateTime64(3)" },
   { name: "tenant_id", ch: "UUID" },
   { name: "branch_id", ch: "UUID" },
   { name: "province", ch: "Nullable(String)" },
+  { name: "sub_district", ch: "Nullable(String)" },
+  { name: "district", ch: "Nullable(String)" },
   { name: "weather_temp_c", ch: "Nullable(Float32)" },
   { name: "weather_humidity_pct", ch: "Nullable(Float32)" },
   { name: "weather_rain_mm", ch: "Nullable(Float32)" },

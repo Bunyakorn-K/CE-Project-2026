@@ -48,9 +48,25 @@ Read the relevant project documents before changing code:
 - `docs/04_traceability/RTM_matrix.md`: requirement-to-function traceability.
 - `docs/integration/iris-laundrytwin-read-api.md`: current optional IRIS read-only
   integration. It does not override the CE requirements or data contracts.
+- `docs/06_ml/ml-training-data-guide.md`: ML feature engineering schema,
+  training data pipeline, and model training plan (Phase 2).
 
 Historical plans under `docs/superpowers/` are implementation evidence, not
 current product authority.
+
+## Phase 2 status
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| F-12 Weather (TMD collector) | Done (2026-09-10) | `apps/etl/src/weather.ts`, `fact_weather_sample` |
+| ML off-peak baseline (#35) | Done (2026-09-14) | `get_off_peak_windows` MCP tool |
+| ML training data guide | Added (2026-09-22) | `docs/06_ml/ml-training-data-guide.md` |
+| Superset bootstrap (#42) | Done (2026-09-13) | `deploy/analytics/bootstrap-superset.sh` |
+| Airflow Postgres (#42) | Done (2026-09-13) | `docs/04_traceability/ops-verification-2026-09-13-airflow-superset.md` |
+
+Data volume is ~4.8k usage rows (~1 week). Sufficient for baseline only;
+≥ 3 months needed for Prophet/SARIMA/GBM candidates. See
+`docs/06_ml/ml-training-data-guide.md` §5 for data requirements.
 
 ## Strict physical and safety boundaries
 
@@ -80,14 +96,34 @@ current product authority.
 ```text
 apps/api/   Hono API, Better Auth, local SQLite, RBAC, demo/read clients
 apps/web/   React/Vite mobile web and LINE LIFF interface
-deploy/     Docker and Nginx deployment files
+apps/etl/   Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather) + TMD weather collector
+deploy/     Docker and Nginx deployment files (analytics compose: ClickHouse, Superset, Airflow, Postgres, Redis)
 ```
 
 The current LaundryTwin path is:
 
 ```text
 LINE LIFF/browser -> React web -> Hono API + SQLite -> optional IRIS read API
+                                    |
+                                    v
+                            ClickHouse analytics warehouse
+                            (fact_machine_usage, fact_weather_sample,
+                             fact_temperature_sample, dim_branch_location)
+                                    |
+                                    v
+                            MCP tools (get_off_peak_windows,
+                            get_weather_usage_correlation)
 ```
+
+The weather collector (`laundrytwin-weather-1` on VM 117) runs
+hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts
+into `fact_weather_sample` tagged by `tenant_id/branch_id`.
+Location targets come from `dim_branch_location` JOIN `dim_branch active=1`.
+Location schema includes province, sub_district, district (currently NULL).
+
+The ML baseline (`get_off_peak_windows`) uses a percentile heuristic
+over `fact_machine_usage`. The complete feature engineering guide for
+training models is in `docs/06_ml/ml-training-data-guide.md`.
 
 The browser must never receive upstream service credentials. Demo mode must
 remain explicit and visibly labeled; it must never be an automatic fallback

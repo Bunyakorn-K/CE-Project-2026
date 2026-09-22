@@ -45,7 +45,7 @@ CMD ["sh", "-c", "while true; do node --import tsx src/index.ts; sleep 300; done
 # Weather collector shares the runtime stage above; it must come BEFORE the etl
 # stage so that a bare `docker build` (no --target) yields the etl command.
 FROM runtime AS weather
-CMD ["sh", "-c", "while true; do node --import tsx src/weather-run.ts; sleep 300; done"]
+CMD ["sh", "-c", "while true; do node --import tsx src/weather-run.ts; sleep 3600; done"]
 
 # etl is the default target — keep it last. See the header note.
 FROM runtime AS etl

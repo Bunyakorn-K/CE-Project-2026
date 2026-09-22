@@ -33,6 +33,8 @@ describe("normalizeForecast", () => {
       tenant_id: BRANCH.tenant_id,
       branch_id: BRANCH.branch_id,
       province: "เชียงใหม่",
+      sub_district: null,
+      district: null,
       weather_temp_c: 33.67,
       weather_humidity_pct: 49.14,
       weather_rain_mm: 0,
@@ -53,6 +55,11 @@ describe("normalizeForecast", () => {
   it("returns no rows when the response has no forecasts", () => {
     expect(normalizeForecast({ WeatherForecasts: [] }, BRANCH)).toEqual([]);
     expect(normalizeForecast({}, BRANCH)).toEqual([]);
+  });
+
+  it("sets sub_district and district to null — never fabricated", () => {
+    const rows = normalizeForecast(SAMPLE_RESPONSE, BRANCH);
+    expect(rows[0]).toMatchObject({ sub_district: null, district: null });
   });
 
   it("falls back to the provided now() time (UTC) when a forecast point has no time", () => {
@@ -151,7 +158,7 @@ describe("runWeatherCollector", () => {
     expect(insert).toHaveBeenCalledTimes(1);
     expect(insert.mock.calls[0][0]).toBe("fact_weather_sample");
     const insertedRows = insert.mock.calls[0][1] as Array<Record<string, unknown>>;
-    expect(insertedRows[0]).toMatchObject({ tenant_id: BRANCH.tenant_id, branch_id: BRANCH.branch_id, province: "เชียงใหม่" });
+    expect(insertedRows[0]).toMatchObject({ tenant_id: BRANCH.tenant_id, branch_id: BRANCH.branch_id, province: "เชียงใหม่", sub_district: null, district: null });
   });
 
   it("skips insert when a branch returns no forecasts", async () => {

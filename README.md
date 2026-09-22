@@ -29,21 +29,23 @@ Read these documents before changing behavior or data models:
 
 ## Current implementation status
 
-| Area | Status |
-| --- | --- |
-| CE requirements and data-contract documentation | Present |
-| LINE LIFF mobile reporting UI | Implemented |
-| Local owner, manager, and technician access workflow | Implemented |
-| Explicit, labeled demo mode | Implemented |
-| Read-only IRIS reporting integration | Client implemented; upstream API required |
-| Analytics warehouse (ETL → ClickHouse) | Implemented + deployed (usage, temperature, weather) |
-| Superset BI dashboard | Implemented + deployed (metadata on Postgres) |
-| Airflow freshness DAGs | Implemented + deployed (per-role services on Postgres) |
-| MCP analytics tools (5, allow-listed + RBAC-scoped) | Implemented + verified from LibreChat agents |
-| AI Executive Assistant console (DB-driven gateway) | Implemented (Vercel AI SDK + Bifrost gateway) |
-| LINE bot (agentic, MCP-backed) | Implemented |
-| Direct MQTT ingestion and normalized time-series storage | Not implemented (descoped 2026-09-07 — telemetry flows via IRIS) |
-| Complete Digital Twin and alert engine from CE requirements | Partially implemented (alert ack local to LaundryTwin) |
+|| Area | Status |
+|| --- | --- |
+|| CE requirements and data-contract documentation | Present |
+|| LINE LIFF mobile reporting UI | Implemented |
+|| Local owner, manager, and technician access workflow | Implemented |
+|| Explicit, labeled demo mode | Implemented |
+|| Read-only IRIS reporting integration | Client implemented; upstream API required |
+|| Analytics warehouse (ETL → ClickHouse) | Implemented + deployed (usage, temperature, weather) |
+|| Superset BI dashboard | Implemented + deployed (metadata on Postgres) |
+|| Airflow freshness DAGs | Implemented + deployed (per-role services on Postgres) |
+|| MCP analytics tools (5, allow-listed + RBAC-scoped) | Implemented + verified from LibreChat agents |
+|| AI Executive Assistant console (DB-driven gateway) | Implemented (Vercel AI SDK + Bifrost gateway) |
+|| LINE bot (agentic, MCP-backed) | Implemented |
+|| Direct MQTT ingestion and normalized time-series storage | Not implemented (descoped 2026-09-07 — telemetry flows via IRIS) |
+|| Complete Digital Twin and alert engine from CE requirements | Partially implemented (alert ack local to LaundryTwin) |
+|| ML off-peak recommendation (baseline) | Implemented (`get_off_peak_windows` MCP tool, percentile heuristic) |
+|| ML training data & feature engineering | Documented (`docs/06_ml/ml-training-data-guide.md`) |
 
 ## Current application architecture
 
@@ -85,9 +87,19 @@ docs/01_requirements/     CE Project requirements and user stories
 docs/02_architecture/     Target data model and Mermaid workflow diagrams
 docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
 docs/04_traceability/     Requirements Traceability Matrix + ops verification records
-docs/06_ml/               ML algorithm comparison (Phase 2 research)
+docs/06_ml/               ML algorithm comparison + ML training data & feature engineering guide
 docs/integration/         Current IRIS read-only integration contract
 ```
+
+## ML / Analytics
+
+See `docs/06_ml/ml-training-data-guide.md` for the complete feature
+engineering schema, training data pipeline, and model training plan.
+The warehouse (`laundrytwin_analytics` on VM 117) holds `fact_machine_usage`,
+`fact_weather_sample`, `fact_temperature_sample`, `dim_branch`, and
+`dim_branch_location`. Current data volume (~4.8k rows, ~1 week) is
+far too little for robust time-series modeling — the honest baseline
+is the percentile heuristic (`get_off_peak_windows` MCP tool).
 
 ## Run locally
 

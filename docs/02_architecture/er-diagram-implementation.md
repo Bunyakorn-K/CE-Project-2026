@@ -219,8 +219,10 @@ Notes:
   `fact_temperature_sample` is `MergeTree` partitioned by month.
 - `fact_weather_sample` (F-12) is `ReplacingMergeTree` keyed by
   `(province, timestamp)` — a re-run converges to one row per observation;
-  its nullable weather fields stay NULL, never fabricated.
-- `dim_branch_location` is **ops-provisioned** (province/lat/lon per branch)
+  its nullable weather fields stay NULL, never fabricated. Fields include
+  `sub_district` and `district` (currently `NULL`, reserved for future
+  per-position data).
+- `dim_branch_location` is **ops-provisioned** (province/sub_district/district/lat/lon per branch)
   and NOT written by the ETL — `dim_branch` itself is IRIS-mirrored and any
   manual column there gets overwritten with NULL on the next sync. The weather
   collector joins `dim_branch_location` × `dim_branch active=1` for targets.

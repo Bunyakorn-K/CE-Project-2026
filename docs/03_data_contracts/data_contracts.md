@@ -19,6 +19,8 @@
 | **Gas Leak Detected** | `gas_leak_detected` | Dedicated gas-leak detector | Boolean signal from a dedicated physical gas leak sensor (separate from pressure drop estimation). Local alarm must function offline even if cloud disconnects. | Safety alert | *Hardware decision required* |
 | **Alert Rules** | `rule_id` + `rule_version` | Alert configuration | Versioned configuration defining thresholds, cooldowns, recipients, and enabled states. Log every rule evaluation and dispatch outcome. | Notifications, Audit log | **Required before MVP** |
 | **Weather Temp** | `weather_temp_c` | TMD NWP API (collector) | Normalized Celsius. Nullable — a missing reading stays NULL, never fabricated. `fact_weather_sample` (ReplacingMergeTree by `(province, timestamp)`). | F-12 correlation | **Phase 2** |
+| **Weather Sub-District** | `sub_district` | Branch config (ops) | Nullable Thai sub-district name. Reserved for future per-position weather data; currently `NULL` (no per-position source). | F-12 correlation | **Phase 2** |
+| **Weather District** | `district` | Branch config (ops) | Nullable Thai district name. Reserved for future per-position weather data; currently `NULL`. | F-12 correlation | **Phase 2** |
 | **Weather Humidity** | `weather_humidity_pct` | TMD NWP API | Relative humidity percent. Nullable. | F-12 correlation | **Phase 2** |
 | **Weather Rain** | `weather_rain_mm` | TMD NWP API | Precipitation in mm. Nullable. | F-12 correlation | **Phase 2** |
 | **Weather Condition** | `weather_cond` | TMD NWP API | TMD condition code (integer). Nullable; treat as opaque until TMD's code table is pinned in docs. | F-12 correlation | **Phase 2** |

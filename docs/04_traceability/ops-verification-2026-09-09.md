@@ -5,6 +5,11 @@
 Deployed the weather collector amd64 image to VM 117 and completed the
 container registry subdomain setup that was interrupted mid-session.
 
+### Schema extension (2026-09-22)
+- `dim_branch_location` and `fact_weather_sample` both gained `sub_district Nullable(String)` and `district Nullable(String)` columns for future per-position weather data
+- Currently `NULL` (no per-position TMD endpoint); populated when a per-position source becomes available
+- Collector loop changed from 5-min (`sleep 300`) to hourly (`sleep 3600`)
+
 ### Weather collector (F-12) — deploy
 
 | Step | Action | Result |

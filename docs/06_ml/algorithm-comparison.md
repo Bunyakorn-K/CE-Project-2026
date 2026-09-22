@@ -10,6 +10,9 @@ a robust time-series model** — the honest recommendation below therefore
 starts with a rule-based baseline and treats statistical models as candidates
 to revisit once ≥ 3 months of history exist.
 
+**Feature engineering guide:** see `docs/06_ml/ml-training-data-guide.md` for
+the complete feature schema, training data pipeline, and model training plan.
+
 ## 1. Problem definition
 
 - **Goal:** given historical usage per branch, return off-peak windows

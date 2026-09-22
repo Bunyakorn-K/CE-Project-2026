@@ -12,10 +12,12 @@
 | **Coin-Box Estimation**           | US-03           | R05, R07        | F-09 (Coin-Box Logic), F-10 (Alert Engine) | **MVP**   |
 | **AI Executive Summary**          | US-05           | R04, R08        | F-11 (Safe Function Calling)               | **MVP**   |
 | **Rule-Based Maintenance Alert**  | US-08           | R05, R10        | F-10 (Alert Engine)                        | **MVP**   |
-| **AI Smart Promotion**            | US-06           | R09             | _Pending AI Model Design_                  | _Phase 2_ |
-| **Spatial Anomaly Diagnostics**   | US-08           | R10             | F-03 (Spatial Layout)                      | _Phase 2_ |
-| **Customer Web View**             | US-07           | R11             | F-13 (Public API)                          | _Phase 2_ |
-| **Weather Demand Analysis**       | US-06           | R12             | F-12 (External Context)                    | _Phase 2_ |
+| **AI Smart Promotion** | US-06 | R09 | F-12 (External Context) — baseline done (#35) | _Phase 2_ |
+| **Spatial Anomaly Diagnostics** | US-08 | R10 | F-03 (Spatial Layout) | _Phase 2_ |
+| **Customer Web View** | US-07 | R11 | F-13 (Public API) | _Phase 2_ |
+| **Weather Demand Analysis** | US-06 | R12 | F-12 (External Context) | _Phase 2_ |
+
+**Weather schema extension (2026-09-22):** `dim_branch_location` and `fact_weather_sample` both gained `sub_district Nullable(String)` and `district Nullable(String)` columns for future per-position weather data. Currently `NULL` (no per-position TMD endpoint).
 
 ---
 
@@ -37,3 +39,4 @@
 | F-11 Safe Function Calling | Implemented (allow-listed analytics MCP) | `apps/api/src/analytics/mcp.ts` + tests |
 | F-04/F-05 Pipeline | Implemented via IRIS Postgres → ClickHouse ETL (watermark + ReplacingMergeTree idempotency); direct MQTT ingestion descoped 2026-09-07 — device ingestion is IRIS's responsibility | `apps/etl/` |
 | F-12 Weather Context | Implemented (TMD collector live on VM 117 + `fact_weather_sample` + Superset chart + MCP tool); correlation now **evaluable and significant** at n=77 (temp +0.418 / rh −0.359, p<0.05); one effective weather series — TMD returns identical values for both provinces, so per-province split is duplicated | `apps/etl/src/weather.ts`, `apps/api/src/analytics/weather.ts`, `docs/04_traceability/f12-weather-evaluation-2026-09-07.md` |
+| F-12 ML off-peak baseline (#35) | Implemented (`get_off_peak_windows` MCP tool, percentile heuristic, verified on Chiang Mai branch); feature engineering guide at `docs/06_ml/ml-training-data-guide.md` | `apps/api/src/analytics/mcp.ts`, `docs/06_ml/algorithm-comparison.md` |
