@@ -7,21 +7,42 @@ export type LiffIdentity = {
 // LIFF SDK must be initialized exactly once per page. Re-initializing can
 // reset the login state, so memoize the (successful or failed) result.
 let liffInstance: typeof import("@line/liff")["default"] | null | undefined;
+// The last error thrown by liff.init(). Kept so a gate can surface the real
+// reason the SDK failed instead of silently treating it as "no LINE context"
+// — which is indistinguishable from a broken channel config or a rejected
+// token exchange. See docs/02_architecture for the loop this caused.
+let initError: Error | null = null;
 
-/** Initialize LIFF silently. Returns null when outside a LINE context (browser). */
+/**
+ * Initialize LIFF.
+ *
+ * Returns the SDK instance on success. Returns null when the SDK is genuinely
+ * unavailable — a plain browser outside the LINE client. The distinction
+ * matters: `liff.init()` inside LINE calls `liff.login()` itself and then
+ * throws INIT_FAILED, which is NOT "no LINE context" and must not be retried
+ * blindly. Callers that need to distinguish should read `getLiffInitError()`.
+ */
 export async function initLiff(liffId: string): Promise<typeof import("@line/liff")["default"] | null> {
   if (liffInstance !== undefined) return liffInstance;
   try {
     const { default: liff } = await import("@line/liff");
     await liff.init({ liffId });
     liffInstance = liff;
+    initError = null;
     return liff;
-  } catch {
-    // LIFF is only available inside LINE (mini app webview or LINE in-app browser).
-    // In a regular browser the SDK throws — treat it as "no LINE context".
+  } catch (err) {
+    // Keep the reason: the SDK throws a LIFF error (code + message) that says
+    // exactly what LINE rejected. Discarding it made every failure look
+    // identical to "desktop browser".
+    initError = err instanceof Error ? err : new Error(String(err));
     liffInstance = null;
     return null;
   }
+}
+
+/** The error from the last liff.init(), or null when it never threw. */
+export function getLiffInitError(): Error | null {
+  return initError;
 }
 
 // The root LiffGate owns the liff.login() call at boot (once, with a

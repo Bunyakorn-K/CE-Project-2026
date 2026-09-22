@@ -1,5 +1,5 @@
 import type { LiffIdentity } from "../../liff";
-import { initLiff } from "../../liff";
+import { getLiffInitError, initLiff } from "../../liff";
 import type { PropsWithChildren } from "react";
 import { useEffect, useState } from "react";
 import { apiUrl } from "../api/client";
@@ -112,9 +112,19 @@ export function LiffGate({ children }: PropsWithChildren) {
         const liff = await initLiff(liffId);
         if (cancelled) return;
 
-        // initLiff resolves null when the SDK throws — i.e. a plain browser,
-        // not the LINE client. There is no LINE session to obtain here.
+        // initLiff resolves null when the SDK throws. Inside LINE that throw
+        // carries the real reason — INIT_FAILED, a rejected token exchange, a
+        // channel/endpoint mismatch. Treating every throw as "plain browser"
+        // hid those behind an identical silent ready and let the SDK's own
+        // retry loop run unobserved. Only render through when there genuinely
+        // is no LINE context to init against.
         if (!liff) {
+          const reason = getLiffInitError();
+          if (reason) {
+            setError(`${reason.message}`);
+            setState("error");
+            return;
+          }
           setState("ready");
           return;
         }
