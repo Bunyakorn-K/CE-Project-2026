@@ -1,86 +1,173 @@
+import type { LiffIdentity } from "../../liff";
 import { initLiff } from "../../liff";
 import type { PropsWithChildren } from "react";
 import { useEffect, useState } from "react";
+import { apiUrl } from "../api/client";
 
 /**
- * Gate ALL rendering until the LIFF SDK has initialized.
+ * Gate ALL rendering until the LIFF SDK has initialized AND, when a LINE
+ * session exists, we have exchanged its ID token for our own session cookie.
  *
- * The SDK must finish `liff.init()` before `isLoggedIn()` means anything.
- * Rendering routes before that resolves lets a `beforeLoad` guard or an
- * effect read a half-initialized SDK — observed as "No default value" on
- * first load, and as a login loop after refresh (the not-yet-initialized
- * SDK reports not-logged-in, so the app fires `liff.login()` again).
+ * Why this must wrap the router (not live inside the root route):
  *
- * Pattern follows the reference implementation: init once at boot, then
- * decide: if logged in, exchange; if not, `liff.login({ redirectUri })`
- * exactly once. A sessionStorage counter caps retries so a stale id token
- * can never redirect forever.
+ * TanStack Router resolves the initial redirect chain — `/` → `/dashboard`
+ * → `/login` — during the first load before any route component mounts.
+ * Our `/` route redirects to `/dashboard`, whose beforeLoad guard fetches
+ * `/api/me`, gets 401, and redirects to `/login`. If `liff.init()` has not
+ * run yet at that moment, the SDK never sees the `?code=` parameter that
+ * LINE's authorize endpoint returned, never exchanges it, reports
+ * not-logged-in, and calls `liff.login()` again — an endless loop with a
+ * fresh `code` on every cycle (confirmed in the nginx access log).
+ *
+ * Running init + exchange here, above the router, means the URL still holds
+ * the auth code while the SDK consumes it. Pattern follows the reference
+ * implementation, where the equivalent provider wraps RouterProvider.
+ *
+ * Error handling: a failed init is fatal (the app cannot function inside
+ * LINE without the SDK). Surfaces a retry screen instead of a silent hang.
+ * Outside a LINE context the SDK throws; initLiff resolves null and we
+ * render immediately so desktop browsers reach the login page.
+ *
+ * ACCESS_PENDING is expected on first use — the server records the request
+ * and an administrator approves it. That is not an error to retry through
+ * LINE; it needs a human, so it gets its own message.
  */
-const ATTEMPT_KEY = "liff_login_attempt";
-const MAX_ATTEMPTS = 3;
-
 type State = "loading" | "ready" | "error";
+type Phase = "init" | "exchange" | "session";
 
-function readAttempts(): number {
-  if (typeof window === "undefined") return 0;
-  const n = Number(window.sessionStorage.getItem(ATTEMPT_KEY));
-  return Number.isFinite(n) && n > 0 ? n : 0;
+type ExchangeResponse = {
+  user: { id: string; name: string; email: string };
+  roles: string[];
+};
+
+type ApiErrorResponse = {
+  error?: { code?: string; message?: string };
+};
+
+function LiffGateMessage({ phase, message }: { phase: Phase; message: string }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6">
+      <p className="text-sm text-danger">
+        [{phase}] {message}
+      </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-white"
+      >
+        ลองใหม่
+      </button>
+    </div>
+  );
 }
 
-function bumpAttempts(): number {
-  if (typeof window === "undefined") return readAttempts() + 1;
-  const next = readAttempts() + 1;
-  window.sessionStorage.setItem(ATTEMPT_KEY, String(next));
-  return next;
-}
-
-export function resetLiffAttempts(): void {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(ATTEMPT_KEY);
+/**
+ * Exchange a LINE ID token for our own session cookie. Returns null when the
+ * LINE identity is unknown to us — the server records a pending access
+ * request in that case, which is a normal first-use flow, not a failure.
+ */
+async function exchangeIdentity(
+  identity: LiffIdentity,
+  signal: AbortSignal
+): Promise<ExchangeResponse | null> {
+  const res = await fetch(apiUrl("/api/auth/liff/exchange"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ idToken: identity.idToken }),
+    signal
+  });
+  if (res.status === 403) {
+    const data = (await res.json().catch(() => null)) as ApiErrorResponse | null;
+    if (data?.error?.code === "ACCESS_PENDING") {
+      return null;
+    }
+  }
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new Error(data?.error?.message ?? `LINE exchange failed (HTTP ${res.status})`);
+  }
+  return (await res.json()) as ExchangeResponse;
 }
 
 export function LiffGate({ children }: PropsWithChildren) {
   const [state, setState] = useState<State>("loading");
+  const [phase, setPhase] = useState<Phase>("init");
   const [error, setError] = useState<string | null>(null);
+  const [pendingAccess, setPendingAccess] = useState(false);
 
   useEffect(() => {
     const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
-    // Outside a LINE context (plain browser) there is nothing to gate on —
-    // the login page handles its own sign-in flow.
+    // Outside a LINE context there is no LIFF ID to init against — the login
+    // page handles email/demo sign-in on desktop browsers.
     if (!liffId) {
       setState("ready");
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
     void (async () => {
       try {
         const liff = await initLiff(liffId);
         if (cancelled) return;
 
-        // initLiff resolves null when the SDK throws — i.e. we are in a plain
-        // browser, not the LINE client. There is no LINE session to obtain, so
-        // render the app (the login page handles email/demo sign-in).
+        // initLiff resolves null when the SDK throws — i.e. a plain browser,
+        // not the LINE client. There is no LINE session to obtain here.
         if (!liff) {
           setState("ready");
           return;
         }
 
+        // Inside LINE the SDK handles the authorize round-trip itself during
+        // init: it exchanges ?code= for tokens and reports isLoggedIn().
+        // When it reports no session it has already decided login() is
+        // required (the SDK fired login internally and threw INIT_FAILED
+        // before initLiff could resolve), so it is mid-redirect — calling
+        // login() ourselves would only start a second, racing round-trip.
         if (!liff.isLoggedIn()) {
-          if (readAttempts() >= MAX_ATTEMPTS) {
-            setError("LINE sign-in failed repeatedly. Please reopen the app.");
-            setState("error");
-            return;
-          }
-          bumpAttempts();
-          // redirectUri lands them back here; the gate runs again, this time
-          // with a LINE session, so the exchange proceeds.
-          liff.login({ redirectUri: window.location.href });
+          setState("ready");
           return;
         }
 
+        const [profile, idToken] = await Promise.all([
+          liff.getProfile(),
+          liff.getIDToken()
+        ]);
         if (cancelled) return;
-        resetLiffAttempts();
+        if (!idToken) {
+          throw new Error("LINE did not provide an ID token for this LIFF app");
+        }
+
+        setPhase("exchange");
+        const exchanged = await exchangeIdentity(
+          { displayName: profile.displayName, userId: profile.userId, idToken },
+          controller.signal
+        );
+        if (cancelled) return;
+
+        // Unknown LINE identity: the server recorded a pending access
+        // request. This is the expected first-use path — an administrator
+        // must approve it. Not retriable through LINE.
+        if (exchanged === null) {
+          setPendingAccess(true);
+          setState("ready");
+          return;
+        }
+
+        setPhase("session");
+        // The exchange set our session cookie; the route guards trust it.
+        // Validate it now so a cookie that failed to land surfaces here
+        // instead of bouncing through /dashboard → /login.
+        const me = await fetch(apiUrl("/api/me"), {
+          credentials: "include",
+          signal: controller.signal
+        });
+        if (cancelled) return;
+        if (!me.ok) {
+          throw new Error(`Session was created but /api/me failed (HTTP ${me.status})`);
+        }
+
         setState("ready");
       } catch (err) {
         if (cancelled) return;
@@ -91,6 +178,7 @@ export function LiffGate({ children }: PropsWithChildren) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -102,10 +190,20 @@ export function LiffGate({ children }: PropsWithChildren) {
     );
   }
 
-  if (state === "error") {
+  if (state === "error" && error) {
+    return <LiffGateMessage phase={phase} message={error} />;
+  }
+
+  if (pendingAccess) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6">
-        <p className="text-sm text-danger">{error}</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="max-w-sm text-sm text-default-600">
+          บัญชี LINE ของคุณรอการอนุมัติจากผู้ดูแลระบบ
+        </p>
+        <p className="max-w-sm text-xs text-default-400">
+          Your LINE account is waiting for an administrator to approve access.
+          Please reopen the app later.
+        </p>
         <button
           type="button"
           onClick={() => window.location.reload()}

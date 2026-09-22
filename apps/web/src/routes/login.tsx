@@ -75,45 +75,17 @@ function LoginPage() {
   }
 
   useEffect(() => {
-    fetch(apiUrl("/health"), { credentials: "include" })
+    fetch(apiUrl("/api/health"), { credentials: "include" })
       .then((r) => r.json().catch(() => null))
       .then((d) => setDemoMode(Boolean(d?.demoMode)))
       .catch(() => {});
   }, []);
 
-  // Auto-resume: when LINE redirects back after liff.login() the page reloads
-  // and the root LiffGate has already re-initialized the SDK. If a LINE
-  // session exists by the time this page mounts, complete the exchange.
-  // The gate owns the single liff.login() call; this only runs the exchange.
-  useEffect(() => {
-    const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
-    if (!liffId) return;
-    let cancelled = false;
-    void (async () => {
-      const liff = await initLiff(liffId);
-      if (cancelled || !liff || !liff.isLoggedIn()) return;
-      const identity = await connectLiff(liffId);
-      if (cancelled || !identity) return;
-      const res = await fetch(apiUrl("/api/auth/liff/exchange"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ idToken: identity.idToken })
-      });
-      if (cancelled) return;
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        setError(data?.error?.message ?? "LINE sign-in failed");
-        return;
-      }
-      resetLiffLoginGuard();
-      await fetchMeAndSet(setUser);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The root LiffGate owns liff.init() + the exchange: it runs above the
+  // router so the SDK still sees LINE's ?code= parameter before the initial
+  // redirect chain moves the URL away from it. This page only provides the
+  // manual button; it no longer auto-runs an exchange that would race the
+  // gate on a second mount.
 
   // Demo sign-in (explicit — the deploy runs in demo mode; no password
   // accounts exist in the DB, so email/password would always fail).
