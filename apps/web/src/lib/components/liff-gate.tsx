@@ -58,10 +58,15 @@ export function LiffGate({ children }: PropsWithChildren) {
         const liff = await initLiff(liffId);
         if (cancelled) return;
 
-        // Outside the LINE client the SDK throws (initLiff returns null),
-        // so reaching here means we are inside LINE. If the user is not
-        // logged in yet, send them to LINE once.
-        if (!liff || !liff.isLoggedIn()) {
+        // initLiff resolves null when the SDK throws — i.e. we are in a plain
+        // browser, not the LINE client. There is no LINE session to obtain, so
+        // render the app (the login page handles email/demo sign-in).
+        if (!liff) {
+          setState("ready");
+          return;
+        }
+
+        if (!liff.isLoggedIn()) {
           if (readAttempts() >= MAX_ATTEMPTS) {
             setError("LINE sign-in failed repeatedly. Please reopen the app.");
             setState("error");
@@ -70,7 +75,7 @@ export function LiffGate({ children }: PropsWithChildren) {
           bumpAttempts();
           // redirectUri lands them back here; the gate runs again, this time
           // with a LINE session, so the exchange proceeds.
-          liff?.login({ redirectUri: window.location.href });
+          liff.login({ redirectUri: window.location.href });
           return;
         }
 
