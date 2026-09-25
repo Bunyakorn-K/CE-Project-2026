@@ -55,8 +55,8 @@ SELECT
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
-WHERE u.started_at >= {from:String} AND u.started_at < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
+WHERE u.started_at >= {from:String} AND u.started_at < toDate({to:String}) + 1
+  AND ({branchId:String} = '' OR u.branch_id = {branchId:UUID})
 GROUP BY u.branch_id, b.branch_name, u.machine_code, u.machine_kind, u.status`;
 
 const MACHINE_STATE_SQL = `
@@ -71,7 +71,7 @@ FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
 WHERE u.started_at >= {from:String}
 GROUP BY u.branch_id, b.branch_name, u.machine_code, u.machine_kind
-ORDER BY last_active_at DESC NULLS FIRST`;
+ORDER BY last_active_at DESC`;
 
 // ---------------------------------------------------------------------------
 // Helpers
