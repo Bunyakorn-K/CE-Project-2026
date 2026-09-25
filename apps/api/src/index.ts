@@ -409,7 +409,15 @@ export function createApp(dependencies: AppDependencies = {}) {
 export const app = createApp();
 
 function requirePrincipal(c: Context<{ Variables: AppVariables }>) {
-  return c.get("principal") ?? apiError(c, 401, "AUTHENTICATION_REQUIRED", "Sign in with an approved LaundryTwin account");
+  const principal = c.get("principal");
+  if (principal) return principal;
+  // In demo mode, fall back to the synthetic owner so the app is
+  // reachable without a sign-in session.
+  if (isDemoModeEnabled()) {
+    const demoUser = ensureDemoOwner();
+    return resolveUserPrincipal(demoUser, "liff");
+  }
+  return apiError(c, 401, "AUTHENTICATION_REQUIRED", "Sign in with an approved LaundryTwin account");
 }
 
 function requireOwner(c: Context<{ Variables: AppVariables }>) {
