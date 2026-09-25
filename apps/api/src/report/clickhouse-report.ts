@@ -44,21 +44,12 @@ ORDER BY b.branch_name`;
 
 export function buildDashboardSQL(from: string, to: string): string {
   return `
-SELECT
-  u.branch_id,
-  b.branch_name,
-  m.machine_code,
-  m.machine_kind,
-  u.status,
-  sumIf(u.amount_satang, u.status IN ('finished','paid')) AS revenueSatang,
-  countIf(u.status IN ('finished','paid')) AS cycles,
-  count() AS totalCycles,
-  max(u.started_at) AS last_active_at
+SELECT b.branch_id, b.branch_name, m.machine_code, m.machine_kind, u.status, sumIf(u.amount_satang, u.status IN (2,4)) AS revenueSatang, countIf(u.status IN (2,4)) AS cycles, max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
 INNER JOIN dim_machine AS m ON u.machine_id = m.machine_id
-WHERE u.started_at >= '${from}' AND u.started_at < '${to}' + INTERVAL 1 DAY
-GROUP BY u.branch_id, b.branch_name, m.machine_code, m.machine_kind, u.status`;
+WHERE u.started_at >= '${from}' AND u.started_at < '${to}'
+GROUP BY b.branch_id, b.branch_name, m.machine_code, m.machine_kind, u.status`;
 }
 
 export function buildMachineStateSQL(from: string): string {
