@@ -46,8 +46,8 @@ const DASHBOARD_SQL = `
 SELECT
   u.branch_id,
   b.branch_name,
-  u.machine_code,
-  u.machine_kind,
+  m.machine_code,
+  m.machine_kind,
   u.status,
   sumIf(u.amount_satang, u.status IN ('finished','paid')) AS revenueSatang,
   countIf(u.status IN ('finished','paid')) AS cycles,
@@ -55,22 +55,24 @@ SELECT
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
+INNER JOIN dim_machine AS m ON u.machine_id = m.machine_id
 WHERE u.started_at >= {from:String} AND u.started_at < toDate({to:String}) + 1
-GROUP BY u.branch_id, b.branch_name, u.machine_code, u.machine_kind, u.status`;
+GROUP BY u.branch_id, b.branch_name, m.machine_code, m.machine_kind, u.status`;
 
 const MACHINE_STATE_SQL = `
 SELECT
   u.branch_id,
   b.branch_name,
-  u.machine_code,
-  u.machine_kind,
+  m.machine_code,
+  m.machine_kind,
   argMax(u.status, u.started_at) AS status,
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
+INNER JOIN dim_machine AS m ON u.machine_id = m.machine_id
 WHERE u.started_at >= {from:String}
-GROUP BY u.branch_id, b.branch_name, u.machine_code, u.machine_kind
-ORDER BY last_active_at DESC`;
+GROUP BY u.branch_id, b.branch_name, m.machine_code, m.machine_kind
+ORDER BY last_active_at DESC`
 
 // ---------------------------------------------------------------------------
 // Helpers
