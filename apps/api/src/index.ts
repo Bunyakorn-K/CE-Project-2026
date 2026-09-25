@@ -238,6 +238,17 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
   });
 
+  app.get("/_debug_dashboard", async (c) => {
+    const { buildDashboardSQL } = await import("./report/clickhouse-report");
+    const sql = buildDashboardSQL("2026-09-18", "2026-09-26");
+    try {
+      const rows = await clickhouse(sql, {});
+      return c.json({ ok: true, rows: rows.length, first: rows[0] });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message });
+    }
+  });
+
   app.get("/api/report/live", async (c) => {
     const principal = requirePrincipal(c);
     if (principal instanceof Response) return principal;
