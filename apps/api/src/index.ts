@@ -214,14 +214,11 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (principal instanceof Response) return principal;
     const range = readRange(c);
     if (range instanceof Response) return range;
-    const scope = resolveReportScope(c, principal, c.req.query("branchId"));
-    if (scope instanceof Response) return scope;
 
     try {
       const dashboard = await queryDashboard(clickhouse, range.from, range.to);
       return c.json({ dashboard });
     } catch (error: unknown) {
-      console.error("DASHBOARD_ERROR:", error instanceof Error ? error.message : error);
       return irisError(c, error);
     }
   });
@@ -236,17 +233,6 @@ export function createApp(dependencies: AppDependencies = {}) {
       return c.json({ machines: states });
     } catch (error) {
       return irisError(c, error);
-    }
-  });
-
-  app.get("/_debug_dashboard", async (c) => {
-    const { buildDashboardSQL } = await import("./report/clickhouse-report");
-    const sql = buildDashboardSQL("2026-09-18", "2026-09-26");
-    try {
-      const rows = await clickhouse(sql, {});
-      return c.json({ ok: true, rows: rows.length, first: rows[0] });
-    } catch (error: any) {
-      return c.json({ ok: false, error: error.message });
     }
   });
 
