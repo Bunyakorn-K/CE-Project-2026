@@ -1,5 +1,5 @@
 // AI console settings (backoffice). Stores the OpenAI-compatible gateway
-// config LaundroTwin uses to talk to an LLM (default: Bifrost). The API key
+// config LaundryTwin uses to talk to an LLM (default: Bifrost). The API key
 // is encrypted at rest with BETTER_AUTH_SECRET (AES-256-GCM) and never
 // returned to the browser — only a hasApiKey boolean mask is.
 //
@@ -11,6 +11,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
+import { resolveServerSecret } from "./auth";
 import { aiSettings, auditLog, chatMessage } from "./schema";
 import { mayManageAccess, type AccessGrant } from "./access-policy";
 
@@ -44,8 +45,7 @@ export const DEFAULT_SETTINGS: Omit<AiSettingsPublic, "updatedAt"> = {
 };
 
 function encryptionKey(): Buffer {
-  const secret = process.env.BETTER_AUTH_SECRET ?? "demo-only-secret-replace-before-production-2026";
-  return createHash("sha256").update(secret).digest();
+  return createHash("sha256").update(resolveServerSecret()).digest();
 }
 
 export function encryptApiKey(plain: string): string {

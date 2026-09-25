@@ -5,8 +5,10 @@ line_channel_access_token = "CHANGE_ME"
 line_channel_secret       = "CHANGE_ME"
 analytics_read_api_key    = "CHANGE_ME"
 clickhouse_password       = "CHANGE_ME"
+clickhouse_reader_password = "CHANGE_ME"
 pg_connection_string      = "postgres://user:pass@host:5432/db"
 airflow_admin_password    = "CHANGE_ME"
+airflow_db_password       = "CHANGE_ME"
 superset_secret_key       = "CHANGE_ME"
 
 # Optional overrides (defaults shown):

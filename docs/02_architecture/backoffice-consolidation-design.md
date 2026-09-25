@@ -1,4 +1,4 @@
-# LaundroTwin Backoffice Consolidation — UI & Core Structure Design
+# LaundryTwin Backoffice Consolidation — UI & Core Structure Design
 
 Date: 2026-09-10 · Status: **Draft for review** · Scope: design only (no code yet)
 
@@ -88,16 +88,16 @@ UI: a `useAbility()` hook derives from the `/api/auth/me` grants; every
 
 **Philosophy:** Bifrost is the LLM gateway (already deployed at
 `https://llm.kovaspire.com`, OpenAI-compatible `/v1`, admin-managed upstreams).
-LaundroTwin does NOT store provider credentials — it stores *selection* and
+LaundryTwin does NOT store provider credentials — it stores *selection* and
 *prompt/tool policy*; sensitive config stays in Bifrost.
 
 | Section | What lives where |
 |---|---|
-| Default model | LaundroTwin DB (`ai_settings` table): `{ model: string }` — value from Bifrost `/v1/models`; picker lists models (auto-discovered) |
+| Default model | LaundryTwin DB (`ai_settings` table): `{ model: string }` — value from Bifrost `/v1/models`; picker lists models (auto-discovered) |
 | Model discovery | API proxy: `GET /api/ai/models` → Bifrost `GET /v1/models`, 10-min cache (TanStack Query `staleTime`) |
-| System prompt | LaundroTwin DB: template w/ variables `{{role}}`, `{{branches}}`, `{{tools}}`, `{{dataSourceCaveat}}` |
+| System prompt | LaundryTwin DB: template w/ variables `{{role}}`, `{{branches}}`, `{{tools}}`, `{{dataSourceCaveat}}` |
 | Tools/MCP inject | auto: server reads allow-listed MCP tool list (`listTools()`) and renders into `{{tools}}` — prompt editor shows live preview, changes apply to bot + future chat |
-| Chat history | LaundroTwin DB (`chat_message`) — thread id, role, content, model, token usage |
+| Chat history | LaundryTwin DB (`chat_message`) — thread id, role, content, model, token usage |
 | Test connection | button → `POST /api/ai/test` → minimal completion through Bifrost (non-streaming, 1 msg) |
 | Audit log | append-only `ai_config_audit` (who changed prompt/model when) |
 
@@ -138,7 +138,7 @@ Phase 3 — Polish:
 
 ## 7. Open items (need decision)
 
-- **Bifrost API key for LaundroTwin**: generate a dedicated key in Bifrost
+- **Bifrost API key for LaundryTwin**: generate a dedicated key in Bifrost
   admin (scoped) rather than reusing admin creds — confirm Bifrost supports
   service keys (likely via UI).
 - **Chat history retention**: keep 30 days (align w/ Bifrost log retention) or unbounded? recommend 30d + purge job.

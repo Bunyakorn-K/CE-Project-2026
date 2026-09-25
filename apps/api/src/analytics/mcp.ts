@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
@@ -15,41 +16,76 @@ import { queryWeatherUsageCorrelation, WEATHER_CAVEAT } from "./weather";
 import { rankOffPeakBuckets } from "./offpeak";
 import { parseAnalyticsRange } from "./scope";
 
-// The MCP data server exposes only allow-listed, parameterized analytics queries
-// (CE pillar F-11). No dynamic SQL and no arbitrary model-generated queries ever
-// reach ClickHouse through this surface. Callers pass an explicit accessScope so
-// the server enforces declared branch scope + revenue gating; the trusted caller
-// (the LINE bot) derives that scope from server-resolved user grants.
-//
-// One McpServer + transport pair is created per MCP session (keyed by the
-// Mcp-Session-Id header), because an McpServer can attach to only one transport.
-// Sessions are held in memory; a DELETE request closes a session.
+export const MCP_SCOPE_HEADER = "x-mcp-scope";
+
+export type McpScope = {
+  branchIds: string[];
+  canViewRevenue: boolean;
+};
 
 export type McpDeps = {
   clickhouse: ClickHouseExecutor;
-  /** Service-level capability: when false, revenue tools are rejected even if a caller declares canViewRevenue. */
+  mcpSecret: string;
   allowRevenue: boolean;
 };
+
+const mcpScopeSchema = z.object({
+  branchIds: z.array(z.string()),
+  canViewRevenue: z.boolean()
+});
+
+export function signMcpScope(secret: string, scope: McpScope): string {
+  const payload = Buffer.from(JSON.stringify({ branchIds: [...scope.branchIds].sort(), canViewRevenue: scope.canViewRevenue })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifyMcpScope(secret: string, header: string): McpScope | null {
+  const separator = header.indexOf(".");
+  if (separator <= 0) return null;
+  const payload = header.slice(0, separator);
+  const signature = header.slice(separator + 1);
+  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+  const providedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) return null;
+  try {
+    const parsed = mcpScopeSchema.parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+    return { branchIds: parsed.branchIds, canViewRevenue: parsed.canViewRevenue };
+  } catch {
+    return null;
+  }
+}
+
+function sameScope(left: McpScope, right: McpScope): boolean {
+  return left.canViewRevenue === right.canViewRevenue && left.branchIds.length === right.branchIds.length && left.branchIds.every((branchId) => right.branchIds.includes(branchId));
+}
+
+function scopeErrorResult(branchId: string, scope: McpScope, requiresRevenue: boolean): ToolResult | null {
+  const tenantWide = scope.branchIds.includes("*");
+  if (!tenantWide && !scope.branchIds.includes(branchId)) {
+    return errorResult("branch_out_of_scope", "The requested branch is outside the caller's scope");
+  }
+  if (requiresRevenue && !scope.canViewRevenue) {
+    return errorResult("revenue_forbidden", "Revenue data requires an owner or manager scope");
+  }
+  return null;
+}
+
+function defaultServiceScope(allowRevenue: boolean): McpScope {
+  return { branchIds: ["*"], canViewRevenue: allowRevenue };
+}
+
+function scopeAuthError(status: 401 | 403, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
 
 export type McpTransport = {
   handle: (request: Request) => Promise<Response>;
 };
-
-const accessScopeSchema = z.object({
-  branchIds: z
-    .array(z.string())
-    .describe("Branch ids the caller may query, or ['*'] for tenant-wide (owner scope). Must include the requested branchId."),
-  canViewRevenue: z.boolean().optional().describe("True for owner/manager callers. Required only by revenue tools.")
-});
-
-type AccessScope = z.infer<typeof accessScopeSchema>;
-
-// Direct MCP callers (e.g. LibreChat agents, AI console) may omit accessScope;
-// the MCP bearer token is the trust boundary, so a missing scope defaults to
-// tenant-wide — exactly what a token holder could declare anyway. The LINE bot
-// always passes an explicit scope derived from server-resolved grants, which is
-// still enforced when present.
-const TENANT_WIDE_SCOPE: AccessScope = { branchIds: ["*"], canViewRevenue: true };
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -64,18 +100,6 @@ function errorResult(code: string, message: string): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify({ error: { code, message } }) }], isError: true };
 }
 
-function scopeErrorResult(branchId: string, scope: AccessScope | undefined, requiresRevenue: boolean): ToolResult | null {
-  const effective: AccessScope = scope ?? TENANT_WIDE_SCOPE;
-  const tenantWide = effective.branchIds.includes("*");
-  if (!tenantWide && !effective.branchIds.includes(branchId)) {
-    return errorResult("branch_out_of_scope", "The requested branch is outside the caller's scope");
-  }
-  if (requiresRevenue && !effective.canViewRevenue) {
-    return errorResult("revenue_forbidden", "Revenue data requires an owner or manager scope");
-  }
-  return null;
-}
-
 function analyticsErrorResult(error: unknown): ToolResult {
   if (error instanceof ClickHouseUnavailableError) {
     return errorResult("analytics_source_unavailable", "Analytics warehouse is unavailable");
@@ -87,24 +111,23 @@ function rangeMeta(from: string, to: string, branchId: string): AnalyticsMeta {
   return { range: { from, to }, branchId: branchId || null, dataSource: "empty" };
 }
 
-function registerTools(server: McpServer, deps: McpDeps): void {
+function registerTools(server: McpServer, deps: McpDeps, scope: McpScope): void {
   server.registerTool(
     "get_revenue_daily",
     {
       title: "Daily revenue and cycles",
       description:
-        "Daily gross revenue (satang) and paid-cycle counts per branch over a date range. Requires canViewRevenue in accessScope.",
+        "Daily gross revenue (satang) and paid-cycle counts per branch over a date range. Requires revenue capability in the server-bound scope.",
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
-        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema.optional()
+        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)")
       }
     },
     async (args) => {
       if (!deps.allowRevenue) return errorResult("revenue_disabled", "Revenue tools are disabled for this service token");
-      const scope = scopeErrorResult(args.branchId, args.accessScope, true);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, true);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       try {
@@ -124,13 +147,12 @@ function registerTools(server: McpServer, deps: McpDeps): void {
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
-        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema.optional()
+        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)")
       }
     },
     async (args) => {
-      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, false);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       try {
@@ -150,13 +172,12 @@ function registerTools(server: McpServer, deps: McpDeps): void {
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
-        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema.optional()
+        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)")
       }
     },
     async (args) => {
-      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, false);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       try {
@@ -177,13 +198,12 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        machineId: z.string().optional().describe("Optional machine id filter"),
-        accessScope: accessScopeSchema.optional()
+        machineId: z.string().optional().describe("Optional machine id filter")
       }
     },
     async (args) => {
-      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, false);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       try {
@@ -210,13 +230,12 @@ function registerTools(server: McpServer, deps: McpDeps): void {
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
-        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema.optional()
+        branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)")
       }
     },
     async (args) => {
-      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, false);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       try {
@@ -248,14 +267,13 @@ function registerTools(server: McpServer, deps: McpDeps): void {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
         branchId: z.string().describe("Branch id, or empty string for tenant-wide (owner scope)"),
-        accessScope: accessScopeSchema.optional(),
         minCycles: z.number().int().min(1).optional().describe("Minimum paid cycles for a bucket to be ranked (default 10)"),
         percentile: z.number().int().min(1).max(99).optional().describe("Bottom percentage of eligible buckets to return (default 25)")
       }
     },
     async (args) => {
-      const scope = scopeErrorResult(args.branchId, args.accessScope, false);
-      if (scope) return scope;
+      const scopeError = scopeErrorResult(args.branchId, scope, false);
+      if (scopeError) return scopeError;
       const range = parseAnalyticsRange(args.from, args.to, new Date());
       if (!range.ok) return errorResult(range.code, range.message);
       const minCycles = args.minCycles ?? 10;
@@ -281,18 +299,24 @@ function registerTools(server: McpServer, deps: McpDeps): void {
   );
 }
 
-export function createMcpServer(deps: McpDeps): McpTransport {
-  const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
+type McpSession = {
+  transport: WebStandardStreamableHTTPServerTransport;
+  scope: McpScope;
+};
 
-  function makeTransport(): WebStandardStreamableHTTPServerTransport {
+export function createMcpServer(deps: McpDeps): McpTransport {
+  const sessions = new Map<string, McpSession>();
+  const serviceScope = defaultServiceScope(deps.allowRevenue);
+
+  function makeTransport(scope: McpScope): WebStandardStreamableHTTPServerTransport {
     const server = new McpServer({ name: "laundrytwin-analytics", version: "0.1.0" });
-    registerTools(server, deps);
+    registerTools(server, deps, scope);
     let transport: WebStandardStreamableHTTPServerTransport;
     transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse: true,
       sessionIdGenerator: () => crypto.randomUUID(),
       onsessioninitialized: (sessionId) => {
-        sessions.set(sessionId, transport);
+        sessions.set(sessionId, { transport, scope });
       },
       onsessionclosed: (sessionId) => {
         sessions.delete(sessionId);
@@ -305,12 +329,20 @@ export function createMcpServer(deps: McpDeps): McpTransport {
   async function handle(request: Request): Promise<Response> {
     const method = request.method;
     const sessionId = request.headers.get("mcp-session-id");
+    const scopeHeader = request.headers.get(MCP_SCOPE_HEADER);
+    const suppliedScope = scopeHeader === null ? null : verifyMcpScope(deps.mcpSecret, scopeHeader);
+    if (scopeHeader !== null && suppliedScope === null) {
+      return scopeAuthError(401, "INVALID_SCOPE", "A valid MCP scope signature is required");
+    }
 
     if (method === "DELETE") {
       if (sessionId) {
-        const transport = sessions.get(sessionId);
-        if (transport) {
-          await transport.close();
+        const session = sessions.get(sessionId);
+        if (session) {
+          if (suppliedScope && !sameScope(session.scope, suppliedScope)) {
+            return scopeAuthError(403, "SCOPE_MISMATCH", "The signed scope does not match the MCP session");
+          }
+          await session.transport.close();
           sessions.delete(sessionId);
         }
       }
@@ -322,16 +354,15 @@ export function createMcpServer(deps: McpDeps): McpTransport {
     }
 
     if (sessionId) {
-      const transport = sessions.get(sessionId);
-      if (!transport) return new Response("Session not found", { status: 404 });
-      return transport.handleRequest(request);
+      const session = sessions.get(sessionId);
+      if (!session) return new Response("Session not found", { status: 404 });
+      if (suppliedScope && !sameScope(session.scope, suppliedScope)) {
+        return scopeAuthError(403, "SCOPE_MISMATCH", "The signed scope does not match the MCP session");
+      }
+      return session.transport.handleRequest(request);
     }
 
-    // New session: a fresh transport + McpServer pair. onsessioninitialized
-    // registers it in the map so subsequent requests with the session id route
-    // back to the same transport.
-    const transport = makeTransport();
-    return transport.handleRequest(request);
+    return makeTransport(suppliedScope ?? serviceScope).handleRequest(request);
   }
 
   return { handle };

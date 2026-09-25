@@ -1,8 +1,8 @@
-# LaundroTwin Activity Diagram Offline HTML Viewer Implementation Plan
+# LaundryTwin Activity Diagram Offline HTML Viewer Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a committed, self-contained offline HTML viewer that presents the LaundroTwin overview and four Activity workflows at a readable scale.
+**Goal:** Build a committed, self-contained offline HTML viewer that presents the LaundryTwin overview and four Activity workflows at a readable scale.
 
 **Architecture:** A Node.js generator extracts the four authoritative Mermaid blocks from the architecture Markdown, renders five SVGs with Mermaid CLI 11.16.0, prefixes SVG IDs, and atomically embeds them in one HTML file. The generated viewer uses only inline HTML, CSS, JavaScript, and SVG; native tabs expose one workflow at a time while print CSS exposes all diagrams.
 
@@ -17,7 +17,7 @@
 - Keep the viewer in English and responsive at desktop and mobile widths.
 - Preserve visible keyboard focus, tab semantics, accessible SVG titles/descriptions, and reduced-motion preferences.
 - Print the overview followed by all four workflows.
-- Do not replace, stage, or commit the untracked `docs/02_architecture/laundrotwin-mvp-diagrams.drawio`.
+- Do not replace, stage, or commit the untracked `docs/02_architecture/laundrytwin-mvp-diagrams.drawio`.
 - Do not modify application runtime code under `apps/api` or `apps/web`.
 
 ---
@@ -27,7 +27,7 @@
 - Create `scripts/activity-viewer/generate.mjs`: extract source workflows, invoke the pinned renderer, normalize SVGs, and atomically write the viewer.
 - Create `scripts/activity-viewer/generate.test.mjs`: unit tests for extraction, ID prefixing, offline output, and viewer structure.
 - Create `scripts/activity-viewer/verify.mjs`: release checks against the generated artifact and authoritative source.
-- Create `docs/02_architecture/laundrotwin-activity-diagrams.html`: generated, self-contained viewer.
+- Create `docs/02_architecture/laundrytwin-activity-diagrams.html`: generated, self-contained viewer.
 - Modify `docs/02_architecture/data-and-activity-diagrams.md`: add a relative link to the offline viewer.
 - Modify `README.md`: make the viewer discoverable from the repository layout.
 - Modify `package.json`: add repeatable generation and verification commands without adding a dependency.
@@ -167,7 +167,7 @@ export const sourcePath = join(
 );
 export const outputPath = join(
   repositoryRoot,
-  "docs/02_architecture/laundrotwin-activity-diagrams.html",
+  "docs/02_architecture/laundrytwin-activity-diagrams.html",
 );
 
 const workflowMetadata = [
@@ -316,7 +316,7 @@ git commit -m "test: define activity viewer generation contract"
 **Files:**
 - Modify: `scripts/activity-viewer/generate.mjs`
 - Modify: `scripts/activity-viewer/generate.test.mjs`
-- Create: `docs/02_architecture/laundrotwin-activity-diagrams.html`
+- Create: `docs/02_architecture/laundrytwin-activity-diagrams.html`
 
 **Interfaces:**
 - Consumes: `extractWorkflows(markdown)` from Task 1
@@ -604,14 +604,14 @@ export function buildViewerHtml(workflows, overviewSvg) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>LaundroTwin MVP Activity Diagrams</title>
+  <title>LaundryTwin MVP Activity Diagrams</title>
   <style>${viewerStyles}</style>
 </head>
 <body>
   <div class="page-shell">
     <header class="site-header">
       <p class="eyebrow">CE Project 2026</p>
-      <h1>LaundroTwin MVP Activity Diagrams</h1>
+      <h1>LaundryTwin MVP Activity Diagrams</h1>
       <p>Explore one workflow at a time. The complete semantic source remains in
         <a href="./data-and-activity-diagrams.md">data-and-activity-diagrams.md</a>.
       </p>
@@ -634,7 +634,7 @@ Add this `main()` and direct-execution guard:
 async function main() {
   const markdown = await readFile(sourcePath, "utf8");
   const workflows = extractWorkflows(markdown);
-  const tempDirectory = await mkdtemp(join(tmpdir(), "laundrotwin-activity-"));
+  const tempDirectory = await mkdtemp(join(tmpdir(), "laundrytwin-activity-"));
   const temporaryOutput = `${outputPath}.tmp`;
 
   try {
@@ -645,7 +645,7 @@ async function main() {
     }
     const overview = {
       id: "overview",
-      title: "LaundroTwin MVP Workflow Overview",
+      title: "LaundryTwin MVP Workflow Overview",
       summary: "How telemetry, access control, alerting, and safe analytics connect.",
     };
     const overviewSvg = normalizeSvg(
@@ -676,7 +676,7 @@ Run:
 ```bash
 node --test scripts/activity-viewer/generate.test.mjs
 node scripts/activity-viewer/generate.mjs
-test -s docs/02_architecture/laundrotwin-activity-diagrams.html
+test -s docs/02_architecture/laundrytwin-activity-diagrams.html
 ```
 
 Expected: all tests PASS, Mermaid renders five non-empty SVGs, and the HTML file
@@ -688,14 +688,14 @@ exists without a `.tmp` sibling.
 git add \
   scripts/activity-viewer/generate.mjs \
   scripts/activity-viewer/generate.test.mjs \
-  docs/02_architecture/laundrotwin-activity-diagrams.html
+  docs/02_architecture/laundrytwin-activity-diagrams.html
 git commit -m "docs: add offline activity diagram viewer"
 ```
 
 Before committing, confirm the downloaded draw.io file is not staged:
 
 ```bash
-git diff --cached --name-only | rg 'laundrotwin-mvp-diagrams\.drawio' && exit 1 || true
+git diff --cached --name-only | rg 'laundrytwin-mvp-diagrams\.drawio' && exit 1 || true
 ```
 
 Expected: no output.
@@ -711,7 +711,7 @@ Expected: no output.
 - Modify: `docs/02_architecture/data-and-activity-diagrams.md`
 
 **Interfaces:**
-- Consumes: generated `docs/02_architecture/laundrotwin-activity-diagrams.html`
+- Consumes: generated `docs/02_architecture/laundrytwin-activity-diagrams.html`
 - Produces: `pnpm docs:activity:generate`
 - Produces: `pnpm docs:activity:verify`
 
@@ -724,7 +724,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const viewerUrl = new URL(
-  "../../docs/02_architecture/laundrotwin-activity-diagrams.html",
+  "../../docs/02_architecture/laundrytwin-activity-diagrams.html",
   import.meta.url,
 );
 const viewer = await readFile(viewerUrl, "utf8");
@@ -775,7 +775,7 @@ Add these entries to the root `package.json` `scripts` object:
 
 ```json
 "docs:activity:generate": "node scripts/activity-viewer/generate.mjs",
-"docs:activity:verify": "node --test scripts/activity-viewer/generate.test.mjs && node scripts/activity-viewer/verify.mjs && npx -y html-validate@11.5.6 docs/02_architecture/laundrotwin-activity-diagrams.html"
+"docs:activity:verify": "node --test scripts/activity-viewer/generate.test.mjs && node scripts/activity-viewer/verify.mjs && npx -y html-validate@11.5.6 docs/02_architecture/laundrytwin-activity-diagrams.html"
 ```
 
 Do not add a dependency or modify `pnpm-lock.yaml`.
@@ -786,7 +786,7 @@ Add this note immediately below the introductory paragraph in
 `docs/02_architecture/data-and-activity-diagrams.md`:
 
 ```markdown
-> Open the [offline Activity diagram viewer](laundrotwin-activity-diagrams.html)
+> Open the [offline Activity diagram viewer](laundrytwin-activity-diagrams.html)
 > to explore one workflow at a readable scale without a server or internet
 > connection.
 ```
@@ -805,7 +805,7 @@ Run:
 pnpm docs:activity:generate
 pnpm docs:activity:verify
 git diff --check
-git diff --exit-code -- docs/02_architecture/laundrotwin-activity-diagrams.html
+git diff --exit-code -- docs/02_architecture/laundrytwin-activity-diagrams.html
 ```
 
 Expected:
@@ -824,7 +824,7 @@ Run:
 ```bash
 rg -n -i \
   '(api[_-]?key|secret|password|token)[[:space:]]*[:=][[:space:]]*[^[:space:]]+|<(script|link|img|image|use)[^>]+(src|href|xlink:href)="(https?:)?//' \
-  docs/02_architecture/laundrotwin-activity-diagrams.html
+  docs/02_architecture/laundrytwin-activity-diagrams.html
 ```
 
 Expected: no output. W3C XML namespace URLs inside inline SVG are allowed because
@@ -841,14 +841,14 @@ git add \
 git commit -m "docs: verify and index activity viewer"
 ```
 
-Expected: `pnpm-lock.yaml` and `laundrotwin-mvp-diagrams.drawio` are not staged.
+Expected: `pnpm-lock.yaml` and `laundrytwin-mvp-diagrams.drawio` are not staged.
 
 ---
 
 ### Task 4: Browser smoke test and final release gate
 
 **Files:**
-- Test: `docs/02_architecture/laundrotwin-activity-diagrams.html`
+- Test: `docs/02_architecture/laundrytwin-activity-diagrams.html`
 - Test: `scripts/activity-viewer/generate.test.mjs`
 - Test: `scripts/activity-viewer/verify.mjs`
 
@@ -861,7 +861,7 @@ Expected: `pnpm-lock.yaml` and `laundrotwin-mvp-diagrams.drawio` are not staged.
 Open:
 
 ```text
-file:///Users/uunw/programming/final-project/docs/02_architecture/laundrotwin-activity-diagrams.html
+file:///Users/uunw/programming/final-project/docs/02_architecture/laundrytwin-activity-diagrams.html
 ```
 
 Use browser network inspection or an offline browser context. Expected:
@@ -927,7 +927,7 @@ Expected:
 - viewer generation and verification pass;
 - application tests, checks, and builds pass;
 - only the intentionally untracked
-  `docs/02_architecture/laundrotwin-mvp-diagrams.drawio` remains outside Git;
+  `docs/02_architecture/laundrytwin-mvp-diagrams.drawio` remains outside Git;
 - no generated `.tmp`, `.mmd`, or `.svg` file remains.
 
 - [ ] **Step 6: Review commits and report**

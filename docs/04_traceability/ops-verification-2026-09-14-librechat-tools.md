@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make `chat.laundrytwin.duckdns.org` usable for testing ALL LaundroTwin
+Make `chat.laundrytwin.duckdns.org` usable for testing ALL LaundryTwin
 analytics MCP tools through the Agents feature, using a free OpenRouter model.
 
 ## Verified setup
@@ -28,7 +28,7 @@ analytics MCP tools through the Agents feature, using a free OpenRouter model.
 - `endpoints.agents` block: recursionLimit 25, maxRecursionLimit 50,
   capabilities (tools, chain, context, file_search, web_search,
   execute_code, artifacts), checkpointer (mongo, ttl 86400).
-- Agent "LaundroTwin Analytics Tester" created (provider `OpenRouter`,
+- Agent "LaundryTwin Analytics Tester" created (provider `OpenRouter`,
   model `inclusionai/ling-3.0-flash-fin:free`, all 5 MCP tools attached).
   mcpServerNames: `laundrytwin-analytics`.
 

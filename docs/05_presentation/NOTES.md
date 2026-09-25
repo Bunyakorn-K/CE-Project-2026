@@ -1,99 +1,79 @@
-# Presentation build notes (context snapshot)
+# Presentation build notes (current evidence)
 
-## Task
-User asked (Thai): build slides to present to the professor, giving a rough
-picture of the system — with focus on the "Data Structure for LLM" /
-Advanced Analytics topic discussed just before.
+## Deliverable
 
-## Deliverable being built
-`docs/05_presentation/llm-analytics-slides.html` — a single self-contained
-HTML file (no build step, no deps, open in browser). Reveal-style deck done
-with plain CSS scroll-snap sections + arrow-key/space navigation, Thai text,
-printable to PDF via browser print.
+`docs/05_presentation/llm-analytics-slides.html` is the self-contained HTML
+source for the professor presentation. It uses Thai-first copy, native HTML/CSS
+slides, keyboard/scroll navigation, and browser print-to-PDF. The PowerPoint
+source is `docs/05_presentation/build_pptx.py`; do not run the generator unless
+explicitly requested.
 
-## Project facts (already gathered — do not re-探索)
-- Repo: `/Users/uunw/programming/final-project`, pnpm monorepo, branch `main`.
-- Product: **LaundroTwin** (a.k.a. LaundryGo) — Smart Laundry Management and
-  Analytics Platform. IoT washing machines -> telemetry -> dashboard + LINE
-  alerts + AI Executive Assistant.
-- Apps: `apps/api` (Hono-ish TS API, drizzle + SQLite `apps/api/data/demo.sqlite`),
-  `apps/web` (Vite + React 19 + HeroUI + Tailwind 4 + LIFF + better-auth).
-- API source files: `schema.ts`, `access-policy.ts`, `access-store.ts`,
-  `reporting.ts`, `iris-read-client.ts`, `demo-read-client.ts`, `liff-auth.ts`,
-  `line.ts`, `index.ts`, `config.ts`, `db.ts`, `auth.ts` (+ `*.test.ts` for most —
-  repo has a TDD culture).
-- `reporting.ts` exports: `DashboardProjection`,
-  `redactDashboardRevenue(dashboard, mayViewRevenue)`,
-  `buildThaiStakeholderSummary(input)`, plus private `formatBaht(satang)`
-  -> money is stored in **satang** (integer).
-- Web source: `App.tsx`, `dashboard-metrics.ts`, `liff.ts`, `auth-client.ts`.
-- Docs tree: `docs/01_requirements/` (system_requirement.md, system_functions.md,
-  user_stories.md), `docs/02_architecture/` (data-and-activity-diagrams.md,
-  laundrotwin-mvp-diagrams.drawio), `docs/03_data_contracts/`
-  (data_contracts.md, modbus_frame_analysis.md), `docs/04_traceability/RTM_matrix.md`,
-  `docs/integration/iris-laundrytwin-read-api.md`,
-  `docs/superpowers/{plans,specs}/` (dated 2026-07-*).
-- README status table says: "Safe AI Executive Assistant | Not implemented".
+## Current implementation facts (2026-09-25)
 
-## Requirements that the deck must trace to
-- **R08** (MVP) AI Assistance — Executive Summary with safe function calling.
-  LLM may only call allowed analytics services; backend verifies roles and
-  branch scope; LLM must not execute arbitrary SQL. Deps: aggregated analytics
-  APIs, RBAC context, audit log. Example: Owner can request MoM comparison,
-  Manager cannot read other branches. Weather is Phase 2.
-- **R09** (Phase 2) Promotion recommendations from off-peak historical usage.
-- **F-07** (MVP) Authentication and append-only audit log, including AI tool
-  calls (actor, action, target, timestamp, outcome).
-- **F-11** (MVP) Safe Analytics Function Calling — parse intent to allow-listed
-  functions; backend strictly verifies arguments, RBAC, branch scope; logs
-  prompt, tool name, sanitized arguments, result reference; arbitrary SQL
-  strictly prohibited.
-- **F-12** (Phase 2) External context (Weather API), correlation not causation.
-- **US-05** (MVP, Owner) scoped Executive Summary. **US-06** (Phase 2, Marketer)
-  off-peak promotion windows.
-- Data contract: `branch_id` required in every telemetry event and every query,
-  server-side scope enforced; `coinbox_open` must come from an explicit mapped
-  event, NEVER inferred from `door_status`.
-- Architecture: `docs/02_architecture/data-and-activity-diagrams.md` contains
-  "Activity Diagram 4: Safe AI Executive Assistant Function Calling" with flow:
-  auth check -> store sanitized request -> classify intent / propose allow-listed
-  tool -> allow-list check -> build structured args -> strict schema validation
-  -> tenant/branch scope check -> analytics service executes parameterized
-  function -> log tool name, sanitized args, scope, result ref -> sufficient
-  traceable data? -> compose answer from tool output only -> audit -> answer
-  states period, metric, caveats.
-- ER: `MACHINE ||--o{ MACHINE_CYCLE`, `BRANCH ||--o{ MACHINE_CYCLE`,
-  `MACHINE_CYCLE { string cycle_id PK ... }`.
+- Product: **LaundryTwin**, a Smart Laundry Management and Analytics Platform.
+- The active web router includes branch/date filters, nullable revenue,
+  source/freshness/availability states, analytics series and tables, alert
+  evidence and acknowledgement, owner-only admin access/grants, AI settings and
+  history, owner-only Playground, legal navigation, and LIFF error retry.
+- Screenshot/browser QA is still pending. LINE/browser E2E is not verified.
+- Local automated evidence is 181 tests: API 142, web 2, ETL 37. The API check,
+  web check/test/build, and ETL test pass under Node.js 24.13.0.
+- Better Auth requires `BETTER_AUTH_SECRET` outside tests, disables public
+  signup, and enables rate limits. Development bypass requires both
+  `NODE_ENV=development` and `LAUNDRYTWIN_DEV_BYPASS=true`, creates an in-memory
+  owner, and is not a production design.
+- Demo mode is explicit, requires a demo session cookie, and is preview-only.
+- MCP requires `MCP_ACCESS_TOKEN`; `MCP_ALLOW_REVENUE` is explicit false by
+  default. The LINE bot derives per-session scope from server-resolved grants
+  and signs it; `accessScope` is not a model argument.
+- Direct ClickHouse Dashboard/Twin routes have local code/test evidence for
+  branch scope, zero-grant denial, strict calendar dates, bind parameters,
+  nullable revenue redaction, active inventory retention, usage-derived
+  freshness, and unknown-state preservation. This is not production E2E.
+- Current analytics envelope is `{ meta, data }`. `meta` contains range,
+  branchId, dataSource, and optional method/rules/caveats.
+- Current local audit entries cover grants, alerts, and settings. There is no
+  complete append-only AI prompt/tool-call/result audit table.
 
-## Answer already given to the user (deck must mirror it)
-Nine work items for "Data Structure for LLM":
-1. Metric catalog / semantic layer (revenue, cycles, utilization, avg cycle
-   time, peak hour) with units (satang), timezone Asia/Bangkok, period grain.
-2. Pre-aggregated rollups (hourly/daily per branch per machine) for
-   deterministic, fast queries.
-3. Tool schemas (zod / JSON Schema): `get_revenue_summary`, `get_utilization`,
-   `get_cycle_stats`, `get_peak_hours`, `compare_period` (MoM).
-4. Strict argument validation + RBAC branch-scope intersection.
-5. Uniform result envelope: `{scope, period, metric, unit, rows, row_count,
-   coverage, source, generated_at, caveats}`; LLM cites only these numbers.
-6. Token budget: top-N rows plus an "other" bucket, rounding, compact tables.
-7. Data-quality flags (telemetry gaps, estimated coin box) surfaced as caveats.
-8. System prompt: answer only from tool output; if data insufficient, say so.
-9. Audit log of prompt / tool / sanitized args / result ref / outcome, plus a
-   golden-question eval set to catch hallucination.
+## Current six MCP tools
 
-## Status update — 2026-09-06 (deck reflects this now)
+The deck must use these exact current names:
 
-- **F-11 / R08 / US-05 are IMPLEMENTED and verified**, not just designed:
-  - LINE bot + conversation loop: `apps/api/src/bot/*` (`bot.test.ts` green).
-  - Allow-listed MCP analytics server: `apps/api/src/analytics/mcp.ts`
-    (`mcp.test.ts` green — bearer auth, tool allow-list, no arbitrary SQL).
-  - RBAC branch-scope enforcement: `analytics/scope.ts` + `access-policy.ts`
-    (403 out-of-grant tests).
-  - Deployed on VM 117; `pnpm test` = 109 tests green, `check` + `build` clean.
-- Title slide status changed from "ยังไม่ implement (ตาม README)" to
-  "implement แล้ว · MCP allow-list + RBAC scope + audit (ยืนยัน 2026-09-06)".
-- PPTX rebuilt from `build_pptx.py` (11 slides) with the updated status.
-- Related new capability (same MVP): alert engine `apps/api/src/alert-engine.ts`
-  (idempotent LINE push + cooldown + audit, 14 tests) — see
-  `docs/04_traceability/ops-verification-2026-09-06.md`.
+1. `get_revenue_daily`
+2. `get_cycles_daily`
+3. `get_utilization_heatmap`
+4. `get_temperature_curve`
+5. `get_weather_usage_correlation`
+6. `get_off_peak_windows`
+
+`get_off_peak_windows` is a Phase 2 percentile baseline, not a forecast. The
+F-12 label is formally Weather Context in `system_functions.md`; historical
+documents used it ambiguously for off-peak work, so the deck must not invent a
+new F-ID.
+
+## Target architecture, not current implementation
+
+The presentation may explain the following as a target design when labeled:
+
+- A pre-aggregated `metric_rollup_hourly` table and rollup maintenance layer.
+- Conceptual tool names such as `get_revenue_summary`, `compare_period`,
+  `get_cycle_stats`, and `get_peak_hours`; these are not the current six MCP
+  names.
+- A richer envelope with `scope`, `period`, `metric`, `unit`, `rows`,
+  `row_count`, `coverage`, `source`, `generated_at`, `caveats`, and
+  `result_ref`.
+- A complete append-only AI prompt/tool-call/result audit trail and
+  golden-question evaluation set.
+
+Do not present target rollups, conceptual tool names, richer envelope fields, or
+full AI audit as already shipped. Current code is useful to show first, with
+the target extension clearly marked.
+
+## Professor-facing story
+
+Keep the explanation Thai-first and practical: human question → server-derived
+scope → allow-listed tool → parameterized ClickHouse query → explicit source,
+range, freshness, and caveat → Thai answer. Explain that the current six tools
+and `{ meta, data }` envelope are the verified baseline; the richer semantic
+layer is a next-step architecture. The external IRIS contract remains
+`/v1/laundrygo` with `X-LaundryGo-Read-Key` when the integration is mentioned.

@@ -6,7 +6,7 @@ import { connectLiff } from "./liff";
 
 type Role = "owner" | "manager" | "technician";
 type Grant = { id: string; role: Role; branchId: string | null };
-type Branch = { id: string; code: string; name: string; timezone: string; status: string };
+type Branch = { id: string; code: string | null; name: string; timezone: string; status: string };
 type Coverage = { available: boolean; reason?: string };
 
 type Dashboard = {

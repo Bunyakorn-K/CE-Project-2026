@@ -11,7 +11,7 @@ export type TelemetryCoverage = {
 
 export type ReportingEnvelope = {
   contractVersion: string;
-  source: "postgres" | "durable-object" | "demo";
+  source: "postgres" | "durable-object" | "demo" | "clickhouse";
   fetchedAt: string;
 };
 

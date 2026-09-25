@@ -1,4 +1,4 @@
-# LaundryGo DevOps and Observability Design
+# LaundryTwin DevOps and Observability Design
 
 **Status:** Approved for implementation
 
@@ -7,7 +7,7 @@
 ## 1. Purpose
 
 This design adds a project-scoped DevOps and observability baseline for
-LaundryGo without changing its product boundary. LaundryGo remains a
+LaundryTwin without changing its product boundary. LaundryTwin remains a
 read-mostly reporting application. This work does not introduce machine
 commands, payment writes, unverified telemetry semantics, or public access to
 raw telemetry stores.
@@ -15,9 +15,9 @@ raw telemetry stores.
 The baseline must provide:
 
 - Jenkins CI for repeatable application verification.
-- Grafana dashboards for LaundryGo project members.
-- Loki logs, Prometheus metrics, and Tempo traces for LaundryGo services.
-- Authentik-based access control through a `laundrygo-members` group.
+- Grafana dashboards for LaundryTwin project members.
+- Loki logs, Prometheus metrics, and Tempo traces for LaundryTwin services.
+- Authentik-based access control through a `laundrytwin-members` group.
 - Public access only for the approved user interfaces.
 
 ## 2. Decisions and Constraints
@@ -26,12 +26,12 @@ The baseline must provide:
 
 - Grafana remains the existing shared Grafana instance at
   `grafana.notnotik.duckdns.org`.
-- LaundryGo members are not an untrusted external tenant. The design provides
+- LaundryTwin members are not an untrusted external tenant. The design provides
   Grafana resource and dashboard separation, not hard storage-level isolation
   from the shared Prometheus and Loki backends.
 - Authentik is the identity provider. Administrators manage project access by
-  maintaining the `laundrygo-members` group.
-- Jenkins is exposed at `jenkins.laundrygo.duckdns.org` and uses Authentik
+  maintaining the `laundrytwin-members` group.
+- Jenkins is exposed at `jenkins.laundrytwin.duckdns.org` and uses Authentik
   OpenID Connect.
 - The first CI release has no automatic deployment stage. A successful build
   creates a verified candidate only.
@@ -43,7 +43,7 @@ The baseline must provide:
 
 ### 2.2 Existing constraints
 
-- The public LaundryGo application runs on VM 117 at `10.10.0.117`; Caddy on
+- The public LaundryTwin application runs on VM 117 at `10.10.0.117`; Caddy on
   the Pi is the public reverse proxy.
 - The existing monitoring LXC hosts Grafana, Loki, Prometheus, Alertmanager,
   and related services.
@@ -78,7 +78,7 @@ No implementation or public route change starts until all of these checks pass:
    private address and must complete its first successful guest backup before
    its public Caddy route is exposed.
 5. Existing Grafana OAuth users and the current Main organization mapping are
-   inventoried. The LaundryGo mapping may not revoke existing authorized
+   inventoried. The LaundryTwin mapping may not revoke existing authorized
    administrators as an accidental side effect.
 
 ## 3. Architecture
@@ -87,15 +87,15 @@ No implementation or public route change starts until all of these checks pass:
 Project member
     |
     +--> Authentik
-    |      `-- laundrygo-members group
+    |      `-- laundrytwin-members group
     |
     +--> grafana.notnotik.duckdns.org
-    |      `-- shared Grafana instance / LaundryGo organization
+    |      `-- shared Grafana instance / LaundryTwin organization
     |
-    `--> jenkins.laundrygo.duckdns.org
+    `--> jenkins.laundrytwin.duckdns.org
            `-- dedicated Jenkins VM and Authentik OIDC
 
-LaundryGo API on VM 117
+LaundryTwin API on VM 117
     |-- metrics listener :9464 (private, Prometheus scrape only)
     |-- structured logs -> Alloy -> Loki
     `-- OTLP/HTTP :4318 -> OpenTelemetry Collector -> Tempo
@@ -108,7 +108,7 @@ Monitoring LXC
     `-- OpenTelemetry Collector (private OTLP receiver)
 ```
 
-All traffic between LaundryGo, the monitoring LXC, and Jenkins uses the
+All traffic between LaundryTwin, the monitoring LXC, and Jenkins uses the
 private PVE network. Caddy is the only intended public ingress. Loki, Tempo,
 the OpenTelemetry Collector, and Prometheus do not gain public routes.
 
@@ -116,13 +116,13 @@ the OpenTelemetry Collector, and Prometheus do not gain public routes.
 
 ### 4.1 Authentik
 
-Create the `laundrygo-members` group in the existing Authentik configuration.
+Create the `laundrytwin-members` group in the existing Authentik configuration.
 Administrators add named users to that group. Existing `authentik Admins`
 retain their administrative capabilities.
 
 Create one Authentik OIDC application for Jenkins. It emits `openid`,
 `profile`, `email`, and `groups` claims. Its access policy permits
-`laundrygo-members` and `authentik Admins` only. Jenkins validates its own
+`laundrytwin-members` and `authentik Admins` only. Jenkins validates its own
 OIDC session; Caddy only terminates TLS and proxies the public request.
 
 The existing Grafana Generic OAuth provider is extended, not replaced. It uses
@@ -133,21 +133,21 @@ applied:
 
 | External group | Grafana organization | Role |
 | --- | --- | --- |
-| `laundrygo-members` | `LaundryGo` | Viewer |
-| `authentik Admins` | Main organization and `LaundryGo` | Admin |
+| `laundrytwin-members` | `LaundryTwin` | Viewer |
+| `authentik Admins` | Main organization and `LaundryTwin` | Admin |
 
 The configuration rejects a user whose group claim does not match an explicit
-mapping. It must not place LaundryGo members in the Main organization as a
+mapping. It must not place LaundryTwin members in the Main organization as a
 fallback, and it must preserve the existing administrator path.
 
 ### 4.2 Grafana resources
 
-Create the `LaundryGo` Grafana organization and a top-level `LaundryGo`
-folder. Add only LaundryGo dashboards and project-specific datasource entries
+Create the `LaundryTwin` Grafana organization and a top-level `LaundryTwin`
+folder. Add only LaundryTwin dashboards and project-specific datasource entries
 to that organization. The Main organization and its homelab dashboards remain
 unchanged.
 
-The member role is Viewer. It can read the LaundryGo folder and dashboards but
+The member role is Viewer. It can read the LaundryTwin folder and dashboards but
 cannot edit dashboards, alter datasource definitions, manage alerts, change
 organization settings, or enter Jenkins administration.
 
@@ -169,7 +169,7 @@ Jenkins maps the same Authentik group claim to two roles:
 
 | Group | Jenkins permissions |
 | --- | --- |
-| `laundrygo-members` | Read jobs and build history; trigger approved CI jobs; read console output and artifacts |
+| `laundrytwin-members` | Read jobs and build history; trigger approved CI jobs; read console output and artifacts |
 | `authentik Admins` | Full controller administration |
 
 Members cannot configure jobs, modify credentials, manage plugins, administer
@@ -183,7 +183,7 @@ must redact credential values and must never print environment files.
 The observability stack records service behavior. It does not replace the
 application telemetry data model.
 
-- **Application telemetry:** normalized, traceable LaundryGo events belong in
+- **Application telemetry:** normalized, traceable LaundryTwin events belong in
   the application data store after the MQTT ingestion feature is implemented
   and the register map semantics are verified.
 - **Metrics:** bounded-cardinality counters, gauges, and histograms exposed by
@@ -192,8 +192,8 @@ application telemetry data model.
 - **Traces:** request and pipeline spans exported to Tempo through OTLP.
 
 Every new signal uses stable service attributes including
-`service.name=laundrygo-api`, `deployment.environment`, and
-`project=laundrygo`.
+`service.name=laundrytwin-api`, `deployment.environment`, and
+`project=laundrytwin`.
 
 When real ingestion is implemented, the application data path preserves the
 required `branch_id`, `machine_id`, `register_map_version`, `event_timestamp`,
@@ -224,7 +224,7 @@ The API creates traces for request handling and, once ingestion exists,
 normalization, idempotency, persistence, and alert evaluation. A trace carries
 safe correlation identifiers but not raw device payloads.
 
-The initial LaundryGo dashboards are:
+The initial LaundryTwin dashboards are:
 
 1. **Service overview** — availability, API latency, errors, and deployment
    version.
@@ -233,11 +233,11 @@ The initial LaundryGo dashboards are:
 3. **Logs and traces** — filtered operational logs and linked traces for
    incident triage.
 
-All dashboard queries filter on `project=laundrygo`. The telemetry dashboard
+All dashboard queries filter on `project=laundrytwin`. The telemetry dashboard
 is empty or explicitly reports unavailable data until a real, validated
 telemetry pipeline exists; it must never fabricate telemetry.
 
-While `LAUNDRYGO_DEMO_MODE=true`, the service overview explicitly displays
+While `LAUNDYTWIN_DEMO_MODE=true`, the service overview explicitly displays
 demo/reporting-source state. Telemetry freshness, rejection, and stale-data
 panels remain unavailable rather than showing zero-valued production metrics.
 
@@ -249,7 +249,7 @@ The existing monitoring LXC gains:
 
 - Tempo with local persistent storage and a declared retention period.
 - An OpenTelemetry Collector bound only to the private network.
-- Grafana datasource provisioning for Tempo and LaundryGo-specific Prometheus
+- Grafana datasource provisioning for Tempo and LaundryTwin-specific Prometheus
   and Loki entries.
 - Grafana organization, folder, datasource, and dashboard provisioning or a
   repeatable administrative script.
@@ -268,9 +268,9 @@ and is reviewed after one week of real service data. The initial policy is:
 Before adding any new image, record the running Grafana, Loki, and Prometheus
 digests. New Tempo, Collector, Alloy, and Jenkins images use tested immutable
 tags or digests. Updating pre-existing `latest` images is a separate reviewed
-maintenance change, not an incidental part of LaundryGo delivery.
+maintenance change, not an incidental part of LaundryTwin delivery.
 
-### 6.2 LaundryGo VM changes
+### 6.2 LaundryTwin VM changes
 
 VM 117 gains only the observability components necessary for the application:
 
@@ -278,7 +278,7 @@ VM 117 gains only the observability components necessary for the application:
   The public Nginx route and Caddy route do not proxy this port or a `/metrics`
   path.
 - A minimal Alloy log agent with a read-only Docker socket and only the mounts
-  needed to collect LaundryGo container logs.
+  needed to collect LaundryTwin container logs.
 - OTLP/HTTP export to the private collector on port `4318`.
 
 The API remains read-only. Metrics and traces describe the reporting service;
@@ -318,8 +318,8 @@ release administrator explicitly retains one.
 
 | Endpoint | Exposure | Authentication |
 | --- | --- | --- |
-| `grafana.notnotik.duckdns.org` | Existing public Grafana route | Existing Authentik Generic OAuth, extended with LaundryGo organization mapping |
-| `jenkins.laundrygo.duckdns.org` | New public Caddy route | Jenkins Authentik OIDC |
+| `grafana.notnotik.duckdns.org` | Existing public Grafana route | Existing Authentik Generic OAuth, extended with LaundryTwin organization mapping |
+| `jenkins.laundrytwin.duckdns.org` | New public Caddy route | Jenkins Authentik OIDC |
 | Prometheus, Loki, Tempo, OTLP | Private PVE network only | Network firewall and service-level configuration |
 
 The Jenkins route receives an individual public certificate through Caddy. No
@@ -350,11 +350,11 @@ old DHCP data.
    firewall state.
 2. **Identity gate:** back up the current Grafana configuration, create the
    Authentik group and Jenkins OIDC application, create the Grafana
-   `LaundryGo` organization, and validate an administrator and a member test
+   `LaundryTwin` organization, and validate an administrator and a member test
    account. This includes the Grafana TLS/root URL and break-glass pre-flight
    checks.
 3. **Observability:** expand the monitor LXC as needed, add Tempo and the
-   collector, add private firewall rules, then provision LaundryGo metrics,
+   collector, add private firewall rules, then provision LaundryTwin metrics,
    logs, traces, datasources, and dashboards.
 4. **Jenkins:** provision the dedicated VM, configure OIDC and authorization,
    add the Caddy route and firewall rule, then create the verification-only
@@ -370,20 +370,20 @@ authorization policy, internal service, and firewall rules are verified.
 
 ### 9.1 Identity and access
 
-- A `laundrygo-members` user can sign in to Grafana and lands in the
-  `LaundryGo` organization.
-- That user cannot access a Main organization dashboard URL, edit a LaundryGo
+- A `laundrytwin-members` user can sign in to Grafana and lands in the
+  `LaundryTwin` organization.
+- That user cannot access a Main organization dashboard URL, edit a LaundryTwin
   dashboard, alter a datasource, or access Grafana administration.
 - An `authentik Admins` user retains access to both Grafana organizations.
-- A LaundryGo member can read and trigger the approved Jenkins CI job but
+- A LaundryTwin member can read and trigger the approved Jenkins CI job but
   receives authorization denial for job configuration, credentials, controller
   administration, and deployment actions.
 
 ### 9.2 Observability
 
 - A controlled API request appears as a Prometheus metric, structured Loki log,
-  and Tempo trace with `project=laundrygo`.
-- Dashboard queries show only explicitly labeled LaundryGo signals.
+  and Tempo trace with `project=laundrytwin`.
+- Dashboard queries show only explicitly labeled LaundryTwin signals.
 - A synthetic invalid telemetry sample, when the ingestion feature exists,
   increments the safe rejection metric and never exposes its raw payload.
 - Loki, Tempo, Prometheus, and OTLP are unreachable from the public internet.
@@ -393,13 +393,13 @@ authorization policy, internal service, and firewall rules are verified.
   These alerts use the existing default Alertmanager receiver; adding a new
   recipient or LINE delivery is a separate approved change.
 - A backup restore test validates the new Jenkins guest and confirms that
-  Grafana's LaundryGo organization resources can be recreated from their
+  Grafana's LaundryTwin organization resources can be recreated from their
   declared configuration.
 
 ### 9.3 CI and public routing
 
 - Jenkins is available through HTTPS at
-  `jenkins.laundrygo.duckdns.org`, redirects unauthenticated users to
+  `jenkins.laundrytwin.duckdns.org`, redirects unauthenticated users to
   Authentik, and denies users outside the allowed groups.
 - The CI job completes `pnpm test`, `pnpm check`, `pnpm build`, and Docker
   build verification from a clean workspace.
@@ -411,7 +411,7 @@ authorization policy, internal service, and firewall rules are verified.
 
 ## 10. Rollback
 
-- Restore the previous Grafana OAuth configuration and remove the LaundryGo
+- Restore the previous Grafana OAuth configuration and remove the LaundryTwin
   organization mapping. The documented local Grafana break-glass login remains
   available if OAuth mapping fails.
 - Remove the Caddy Jenkins route only after the controller is made private or
@@ -419,7 +419,7 @@ authorization policy, internal service, and firewall rules are verified.
 - Remove only the new, named firewall rules and restore the prior persistent
   firewall script if the rule test or connectivity check fails.
 - Stop the new Tempo, collector, log agent, or Jenkins services without
-  touching existing Grafana, Loki, Prometheus, or LaundryGo application data.
+  touching existing Grafana, Loki, Prometheus, or LaundryTwin application data.
 - Keep the existing VM 117 rollback snapshot and application data intact.
 - Restore the previous monitoring LXC sizing only after Tempo data has been
   intentionally discarded or archived according to the approved retention

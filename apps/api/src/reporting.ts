@@ -1,4 +1,5 @@
 import type { IrisDashboard, IrisLiveMachine } from "./iris-read-client";
+import type { DashboardData } from "./report/clickhouse-report";
 
 export type DashboardProjection = Omit<IrisDashboard, "branches" | "totals"> & {
   branches: Array<
@@ -22,10 +23,20 @@ export function redactDashboardRevenue(dashboard: IrisDashboard, mayViewRevenue:
   };
 }
 
+export function redactDashboardDataRevenue(dashboard: DashboardData, mayViewRevenue: boolean): DashboardData {
+  if (mayViewRevenue) return dashboard;
+
+  return {
+    ...dashboard,
+    totals: { ...dashboard.totals, revenueSatang: null },
+    branches: dashboard.branches.map((branch) => ({ ...branch, revenueSatang: null }))
+  };
+}
+
 export function buildThaiStakeholderSummary(input: {
   dashboard: DashboardProjection;
   machines: IrisLiveMachine[];
-  openAlertCount: number;
+  openAlertCount: number | null;
 }) {
   const fragments = [
     `รอบรายงานนี้มี ${input.dashboard.totals.cycles} รอบ จาก ${input.dashboard.totals.machineCount} เครื่อง`
@@ -37,7 +48,7 @@ export function buildThaiStakeholderSummary(input: {
 
   const unavailable = input.machines.filter((machine) => machine.freshness === "unavailable").length;
   const stale = input.machines.filter((machine) => machine.freshness === "stale").length;
-  if (input.openAlertCount > 0) fragments.push(`มี ${input.openAlertCount} รายการที่ต้องติดตาม`);
+  if (input.openAlertCount !== null && input.openAlertCount > 0) fragments.push(`มี ${input.openAlertCount} รายการที่ต้องติดตาม`);
   if (unavailable > 0) fragments.push(`ข้อมูลสดไม่พร้อม ${unavailable} เครื่อง`);
   else if (stale > 0) fragments.push(`ข้อมูลสดล่าช้า ${stale} เครื่อง`);
   else if (input.machines.length > 0) fragments.push(`สถานะสดพร้อมใช้งาน ${input.machines.length} เครื่อง`);

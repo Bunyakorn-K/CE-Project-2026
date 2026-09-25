@@ -136,7 +136,7 @@ export const alertNotification = sqliteTable(
 );
 
 // AI console settings (backoffice, 2026-09-10). Single-row config for the
-// LLM gateway: base_url + api_key let an owner point LaundroTwin at any
+// LLM gateway: base_url + api_key let an owner point LaundryTwin at any
 // OpenAI-compatible endpoint (default: Bifrost https://llm.kovaspire.com).
 // The key is stored encrypted-at-rest (see ai-settings.ts) and NEVER sent to
 // the browser; only `hasApiKey` masks are returned. Model selection +

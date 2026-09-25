@@ -51,7 +51,7 @@ cd /opt/analytics && sudo docker compose up -d clickhouse
 Container came back `Up ... (healthy)`; data intact (5,425 usage rows,
 4 active branches, range 2026-07-22 → 2026-09-14).
 
-## Lesson (also in skill `laundrotwin-ops`)
+## Lesson (also in skill `laundrytwin-ops`)
 
 Never background clickhouse-server (`&`) inside a debug `docker run` — the
 process outlives the debug container and grabs the volume status lock,

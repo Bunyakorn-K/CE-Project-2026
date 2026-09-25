@@ -23,6 +23,7 @@ apps/etl/.tmp/
 .impeccable/hook.cache.json
 .firecrawl/
 .claude/
+.opencode/
 
 # TypeScript build info
 *.tsbuildinfo

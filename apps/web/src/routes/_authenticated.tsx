@@ -1,37 +1,31 @@
-import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
+import { createFileRoute, redirect, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import type { AuthUser } from "../lib/atoms/auth";
 import { authAtom } from "../lib/atoms/auth";
 import { apiUrl } from "../lib/api/client";
+import { AppShell } from "../lib/components/app-shell";
 
 export const Route = createFileRoute("/_authenticated")({
-  // TODO: re-enable auth checking after LINE sign-in works.
-  // Currently disabled so the app renders inside LINE while the
-  // LIFF flow is still being fixed.
-  beforeLoad: async () => {},
+  beforeLoad: async () => {
+    const res = await fetch(apiUrl("/api/me"), { credentials: "include" });
+    if (res.status === 401) throw redirect({ to: "/login" });
+    if (!res.ok) throw new Error(`ไม่สามารถตรวจสอบเซสชันได้ (HTTP ${res.status})`);
+  },
   component: AuthenticatedLayout
 });
 
 function AuthenticatedLayout() {
   const [user, setUser] = useAtom(authAtom);
   const [status, setStatus] = useState<"loading" | "ready">("loading");
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetch(apiUrl("/api/me"), { credentials: "include" })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = (await res.json()) as {
-          user: { id: string; name: string; email: string };
-          grants: Array<{ role: string; branchId: string | null }>;
-        };
-        const value: AuthUser = {
-          id: data.user.id,
-          name: data.user.name,
-          email: data.user.email,
-          roles: data.grants.map((g) => g.role),
-          grants: data.grants
-        };
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = (await response.json()) as { user: { id: string; name: string; email: string }; grants: Array<{ role: string; branchId: string | null }> };
+        const value: AuthUser = { id: data.user.id, name: data.user.name, email: data.user.email, roles: data.grants.map((grant) => grant.role), grants: data.grants };
         setUser(value);
         return value;
       })
@@ -39,17 +33,12 @@ function AuthenticatedLayout() {
       .finally(() => setStatus("ready"));
   }, [setUser]);
 
-  if (status === "loading") {
-    return <div className="flex min-h-screen items-center justify-center text-default-500">Loading…</div>;
-  }
+  useEffect(() => {
+    if (status === "ready" && user === null) void navigate({ to: "/login", replace: true });
+  }, [navigate, status, user]);
 
-  if (user === null) {
-    // beforeLoad already redirected here; this branch is only reachable if
-    // the session expired after mount. Reload once so the guard re-runs
-    // instead of bouncing forever inside the router.
-    window.location.reload();
-    return null;
-  }
+  if (status === "loading") return <main className="public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบเซสชัน</h1><p>กำลังโหลดสิทธิ์และขอบเขตของคุณ</p></section></main>;
+  if (user === null) return <main className="public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><h1>กำลังพาไปหน้าเข้าสู่ระบบ</h1><p>เซสชันไม่พร้อมใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง</p></section></main>;
 
-  return <Outlet />;
+  return <AppShell><Outlet /></AppShell>;
 }

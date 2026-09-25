@@ -1,4 +1,4 @@
-# LaundroTwin — ETL worker + Weather collector images.
+# LaundryTwin — ETL worker + Weather collector images.
 #
 # Strategy: turbo prune (etl only) + plain npm runtime deps on alpine
 # (tsx, pg, date-fns, date-fns-tz) — no pnpm workspace hoisting in the

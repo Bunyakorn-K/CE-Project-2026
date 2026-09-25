@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <UserObject label="" plantUmlData="{&#xa;  &quot;data&quot;: &quot;@startuml\nleft to right direction\nskinparam packageStyle rectangle\n\nactor \&quot;Franchise Owner\&quot; as Owner\nactor \&quot;Branch Manager\&quot; as Manager\nactor \&quot;Technician\&quot; as Tech\nactor \&quot;Customer\&quot; as Cust\n\nrectangle \&quot;LaundroTwin Platform\&quot; {\n  usecase \&quot;View Multi-Branch KPIs\&quot; as UC1\n  usecase \&quot;Ask AI Executive Summary\&quot; as UC2\n  usecase \&quot;View Single Branch Status\&quot; as UC3\n  usecase \&quot;Receive Low Gas Alert\&quot; as UC4\n  usecase \&quot;Receive Coin Box Full Alert\&quot; as UC5\n  usecase \&quot;Receive Anomaly/Maintenance Alert\&quot; as UC6\n  usecase \&quot;Reset Coin Box Status\&quot; as UC7\n  usecase \&quot;View Available Machines\&quot; as UC8\n}\n\nOwner --&gt; UC1\nOwner --&gt; UC2\n\nManager --&gt; UC3\nManager --&gt; UC4\nManager --&gt; UC5\nManager --&gt; UC7\n\nTech --&gt; UC3\nTech --&gt; UC6\n\nCust --&gt; UC8\n\nOwner --|&gt; Manager : Inherits\n@enduml&quot;,&#xa;  &quot;config&quot;: null&#xa;}" id="bRzQBDO40pXNUS7odeu8-29">
+        <UserObject label="" plantUmlData="{&#xa;  &quot;data&quot;: &quot;@startuml\nleft to right direction\nskinparam packageStyle rectangle\n\nactor \&quot;Franchise Owner\&quot; as Owner\nactor \&quot;Branch Manager\&quot; as Manager\nactor \&quot;Technician\&quot; as Tech\nactor \&quot;Customer\&quot; as Cust\n\nrectangle \&quot;LaundryTwin Platform\&quot; {\n  usecase \&quot;View Multi-Branch KPIs\&quot; as UC1\n  usecase \&quot;Ask AI Executive Summary\&quot; as UC2\n  usecase \&quot;View Single Branch Status\&quot; as UC3\n  usecase \&quot;Receive Low Gas Alert\&quot; as UC4\n  usecase \&quot;Receive Coin Box Full Alert\&quot; as UC5\n  usecase \&quot;Receive Anomaly/Maintenance Alert\&quot; as UC6\n  usecase \&quot;Reset Coin Box Status\&quot; as UC7\n  usecase \&quot;View Available Machines\&quot; as UC8\n}\n\nOwner --&gt; UC1\nOwner --&gt; UC2\n\nManager --&gt; UC3\nManager --&gt; UC4\nManager --&gt; UC5\nManager --&gt; UC7\n\nTech --&gt; UC3\nTech --&gt; UC6\n\nCust --&gt; UC8\n\nOwner --|&gt; Manager : Inherits\n@enduml&quot;,&#xa;  &quot;config&quot;: null&#xa;}" id="bRzQBDO40pXNUS7odeu8-29">
           <mxCell connectable="0" parent="1" style="group;transparentBounds=1;editIcon=1;lockedGroup=0;groupPadding=10;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;" vertex="1">
             <mxGeometry as="geometry" />
           </mxCell>
@@ -29,7 +29,7 @@
             <mxGeometry height="16" width="110" x="7" y="360" as="geometry" />
           </mxCell>
         </UserObject>
-        <UserObject label="LaundroTwin Platform" plantUmlId="rect_4" plantUmlBaseStyle="swimlane;collapsible=0;startSize=26;fillColor=none;strokeColor=#181818;fontColor=#000000;fontSize=13;fontStyle=1;whiteSpace=wrap;" plantUmlBaseValue="LaundroTwin Platform" id="bRzQBDO40pXNUS7odeu8-34">
+        <UserObject label="LaundryTwin Platform" plantUmlId="rect_4" plantUmlBaseStyle="swimlane;collapsible=0;startSize=26;fillColor=none;strokeColor=#181818;fontColor=#000000;fontSize=13;fontStyle=1;whiteSpace=wrap;" plantUmlBaseValue="LaundryTwin Platform" id="bRzQBDO40pXNUS7odeu8-34">
           <mxCell parent="bRzQBDO40pXNUS7odeu8-29" style="swimlane;collapsible=0;startSize=26;fillColor=none;strokeColor=#181818;fontColor=#000000;fontSize=13;fontStyle=1;whiteSpace=wrap;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;" vertex="1">
             <mxGeometry height="618" width="333" x="207" y="30" as="geometry" />
           </mxCell>
@@ -146,13 +146,13 @@
             </mxGeometry>
           </mxCell>
         </UserObject>
-        <mxCell id="bRzQBDO40pXNUS7odeu8-57" parent="1" style="text;whiteSpace=wrap;" value="@startumlleft to right directionskinparam packageStyle rectangleactor &quot;Franchise Owner&quot; as Owneractor &quot;Branch Manager&quot; as Manageractor &quot;Technician&quot; as Techactor &quot;Customer&quot; as Custrectangle &quot;LaundroTwin Platform&quot; {  usecase &quot;View Multi-Branch KPIs&quot; as UC1  usecase &quot;Ask AI Executive Summary&quot; as UC2  usecase &quot;View Single Branch Status&quot; as UC3  usecase &quot;Receive Low Gas Alert&quot; as UC4  usecase &quot;Receive Coin Box Full Alert&quot; as UC5  usecase &quot;Receive Anomaly/Maintenance Alert&quot; as UC6  usecase &quot;Reset Coin Box Status&quot; as UC7  usecase &quot;View Available Machines&quot; as UC8}Owner --&gt; UC1Owner --&gt; UC2Manager --&gt; UC3Manager --&gt; UC4Manager --&gt; UC5Manager --&gt; UC7Tech --&gt; UC3Tech --&gt; UC6Cust --&gt; UC8Owner --|&gt; Manager : Inherits@enduml" vertex="1">
+        <mxCell id="bRzQBDO40pXNUS7odeu8-57" parent="1" style="text;whiteSpace=wrap;" value="@startumlleft to right directionskinparam packageStyle rectangleactor &quot;Franchise Owner&quot; as Owneractor &quot;Branch Manager&quot; as Manageractor &quot;Technician&quot; as Techactor &quot;Customer&quot; as Custrectangle &quot;LaundryTwin Platform&quot; {  usecase &quot;View Multi-Branch KPIs&quot; as UC1  usecase &quot;Ask AI Executive Summary&quot; as UC2  usecase &quot;View Single Branch Status&quot; as UC3  usecase &quot;Receive Low Gas Alert&quot; as UC4  usecase &quot;Receive Coin Box Full Alert&quot; as UC5  usecase &quot;Receive Anomaly/Maintenance Alert&quot; as UC6  usecase &quot;Reset Coin Box Status&quot; as UC7  usecase &quot;View Available Machines&quot; as UC8}Owner --&gt; UC1Owner --&gt; UC2Manager --&gt; UC3Manager --&gt; UC4Manager --&gt; UC5Manager --&gt; UC7Tech --&gt; UC3Tech --&gt; UC6Cust --&gt; UC8Owner --|&gt; Manager : Inherits@enduml" vertex="1">
           <mxGeometry height="150" width="560" x="715" y="40" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="bEugVWk0bExJMOYXzbr6" name="LaundroTwin MVP — ER Diagram">
+  <diagram id="bEugVWk0bExJMOYXzbr6" name="LaundryTwin MVP — ER Diagram">
     <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
@@ -3552,7 +3552,7 @@
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="zKlRoQgCAvjQHusDPreP" name="LaundroTwin MVP — Activity Diagrams">
+  <diagram id="zKlRoQgCAvjQHusDPreP" name="LaundryTwin MVP — Activity Diagrams">
     <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />

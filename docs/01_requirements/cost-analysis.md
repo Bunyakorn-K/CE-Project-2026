@@ -1,4 +1,4 @@
-# 💰 LaundroTwin Cost Analysis (Epic 1 · #39)
+# 💰 LaundryTwin Cost Analysis (Epic 1 · #39)
 
 **Scope:** monthly cost estimate for the deployed stack, self-hosted baseline
 vs cloud equivalents. All figures are estimates with explicit assumptions —

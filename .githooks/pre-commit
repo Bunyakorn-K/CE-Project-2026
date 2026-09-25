@@ -1,5 +1,5 @@
 #!/bin/sh
-# LaundroTwin pre-commit hook: block secrets before they enter git history.
+# LaundryTwin pre-commit hook: block secrets before they enter git history.
 # Installed via .githooks/ (git config core.hooksPath .githooks).
 # Bypass (EMERGENCY ONLY): git commit --no-verify
 

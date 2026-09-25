@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>LaundroTwin — Safe AI Executive Assistant (R08 / F-11)</title>
+<title>LaundryTwin — Safe AI Executive Assistant (R08 / F-11)</title>
 <style>
   :root{
     --ink:#0f1720;
@@ -138,17 +138,17 @@
 <!-- 1 -->
 <section>
   <div class="slide title-slide">
-    <div class="kicker">Final Project · LaundroTwin (LaundryGo)</div>
+    <div class="kicker">Final Project · LaundryTwin</div>
     <h1>Safe AI Executive Assistant<br/>ที่ตอบจาก “ข้อมูลจริง” ไม่ใช่การเดา</h1>
     <p class="sub" style="max-width:760px">
       ออกแบบโครงสร้างข้อมูล (Data Structure for LLM) และ Function Calling
-      ที่ปลอดภัย เพื่อให้ผู้บริหารถามเป็นภาษาคนแล้วได้คำตอบที่ตรวจสอบย้อนกลับได้
-      ทุกตัวเลข ภายใต้สิทธิ์และขอบเขตสาขาของผู้ใช้
+      ที่ปลอดภัย เพื่อให้ผู้บริหารถามเป็นภาษาคนแล้วได้คำตอบที่ตรวจสอบแหล่งที่มาและขอบเขตได้
+      ภายใต้สิทธิ์ของผู้ใช้
     </p>
     <div class="meta">
       <div><b>ขอบเขต</b>R08 · F-11 · F-07 · US-05 (MVP)</div>
-      <div><b>ต่อยอด</b>R09 · F-12 · US-06 (Phase 2)</div>
-      <div><b>สถานะปัจจุบัน</b>implement แล้ว · MCP allow-list + RBAC scope + audit (ยืนยัน 2026-09-06)</div>
+      <div><b>ต่อยอด</b>R09 · US-06 (Phase 2; F-12 คือ Weather Context)</div>
+      <div><b>สถานะปัจจุบัน</b>โครงสร้างข้อมูลและ allow-list บางส่วน implement แล้ว · local code/test evidence (ยืนยัน 2026-09-25)</div>
       <div><b>ฐานที่มีแล้ว</b>Telemetry · Dashboard · RBAC · LINE Alert</div>
     </div>
   </div>
@@ -181,13 +181,13 @@
           • Backend ตรวจ RBAC และ <code>branch_id</code> ก่อน query เสมอ<br/>
           • ส่งเฉพาะข้อมูล <b>สรุปแล้ว</b> ขนาดเล็กเข้า context<br/>
           • ผลลัพธ์คงที่ ทดสอบซ้ำได้ด้วย unit test<br/>
-          • Audit log ครบ: prompt, tool, args, ผลลัพธ์อ้างอิง
+          • Audit ปัจจุบันครอบคลุม grant / alert / settings; complete AI prompt-tool audit ยังเป็น target
         </p>
       </div>
     </div>
     <div class="foot">
       <span>อ้างอิงข้อกำหนด: R08 — “LLM must not execute arbitrary SQL”</span>
-      <span>LaundroTwin</span>
+      <span>LaundryTwin</span>
     </div>
   </div>
 </section>
@@ -197,16 +197,16 @@
   <div class="slide">
     <div class="kicker">ภาพรวมระบบ</div>
     <h2>ข้อมูลเดินทางจากเครื่องซักผ้า ถึงคำตอบผู้บริหารอย่างไร</h2>
-    <p class="sub">ส่วนสีเข้มคือของใหม่ที่เพิ่มในหัวข้อนี้ ส่วนที่เหลือคือฐานที่ระบบมีอยู่แล้ว</p>
+    <p class="sub">ภาพรวมนี้แยก current code ออกจาก target architecture: current มี scope, allow-list, direct reports และ envelope จริง; rollup กับ audit เต็มเป็นขั้นต่อไป</p>
     <div class="grid g4" style="margin-bottom:18px">
-      <div class="card"><h3>1. Edge / IoT</h3><p>เครื่องซักผ้าส่ง Modbus frame → telemetry event ทุก event ต้องมี <code>branch_id</code> และ <code>machine_id</code></p></div>
-      <div class="card"><h3>2. Ingestion</h3><p>ตรวจ schema, ปฏิเสธ <code>branch_id</code> ที่ไม่รู้จัก, แปลงเป็น <code>MACHINE_CYCLE</code> และหลักฐานการชำระเงิน</p></div>
-      <div class="card"><h3>3. Rollup <span class="tag">ใหม่</span></h3><p>สรุปล่วงหน้าเป็นราย “ชั่วโมง / วัน × สาขา × เครื่อง” เก็บเป็นตารางสรุปพร้อมใช้</p></div>
-      <div class="card"><h3>4. Analytics Functions <span class="tag">ใหม่</span></h3><p>ฟังก์ชันสถิติแบบ parameterized ที่ allow-list ไว้ คืนค่าเป็น envelope มาตรฐาน</p></div>
+      <div class="card"><h3>1. Edge / IoT <span class="tag p2">target</span></h3><p>Target physical path: Modbus/MQTT → telemetry event; current direct MQTT ingestion is descoped and IRIS is the ingestion boundary</p></div>
+      <div class="card"><h3>2. Ingestion <span class="tag p2">target</span></h3><p>Target semantic model: validate branch/machine and derive <code>MACHINE_CYCLE</code>; current ETL normalizes usage, temperature, and weather into ClickHouse</p></div>
+      <div class="card"><h3>3. Rollup <span class="tag p2">target</span></h3><p>Target: สรุปล่วงหน้าเป็นราย “ชั่วโมง / วัน × สาขา × เครื่อง”; current code ยัง query ClickHouse fact tables โดยตรง</p></div>
+      <div class="card"><h3>4. Analytics Functions <span class="tag p2">target expansion</span></h3><p>Target: semantic layer คืนค่าเป็น envelope มาตรฐาน; current มี MCP allow-list 6 tools และ envelope <code>{ meta, data }</code></p></div>
     </div>
     <div class="grid g3">
       <div class="card"><h3>5. Assistant Orchestrator <span class="tag">ใหม่</span></h3><p>รับคำถาม → ตรวจ session/สิทธิ์ → ให้ LLM เลือก tool → validate args → เรียก Analytics → เรียบเรียงคำตอบจากผลลัพธ์เท่านั้น</p></div>
-      <div class="card"><h3>6. Audit Log</h3><p>บันทึกแบบ append-only: ใครถาม, ใช้ tool อะไร, args ที่ sanitize แล้ว, ขอบเขตสาขา, ผลลัพธ์อ้างอิง, outcome</p></div>
+      <div class="card"><h3>6. Audit (บางส่วน)</h3><p>Current local audit ครอบคลุม grant / alert / settings; target คือ prompt + tool + sanitized args + scope + result_ref + outcome แบบ append-only</p></div>
       <div class="card"><h3>7. หน้าใช้งาน</h3><p>Dashboard (Web) และ LINE LIFF — ผู้ใช้เห็นคำตอบพร้อมช่วงเวลา ตัวชี้วัด และข้อจำกัดของข้อมูล</p></div>
     </div>
     <div class="foot"><span>ทุกขั้นตอนบังคับขอบเขตสาขาที่ฝั่ง server เสมอ (Data Contract)</span><span>03</span></div>
@@ -218,7 +218,7 @@
   <div class="slide">
     <div class="kicker">หัวใจของงาน · Activity Diagram 4</div>
     <h2>ลำดับการทำงานเมื่อผู้ใช้ถามคำถามเชิงวิเคราะห์</h2>
-    <p class="sub">ทุกกล่องสีส้มคือ “ประตูตรวจ” ที่ถ้าไม่ผ่าน จะจบด้วยการปฏิเสธและบันทึก audit</p>
+    <p class="sub">Target flow ที่อธิบายแนวคิด; current บังคับ scope/tool ที่ server และบันทึก audit เฉพาะ grant / alert / settings</p>
 
     <div class="lane" style="margin-bottom:14px">
       <h4>ผู้ใช้</h4>
@@ -237,7 +237,7 @@
         <div class="step gate"><b>ตรวจ 2</b>tool อยู่ใน allow-list หรือไม่</div>
         <div class="step"><b>สร้าง args</b>แปลงเป็น argument แบบมีโครงสร้าง</div>
         <div class="step gate"><b>ตรวจ 3</b>args ผ่าน schema validation แบบเข้มหรือไม่</div>
-        <div class="step gate"><b>ตรวจ 4</b>ขอบเขต tenant และสาขา ได้รับอนุญาตหรือไม่</div>
+        <div class="step gate"><b>ตรวจ 4</b>server ตรวจ tenant/branch scope; LINE scope ถูก sign จาก session</div>
       </div>
     </div>
 
@@ -245,13 +245,13 @@
       <h4>Analytics Service</h4>
       <div class="flow">
         <div class="step"><b>ประมวลผล</b>รันฟังก์ชันสถิติแบบ parameterized (ไม่มี SQL จาก LLM)</div>
-        <div class="step"><b>Log</b>เก็บชื่อ tool, args, scope, result reference</div>
+        <div class="step"><b>บันทึก (target)</b>เก็บชื่อ tool, sanitized args, scope, result_ref และ outcome; full AI audit ยังไม่มี</div>
         <div class="step gate"><b>ตรวจ 5</b>ข้อมูลพอและตรวจย้อนกลับได้หรือไม่</div>
       </div>
     </div>
 
     <div class="flow">
-      <div class="step done"><b>ผ่านทั้งหมด</b>เรียบเรียงคำตอบ “จากผลลัพธ์ของ tool เท่านั้น” แล้วปิด audit</div>
+      <div class="step done"><b>ผ่านทั้งหมด</b>เรียบเรียงคำตอบ “จากผลลัพธ์ของ tool เท่านั้น”; audit ที่มีจริงยังไม่ครบ full AI call</div>
       <div class="step deny"><b>ไม่ผ่าน</b>ปฏิเสธ / ไม่รองรับคำถาม / ข้อมูลไม่พอ — พร้อมบันทึกเหตุผล</div>
     </div>
 
@@ -288,12 +288,13 @@
 <section>
   <div class="slide">
     <div class="kicker">Data Structure for LLM · ชั้นที่ 2</div>
-    <h2>Pre-aggregated Rollup — สรุปไว้ล่วงหน้า ไม่ให้ LLM แตะข้อมูลดิบ</h2>
+    <h2>Pre-aggregated Rollup — target architecture ไม่ใช่ตารางที่ current code มีแล้ว</h2>
     <div class="grid g2" style="align-items:start">
       <div>
         <p class="sub" style="margin-bottom:14px">
-          ข้อมูลดิบระดับ event มีปริมาณมากเกินกว่าจะใส่ context และช้าเกินกว่าจะตอบสด
+          แนวคิด target คือสรุปข้อมูลดิบระดับ event ให้เล็กและเร็วขึ้น
           จึงสรุปเป็นตารางระดับ “ชั่วโมง × สาขา × เครื่อง” ไว้ก่อน
+          แต่ current implementation ยัง query ClickHouse fact tables โดยตรง
         </p>
         <ul>
           <li><b>เร็วและคงที่</b> — คำถามเดิมได้ตัวเลขเดิมทุกครั้ง ทดสอบด้วย unit test ได้</li>
@@ -336,18 +337,19 @@
 <section>
   <div class="slide">
     <div class="kicker">Data Structure for LLM · ชั้นที่ 3</div>
-    <h2>Allow-listed Tools — LLM เลือกได้เฉพาะเครื่องมือที่เราสร้างไว้</h2>
+    <h2>Current MCP Tools — LLM เลือกได้เฉพาะ 6 เครื่องมือที่ server allow-list ไว้</h2>
     <p class="sub">LLM ไม่ได้รับสิทธิ์เขียน SQL แต่ได้รับ “เมนู” ฟังก์ชันที่ผ่านการทดสอบแล้วเท่านั้น</p>
     <div class="grid g2" style="align-items:start">
       <div>
         <table>
-          <thead><tr><th>Tool</th><th>ใช้ตอบคำถามแบบไหน</th></tr></thead>
+          <thead><tr><th>Current tool</th><th>ใช้ตอบคำถามแบบไหน</th></tr></thead>
           <tbody>
-            <tr><td><code>get_revenue_summary</code></td><td>รายได้รวม/แยกสาขา ในช่วงเวลาหนึ่ง</td></tr>
-            <tr><td><code>compare_period</code></td><td>เทียบเดือนต่อเดือน (MoM) ตามตัวอย่างใน R08</td></tr>
-            <tr><td><code>get_utilization</code></td><td>อัตราการใช้งานเครื่อง คุ้มค่าหรือไม่</td></tr>
-            <tr><td><code>get_cycle_stats</code></td><td>จำนวนรอบ เวลาเฉลี่ย ความผิดปกติ</td></tr>
-            <tr><td><code>get_peak_hours</code></td><td>ช่วงพีคและช่วงว่าง <span class="tag p2">ฐานของ Phase 2</span></td></tr>
+            <tr><td><code>get_revenue_daily</code></td><td>รายได้และรอบรายวัน; ต้องมี revenue scope</td></tr>
+            <tr><td><code>get_cycles_daily</code></td><td>รอบรายวันและ duration เฉลี่ย</td></tr>
+            <tr><td><code>get_utilization_heatmap</code></td><td>ช่วงเวลา/เครื่องสำหรับ utilization</td></tr>
+            <tr><td><code>get_temperature_curve</code></td><td>อุณหภูมิตามช่วงเวลา ไม่เกิน 5,000 จุด</td></tr>
+            <tr><td><code>get_weather_usage_correlation</code></td><td>correlation เท่านั้น ไม่ใช่ forecast</td></tr>
+            <tr><td><code>get_off_peak_windows</code></td><td>baseline ช่วงว่าง <span class="tag p2">Phase 2</span></td></tr>
           </tbody>
         </table>
         <p class="sub" style="margin-top:14px;margin-bottom:0">
@@ -356,17 +358,16 @@
       </div>
       <div>
         <pre><span class="c">// นิยาม argument แบบเข้มงวด (zod / JSON Schema)</span>
-get_revenue_summary({
-  branch_ids:  <span class="k">string[]</span>   <span class="c">// ต้องเป็นสับเซตของสิทธิ์ผู้ใช้</span>
-  period:      { start, end }  <span class="c">// ISO, [start, end)</span>
-  granularity: <span class="s">"day"</span> | <span class="s">"month"</span>
-  compare_to:  { start, end } | <span class="k">null</span>
+get_cycles_daily({
+  from:     <span class="s">"2026-08-01"</span>
+  to:       <span class="s">"2026-08-31"</span>
+  branchId: <span class="s">"b1"</span> <span class="c">// server-bound scope; ไม่มี accessScope argument</span>
 })
 
 <span class="c">// ลำดับการตรวจฝั่ง backend (ไม่เชื่อ LLM)</span>
 <span class="k">1.</span> parse ด้วย schema — ผิดรูป = ปฏิเสธ
-<span class="k">2.</span> branch_ids ∩ สิทธิ์ผู้ใช้ = ขอบเขตจริง
-<span class="k">3.</span> ถ้าเซตว่าง = ปฏิเสธ + audit
+<span class="k">2.</span> server-bound scope = ขอบเขตจริงจาก session/grants
+<span class="k">3.</span> ถ้า scope ไม่ผ่าน = ปฏิเสธก่อน query; audit เต็มของ AI ยังเป็น target
 <span class="k">4.</span> จำกัดความยาวช่วงเวลาและจำนวนแถว
 <span class="k">5.</span> query แบบ parameterized เท่านั้น</pre>
         <div class="card" style="margin-top:14px;border-color:#f3bdb8;background:var(--stop-soft)">
@@ -387,30 +388,22 @@ get_revenue_summary({
     <div class="grid g2" style="align-items:start">
       <div>
         <pre>{
-  <span class="s">"scope"</span>:    { <span class="s">"branch_ids"</span>: [<span class="s">"BKK-SILOM"</span>],
-                <span class="s">"granted_by"</span>: <span class="s">"role:owner"</span> },
-  <span class="s">"period"</span>:   { <span class="s">"start"</span>: <span class="s">"2026-07-01T00:00+07:00"</span>,
-                <span class="s">"end"</span>:   <span class="s">"2026-08-01T00:00+07:00"</span> },
-  <span class="s">"metric"</span>:   <span class="s">"revenue"</span>,
-  <span class="s">"unit"</span>:     <span class="s">"satang"</span>,
-  <span class="s">"rows"</span>:     [ ... ],
-  <span class="s">"row_count"</span>: 31,
-  <span class="s">"coverage"</span>: { <span class="s">"expected_hours"</span>: 744,
-                <span class="s">"observed_hours"</span>: 731 },
-  <span class="s">"caveats"</span>:  [<span class="s">"telemetry ขาดหาย 13 ชั่วโมง"</span>],
-  <span class="s">"source"</span>:   <span class="s">"metric_rollup_hourly"</span>,
-  <span class="s">"generated_at"</span>: <span class="s">"2026-07-31T09:12+07:00"</span>,
-  <span class="s">"result_ref"</span>:   <span class="s">"res_01J..."</span>
+  <span class="s">"meta"</span>: {
+    <span class="s">"range"</span>: { <span class="s">"from"</span>: <span class="s">"2026-08-01"</span>, <span class="s">"to"</span>: <span class="s">"2026-08-31"</span> },
+    <span class="s">"branchId"</span>: <span class="s">"b1"</span>,
+    <span class="s">"dataSource"</span>: <span class="s">"real"</span>
+  },
+  <span class="s">"data"</span>: [ ... ]
 }</pre>
       </div>
       <div>
-        <div class="card" style="margin-bottom:12px"><h3>ทำไมต้องมี <code>unit</code> และ <code>period</code></h3><p>บังคับให้คำตอบระบุหน่วยและช่วงเวลาเสมอ ผู้บริหารจึงไม่ตีความผิด และตรงตามเกณฑ์ยอมรับของ R08</p></div>
-        <div class="card" style="margin-bottom:12px"><h3>ทำไมต้องมี <code>coverage</code> และ <code>caveats</code></h3><p>ข้อมูล IoT มีช่วงขาดหายจริง ระบบต้องบอกตรง ๆ ว่าตัวเลขครอบคลุมแค่ไหน แทนที่จะทำเป็นว่าสมบูรณ์</p></div>
-        <div class="card" style="margin-bottom:12px"><h3>ทำไมต้องมี <code>result_ref</code></h3><p>เป็นหมายเลขอ้างอิงผลลัพธ์ที่บันทึกใน audit log ย้อนกลับไปตรวจได้ว่าคำตอบวันนั้นมาจากตัวเลขชุดใด</p></div>
-        <div class="card good"><h3>คำสั่งควบคุม LLM</h3><p>“ตอบจากผลลัพธ์ของ tool เท่านั้น ห้ามประมาณเอง ถ้าข้อมูลไม่พอให้บอกว่าไม่พอ และต้องระบุช่วงเวลา ตัวชี้วัด และข้อจำกัดทุกครั้ง”</p></div>
+        <div class="card" style="margin-bottom:12px"><h3>Current envelope มีอะไรบ้าง</h3><p><code>meta</code> มี <code>range</code>, <code>branchId</code>, <code>dataSource</code> และบาง tool มี <code>method</code>/<code>rules</code>/<code>caveats</code>; <code>data</code> เป็นแถวผลลัพธ์</p></div>
+        <div class="card" style="margin-bottom:12px"><h3>Target envelope ที่ยังไม่ ship</h3><p>Target จะเพิ่ม <code>scope</code>, <code>period</code>, <code>metric</code>, <code>unit</code>, <code>coverage</code>, <code>source</code>, <code>generated_at</code> และ <code>result_ref</code> เพื่อให้ตรวจย้อนกลับได้</p></div>
+        <div class="card" style="margin-bottom:12px"><h3>ทำไมยังไม่เรียกว่า audit เต็ม</h3><p>Current schema มี audit สำหรับ grants, alerts, settings; ยังไม่มีตาราง prompt/tool-call/result ที่ครบตาม target</p></div>
+        <div class="card good"><h3>Target system prompt</h3><p>“ตอบจากผลลัพธ์ของ tool เท่านั้น ห้ามประมาณเอง ถ้าข้อมูลไม่พอให้บอกว่าไม่พอ และต้องระบุช่วงเวลา ตัวชี้วัด และข้อจำกัดทุกครั้ง”</p></div>
       </div>
     </div>
-    <div class="foot"><span>Envelope เดียวกันนี้ใช้กับทุก tool เพื่อให้ทดสอบและตรวจสอบง่าย</span><span>08</span></div>
+    <div class="foot"><span>Current `{ meta, data }` ใช้กับทุก tool; richer envelope เป็น target</span><span>08</span></div>
   </div>
 </section>
 
@@ -418,18 +411,18 @@ get_revenue_summary({
 <section>
   <div class="slide">
     <div class="kicker">ความปลอดภัยและการตรวจสอบ</div>
-    <h2>สามเสาที่ทำให้อาจารย์ตรวจสอบย้อนกลับได้ทุกคำตอบ</h2>
+    <h2>ความปลอดภัยที่มีแล้ว และสิ่งที่ยังเป็น target</h2>
     <div class="grid g3" style="margin-bottom:18px">
       <div class="card"><h3><span class="tag">เสา 1</span> RBAC + Branch Scope</h3><p>สิทธิ์ถูกตัดสินจาก session ฝั่ง server ไม่ใช่จากสิ่งที่ LLM ขอ ทุก query ผูก <code>branch_id</code> ที่ผ่านการ intersect กับสิทธิ์จริงแล้ว</p></div>
-      <div class="card"><h3><span class="tag">เสา 2</span> Append-only Audit Log</h3><p>บันทึก actor, prompt ที่ sanitize, ชื่อ tool, arguments, ขอบเขต, <code>result_ref</code>, outcome และเวลา — แก้ย้อนหลังไม่ได้ ตาม F-07</p></div>
-      <div class="card"><h3><span class="tag">เสา 3</span> Golden-question Eval</h3><p>ชุดคำถามมาตรฐานพร้อมคำตอบที่รู้ค่าจริง ใช้รันอัตโนมัติเพื่อจับ regression และการหลอนตัวเลข</p></div>
+      <div class="card"><h3><span class="tag">เสา 2</span> Audit (บางส่วน)</h3><p>Current audit entries ครอบคลุม grants, alerts, settings; complete AI prompt/tool-call/result audit ยังเป็น target</p></div>
+      <div class="card"><h3><span class="tag p2">เสา 3 · target</span> Golden-question Eval</h3><p>ชุดคำถามมาตรฐานพร้อมคำตอบที่รู้ค่าจริง จะใช้จับ regression และการหลอนตัวเลข; ยังไม่ใช่ current automated evidence</p></div>
     </div>
     <table>
       <thead><tr><th style="width:38%">สถานการณ์ทดสอบ</th><th>ผลลัพธ์ที่ระบบต้องทำ</th></tr></thead>
       <tbody>
-        <tr><td>Manager ถามข้อมูลสาขาที่ไม่ได้ดูแล</td><td>ปฏิเสธ ไม่คืนตัวเลขใด ๆ และบันทึก audit ว่าถูกปฏิเสธเพราะขอบเขตสาขา</td></tr>
+        <tr><td>Manager ถามข้อมูลสาขาที่ไม่ได้ดูแล</td><td>ปฏิเสธก่อน query; local test ยืนยัน scope gate แต่ยังไม่ใช่ full AI audit</td></tr>
         <tr><td>ถามเรื่องที่ยังไม่มี tool รองรับ</td><td>ตอบว่ายังไม่รองรับ ไม่พยายามเดาคำตอบ</td></tr>
-        <tr><td>ช่วงเวลาที่ถามมี telemetry ขาดหายมาก</td><td>ตอบพร้อมระบุความครอบคลุมและข้อจำกัด หรือแจ้งว่าข้อมูลไม่พอ</td></tr>
+        <tr><td>ช่วงเวลาที่ถามมี telemetry ขาดหายมาก</td><td>Current อาจมี freshness/caveats; target จะเพิ่ม coverage และบอกชัดว่าข้อมูลไม่พอ</td></tr>
         <tr><td>ถามคำถามเดิมซ้ำสองครั้ง</td><td>ได้ตัวเลขเดิม เพราะตัวเลขมาจากฟังก์ชัน ไม่ใช่จากการสร้างข้อความ</td></tr>
       </tbody>
     </table>
@@ -442,22 +435,22 @@ get_revenue_summary({
   <div class="slide">
     <div class="kicker">แผนดำเนินงาน</div>
     <h2>ลำดับงานและสิ่งส่งมอบ</h2>
-    <p class="sub">เรียงจากล่างขึ้นบน — ชั้นข้อมูลต้องนิ่งก่อน จึงต่อ LLM ทีหลัง</p>
+    <p class="sub">Target roadmap: current มี direct reports, RBAC และ 6 MCP tools; semantic rollup, richer envelope, full AI audit และ golden eval ยังต้องทำ</p>
     <table>
       <thead><tr><th style="width:8%">ลำดับ</th><th style="width:30%">งาน</th><th style="width:34%">สิ่งส่งมอบ</th><th>ตรวจรับด้วย</th></tr></thead>
       <tbody>
         <tr><td><b>1</b></td><td>สรุป Metric Catalog และเขตเวลา/หน่วย</td><td>เอกสารนิยามตัวชี้วัดใน <code>docs/03_data_contracts/</code></td><td>ทีมเห็นตรงกันทุกนิยาม</td></tr>
-        <tr><td><b>2</b></td><td>สร้างชั้น Rollup รายชั่วโมง</td><td>ตารางสรุป + งานสรุปข้อมูล + unit test</td><td>ตัวเลขตรงกับการนับจากข้อมูลดิบ</td></tr>
-        <tr><td><b>3</b></td><td>เขียน Analytics Functions</td><td>ฟังก์ชัน 5 ตัว คืนค่าเป็น envelope มาตรฐาน</td><td>test ครบทุกฟังก์ชัน</td></tr>
+        <tr><td><b>2</b></td><td>สร้างชั้น Rollup รายชั่วโมง <span class="tag p2">target</span></td><td>ตารางสรุป + งานสรุปข้อมูล + unit test</td><td>ยังไม่มีใน current schema; ต้องพิสูจน์กับ fact tables</td></tr>
+        <tr><td><b>3</b></td><td>เขียน Analytics Functions <span class="tag p2">target expansion</span></td><td>เก็บ current 6 tools; target อาจเพิ่ม semantic functions</td><td>current tool allow-list มี test; target ต้องมี test ครบ</td></tr>
         <tr><td><b>4</b></td><td>บังคับ RBAC และ branch scope</td><td>ชั้นตรวจสิทธิ์ก่อนทุก query</td><td>เคส Manager ข้ามสาขา ต้องถูกปฏิเสธ</td></tr>
         <tr><td><b>5</b></td><td>ต่อ LLM ด้วย tool schema</td><td>Orchestrator + allow-list + system prompt</td><td>ไม่มีเส้นทางใดที่ LLM ส่ง SQL ได้</td></tr>
-        <tr><td><b>6</b></td><td>Audit log และหน้าใช้งาน</td><td>บันทึกครบถ้วน + UI ถาม-ตอบ</td><td>เปิด log ย้อนดูได้ทุกคำถาม</td></tr>
-        <tr><td><b>7</b></td><td>ชุดทดสอบ Golden question</td><td>ชุดคำถาม-คำตอบมาตรฐาน</td><td>รันผ่านทั้งชุด</td></tr>
+        <tr><td><b>6</b></td><td>AI audit เต็มและหน้าใช้งาน <span class="tag p2">target</span></td><td>เก็บ prompt/tool/result ครบ + UI ถาม-ตอบ</td><td>current มี audit เฉพาะ grant/alert/settings; full audit ยังไม่มี</td></tr>
+        <tr><td><b>7</b></td><td>ชุดทดสอบ Golden question <span class="tag p2">target</span></td><td>ชุดคำถาม-คำตอบมาตรฐาน</td><td>ยังไม่ใช่ current automated evidence</td></tr>
       </tbody>
     </table>
     <div class="grid g2" style="margin-top:18px">
-      <div class="card"><h3>ขอบเขต MVP ที่จะส่ง</h3><p>R08 · F-11 · F-07 · US-05 — ถามรายได้ รอบซัก อัตราการใช้งาน และเทียบเดือนต่อเดือน ภายในสาขาที่มีสิทธิ์</p></div>
-      <div class="card"><h3>ต่อยอด Phase 2 <span class="tag p2">ยังไม่ทำตอนนี้</span></h3><p>R09 ข้อเสนอช่วงโปรโมชันจากชั่วโมงว่าง และ F-12 บริบทสภาพอากาศ — ระบุเป็นความสัมพันธ์ ไม่ใช่การพยากรณ์</p></div>
+      <div class="card"><h3>Current MVP ที่มี local evidence</h3><p>R08 · F-11 · US-05 — direct reports, RBAC scope, 6 MCP tools และ LINE bot; production/LINE/browser E2E ยัง pending</p></div>
+      <div class="card"><h3>Phase 2 / target</h3><p>R09 off-peak baseline ใช้ percentile; weather เป็น correlation ไม่ใช่ forecast; richer semantic layer และ full audit ยังต้องพัฒนา</p></div>
     </div>
     <div class="foot"><span>ทุกแถวผูกกับรหัสข้อกำหนดใน <code>docs/04_traceability/RTM_matrix.md</code></span><span>10</span></div>
   </div>
@@ -470,8 +463,8 @@ get_revenue_summary({
     <h2>ข้อความที่อยากให้จำ</h2>
     <div class="grid g3" style="margin:16px 0 26px">
       <div class="card good"><div class="big" style="color:var(--ok)">1</div><h3 style="margin-top:10px">LLM ไม่แตะข้อมูลดิบ</h3><p>ทำหน้าที่แปลคำถามและเรียบเรียงคำตอบ ตัวเลขทั้งหมดมาจากฟังก์ชันที่ทดสอบแล้ว</p></div>
-      <div class="card good"><div class="big" style="color:var(--ok)">2</div><h3 style="margin-top:10px">สิทธิ์ตัดสินที่ server</h3><p>ขอบเขตสาขาถูกบังคับก่อน query เสมอ คำขอที่เกินสิทธิ์ถูกตัดทิ้งและบันทึกไว้</p></div>
-      <div class="card good"><div class="big" style="color:var(--ok)">3</div><h3 style="margin-top:10px">ทุกคำตอบตรวจย้อนกลับได้</h3><p>มีช่วงเวลา หน่วย ความครอบคลุม ข้อจำกัด และหมายเลขอ้างอิงผลลัพธ์</p></div>
+      <div class="card good"><div class="big" style="color:var(--ok)">2</div><h3 style="margin-top:10px">สิทธิ์ตัดสินที่ server</h3><p>ขอบเขตสาขาถูกบังคับก่อน query เสมอ; LINE bot ส่ง scope ที่ server derive และ sign ไว้</p></div>
+      <div class="card good"><div class="big" style="color:var(--ok)">3</div><h3 style="margin-top:10px">ตรวจย้อนกลับได้ในระดับฐาน</h3><p>มีช่วงเวลา source freshness และ caveat; full AI result_ref audit เป็น target</p></div>
     </div>
     <p class="sub" style="font-size:19px;max-width:820px">
       เป้าหมายของหัวข้อนี้ไม่ใช่ “ใส่ AI ให้ระบบดูทันสมัย”
@@ -479,7 +472,7 @@ get_revenue_summary({
       <b>เชื่อถือได้ ตรวจสอบได้ และปลอดภัยตามสิทธิ์ผู้ใช้</b>
       ซึ่งเป็นสิ่งที่ระบบธุรกิจจริงต้องการ
     </p>
-    <div class="foot"><span>LaundroTwin — Smart Laundry Management and Analytics Platform</span><span>จบการนำเสนอ</span></div>
+    <div class="foot"><span>LaundryTwin — Smart Laundry Management and Analytics Platform</span><span>จบการนำเสนอ</span></div>
   </div>
 </section>
 
@@ -515,7 +508,7 @@ get_revenue_summary({
       }
     });
   }, {threshold: 0.55});
-  slides.forEach(s => io.observe(s));
+  slides.forEach(s => { io.observe(s); });
 </script>
 </body>
 </html>

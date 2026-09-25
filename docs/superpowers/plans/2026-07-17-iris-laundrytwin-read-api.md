@@ -1,10 +1,10 @@
-# IRIS LaundryGo Read API Implementation Plan
+# IRIS LaundryTwin Read API Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a versioned, tenant-scoped, read-only IRIS API that supplies real operational data to the standalone LaundryGo dashboard.
+**Goal:** Add a versioned, tenant-scoped, read-only IRIS API that supplies real operational data to the standalone LaundryTwin dashboard.
 
-**Architecture:** The `iris-cloud` Hono Worker authenticates one server-to-server LaundryGo credential, binds it to exactly one configured tenant, and rejects all other tenant or branch access before querying data. It aggregates historical Postgres records, reads machine snapshots through the existing `STATE` service binding, and returns versioned DTOs that never expose commands, payments mutations, credentials, raw customer identity, or arbitrary SQL.
+**Architecture:** The `iris-cloud` Hono Worker authenticates one server-to-server LaundryTwin credential, binds it to exactly one configured tenant, and rejects all other tenant or branch access before querying data. It aggregates historical Postgres records, reads machine snapshots through the existing `STATE` service binding, and returns versioned DTOs that never expose commands, payments mutations, credentials, raw customer identity, or arbitrary SQL.
 
 **Tech Stack:** Hono, Cloudflare Workers, TypeScript, Zod, Drizzle via `@iris/db`, Hyperdrive/Postgres, existing `STATE` service binding, Vitest.
 
@@ -13,9 +13,9 @@
 - Work in a clean IRIS worktree branched from the current `origin/main`; do not edit `/Users/uunw/programming/meepian-projects/iris-project` directly.
 - Read APIs authenticate only `X-LaundryGo-Read-Key`; the client key maps to `LAUNDRYGO_READ_TENANT_ID` and never accepts a tenant identifier from a request.
 - Use `@iris/db` query helpers, never a direct `drizzle-orm` helper import.
-- The Worker returns `503 READ_API_NOT_CONFIGURED` if either LaundryGo read secret is absent.
+- The Worker returns `503 READ_API_NOT_CONFIGURED` if either LaundryTwin read secret is absent.
 - The route exposes only `GET` and has no command, payment, telemetry-write, database, or MQTT endpoint.
-- Live state comes through `env.STATE`; historical data comes from IRIS database projections. Do not give LaundryGo a `STATE` binding or database connection.
+- Live state comes through `env.STATE`; historical data comes from IRIS database projections. Do not give LaundryTwin a `STATE` binding or database connection.
 - Every payload includes `contractVersion: "2026-07-17"`, `source`, and `fetchedAt`; absent telemetry coverage is explicit rather than inferred.
 - Do not set production secrets, deploy, migrate production data, or push a PR as part of this plan without a separate explicit request.
 
@@ -24,23 +24,23 @@
 ### Task 1: Define the public DTOs and read-client guard
 
 **Files:**
-- Create: `apps/cloud-workers/src/routes/laundrygo-read.contract.ts`
-- Create: `apps/cloud-workers/src/routes/laundrygo-read.contract.test.ts`
-- Create: `apps/cloud-workers/src/routes/laundrygo-read.ts`
+- Create: `apps/cloud-workers/src/routes/laundrytwin-read.contract.ts`
+- Create: `apps/cloud-workers/src/routes/laundrytwin-read.contract.test.ts`
+- Create: `apps/cloud-workers/src/routes/laundrytwin-read.ts`
 - Modify: `apps/cloud-workers/src/env.d.ts`
 - Modify: `apps/cloud-workers/src/index.ts`
 - Modify: `apps/cloud-workers/wrangler.toml`
 
 **Interfaces:**
-- Produces `LAUNDRYGO_CONTRACT_VERSION`, `LaundryGoReadContext`, `requireLaundryGoReadContext`, `laundryGoError`, and Zod schemas consumed by `laundrygo-read.ts`.
+- Produces `LAUNDRYTWIN_CONTRACT_VERSION`, `LaundryTwinReadContext`, `requireLaundryTwinReadContext`, `laundryTwinError`, and Zod schemas consumed by `laundrytwin-read.ts`.
 - Consumes `Env` and `errorJson` from `src/lib/errors.ts`.
 
 - [ ] **Step 1: Write failing guard and contract tests**
 
 ```ts
-// apps/cloud-workers/src/routes/laundrygo-read.contract.test.ts
+// apps/cloud-workers/src/routes/laundrytwin-read.contract.test.ts
 import { describe, expect, it } from 'vitest';
-import { laundryGoReadRouter } from './laundrygo-read';
+import { laundryTwinReadRouter } from './laundrytwin-read';
 import type { Env } from '../env';
 
 const env = {
@@ -49,9 +49,9 @@ const env = {
   LAUNDRYGO_READ_TENANT_ID: '11111111-1111-1111-1111-111111111111',
 } as Env;
 
-describe('LaundryGo read-client guard', () => {
+describe('LaundryTwin read-client guard', () => {
   it('rejects a missing client key before querying IRIS data', async () => {
-    const response = await laundryGoReadRouter.fetch(
+    const response = await laundryTwinReadRouter.fetch(
       new Request('https://example.test/v1/laundrygo/branches'),
       env,
     );
@@ -60,7 +60,7 @@ describe('LaundryGo read-client guard', () => {
   });
 
   it('returns 503 when the dedicated read integration is not configured', async () => {
-    const response = await laundryGoReadRouter.fetch(
+    const response = await laundryTwinReadRouter.fetch(
       new Request('https://example.test/v1/laundrygo/branches', {
         headers: { 'x-laundrygo-read-key': 'test-read-key' },
       }),
@@ -74,34 +74,34 @@ describe('LaundryGo read-client guard', () => {
 
 - [ ] **Step 2: Run the guard test to verify it fails**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.contract.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.contract.test.ts`
 
-Expected: FAIL because `laundrygo-read` does not exist.
+Expected: FAIL because `laundrytwin-read` does not exist.
 
 - [ ] **Step 3: Define the stable contract and constant-time guard**
 
 ```ts
-// apps/cloud-workers/src/routes/laundrygo-read.contract.ts
+// apps/cloud-workers/src/routes/laundrytwin-read.contract.ts
 import { z } from 'zod';
 import type { Context } from 'hono';
 import type { Env } from '../env';
 
-export const LAUNDRYGO_CONTRACT_VERSION = '2026-07-17';
-export const laundryGoRangeQuerySchema = z.object({
+export const LAUNDRYTWIN_CONTRACT_VERSION = '2026-07-17';
+export const laundryTwinRangeQuerySchema = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
   branchId: z.string().uuid().optional(),
 });
 
-export interface LaundryGoReadContext {
+export interface LaundryTwinReadContext {
   tenantId: string;
 }
 
-export type LaundryGoReadAuthResult =
-  | { ok: true; context: LaundryGoReadContext }
+export type LaundryTwinReadAuthResult =
+  | { ok: true; context: LaundryTwinReadContext }
   | { ok: false; error: 'READ_API_NOT_CONFIGURED' | 'UNAUTHORIZED'; status: 401 | 503 };
 
-export function requireLaundryGoReadContext(c: Context<{ Bindings: Env }>): LaundryGoReadAuthResult {
+export function requireLaundryTwinReadContext(c: Context<{ Bindings: Env }>): LaundryTwinReadAuthResult {
   const expected = c.env.LAUNDRYGO_READ_API_KEY;
   const tenantId = c.env.LAUNDRYGO_READ_TENANT_ID;
   if (!expected || !tenantId) return { ok: false, error: 'READ_API_NOT_CONFIGURED', status: 503 };
@@ -124,11 +124,11 @@ LAUNDRYGO_READ_API_KEY?: string;
 LAUNDRYGO_READ_TENANT_ID?: string;
 ```
 
-Create `laundrygo-read.ts` with a router-wide middleware that calls `requireLaundryGoReadContext`, returns the result's explicit error/status when `ok` is false, and saves the authenticated `tenantId` in Hono context for later resource handlers. Mount the router in `src/index.ts` with `app.route('/v1/laundrygo', laundryGoReadRouter)`. At this task it has no resources yet, so an authenticated request falls through to `404`. Add only commented secret documentation to `wrangler.toml`; never put values in the file.
+Create `laundrytwin-read.ts` with a router-wide middleware that calls `requireLaundryTwinReadContext`, returns the result's explicit error/status when `ok` is false, and saves the authenticated `tenantId` in Hono context for later resource handlers. Mount the router in `src/index.ts` with `app.route('/v1/laundrygo', laundryTwinReadRouter)`. At this task it has no resources yet, so an authenticated request falls through to `404`. Add only commented secret documentation to `wrangler.toml`; never put values in the file.
 
 - [ ] **Step 4: Run the guard test to verify it passes**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.contract.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.contract.test.ts`
 
 Expected: PASS; the unauthenticated request is `401` and the unconfigured request is `503`.
 
@@ -141,19 +141,19 @@ Expected: both commands exit `0`.
 - [ ] **Step 6: Commit the isolated contract guard in the IRIS worktree**
 
 ```bash
-git add apps/cloud-workers/src/routes/laundrygo-read.ts apps/cloud-workers/src/routes/laundrygo-read.contract.ts apps/cloud-workers/src/routes/laundrygo-read.contract.test.ts apps/cloud-workers/src/env.d.ts apps/cloud-workers/src/index.ts apps/cloud-workers/wrangler.toml
-git commit -m "feat(cloud): add LaundryGo read API guard"
+git add apps/cloud-workers/src/routes/laundrytwin-read.ts apps/cloud-workers/src/routes/laundrytwin-read.contract.ts apps/cloud-workers/src/routes/laundrytwin-read.contract.test.ts apps/cloud-workers/src/env.d.ts apps/cloud-workers/src/index.ts apps/cloud-workers/wrangler.toml
+git commit -m "feat(cloud): add LaundryTwin read API guard"
 ```
 
 ### Task 2: Serve tenant-scoped branches, KPI, and normalized alert evidence
 
 **Files:**
-- Modify: `apps/cloud-workers/src/routes/laundrygo-read.ts`
-- Create: `apps/cloud-workers/src/routes/laundrygo-read.test.ts`
+- Modify: `apps/cloud-workers/src/routes/laundrytwin-read.ts`
+- Create: `apps/cloud-workers/src/routes/laundrytwin-read.test.ts`
 - Modify: `apps/cloud-workers/src/index.ts`
 
 **Interfaces:**
-- Consumes `LaundryGoReadContext`, `laundryGoRangeQuerySchema`, and `LAUNDRYGO_CONTRACT_VERSION` from Task 1.
+- Consumes `LaundryTwinReadContext`, `laundryTwinRangeQuerySchema`, and `LAUNDRYTWIN_CONTRACT_VERSION` from Task 1.
 - Produces these `GET` resources:
   - `/v1/laundrygo/branches`
   - `/v1/laundrygo/dashboard?from=<ISO>&to=<ISO>&branchId=<UUID?>`
@@ -163,11 +163,11 @@ git commit -m "feat(cloud): add LaundryGo read API guard"
 - [ ] **Step 1: Write failing tenant and aggregate tests**
 
 ```ts
-// apps/cloud-workers/src/routes/laundrygo-read.test.ts
+// apps/cloud-workers/src/routes/laundrytwin-read.test.ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/db', () => ({ getDb: vi.fn() }));
 import { getDb } from '../lib/db';
-import { laundryGoReadRouter } from './laundrygo-read';
+import { laundryTwinReadRouter } from './laundrytwin-read';
 import type { Env } from '../env';
 
 const tenantId = '11111111-1111-1111-1111-111111111111';
@@ -179,14 +179,14 @@ const env = {
 } as Env;
 const headers = { 'x-laundrygo-read-key': 'test-read-key' };
 
-describe('LaundryGo dashboard read API', () => {
+describe('LaundryTwin dashboard read API', () => {
   beforeEach(() => vi.mocked(getDb).mockReset());
 
   it('returns only branches belonging to the credential tenant', async () => {
     vi.mocked(getDb).mockResolvedValue({
       select: vi.fn(() => ({ from: () => ({ where: async () => [{ id: branchId, tenantId, name: 'Rama II', timezone: 'Asia/Bangkok', status: 'active' }] }) })),
     } as never);
-    const response = await laundryGoReadRouter.fetch(new Request('https://example.test/v1/laundrygo/branches', { headers }), env);
+    const response = await laundryTwinReadRouter.fetch(new Request('https://example.test/v1/laundrygo/branches', { headers }), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ contractVersion: '2026-07-17', branches: [{ id: branchId }] });
   });
@@ -195,7 +195,7 @@ describe('LaundryGo dashboard read API', () => {
     vi.mocked(getDb).mockResolvedValue({
       select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: async () => [] }) })),
     } as never);
-    const response = await laundryGoReadRouter.fetch(new Request(`https://example.test/v1/laundrygo/dashboard?from=2026-07-01T00:00:00.000Z&to=2026-07-02T00:00:00.000Z&branchId=${branchId}`, { headers }), env);
+    const response = await laundryTwinReadRouter.fetch(new Request(`https://example.test/v1/laundrygo/dashboard?from=2026-07-01T00:00:00.000Z&to=2026-07-02T00:00:00.000Z&branchId=${branchId}`, { headers }), env);
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ error: 'BRANCH_NOT_FOUND' });
   });
@@ -204,19 +204,19 @@ describe('LaundryGo dashboard read API', () => {
 
 - [ ] **Step 2: Run the route test to verify it fails**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.test.ts`
 
-Expected: FAIL because `laundryGoReadRouter` does not exist.
+Expected: FAIL because `laundryTwinReadRouter` does not exist.
 
 - [ ] **Step 3: Implement the read-only route with an explicit tenant predicate**
 
-Use these helper signatures in `laundrygo-read.ts`:
+Use these helper signatures in `laundrytwin-read.ts`:
 
 ```ts
 async function requireBranchInTenant(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, branchId: string): Promise<void>;
-async function readDashboard(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string }): Promise<LaundryGoDashboard>;
-async function readAlerts(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string }): Promise<LaundryGoAlert[]>;
-async function readEvents(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string; cursor?: Date }): Promise<LaundryGoEventPage>;
+async function readDashboard(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string }): Promise<LaundryTwinDashboard>;
+async function readAlerts(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string }): Promise<LaundryTwinAlert[]>;
+async function readEvents(db: Awaited<ReturnType<typeof getDb>>, tenantId: string, range: { from: Date; to: Date; branchId?: string; cursor?: Date }): Promise<LaundryTwinEventPage>;
 ```
 
 Implement each query with `tenantId` as a mandatory predicate. For `branchId`, first call `requireBranchInTenant`; never merely append the branch filter. Calculate revenue from `payment.status = 'paid'`, `payment.paidAt` in range, and `payment.parentPaymentId IS NULL` so split-payment children are not double counted. Calculate cycles from non-cancelled `machineUsage` records in range. Calculate utilization as `min(1, totalCycleMinutes / availableMachineMinutes)` and return `null` when no machines exist.
@@ -225,7 +225,7 @@ Return alert rows with `ruleId`, `ruleUpdatedAt`, evidence metadata, and `ruleVe
 
 - [ ] **Step 4: Run the route tests to verify they pass**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.contract.test.ts src/routes/laundrygo-read.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.contract.test.ts src/routes/laundrytwin-read.test.ts`
 
 Expected: PASS; tests prove a credential cannot widen the tenant scope and all successful responses include the contract version.
 
@@ -238,15 +238,15 @@ Expected: both commands exit `0`.
 - [ ] **Step 6: Commit the historical read model in the IRIS worktree**
 
 ```bash
-git add apps/cloud-workers/src/routes/laundrygo-read.ts apps/cloud-workers/src/routes/laundrygo-read.test.ts apps/cloud-workers/src/index.ts
-git commit -m "feat(cloud): expose tenant-scoped LaundryGo reporting data"
+git add apps/cloud-workers/src/routes/laundrytwin-read.ts apps/cloud-workers/src/routes/laundrytwin-read.test.ts apps/cloud-workers/src/index.ts
+git commit -m "feat(cloud): expose tenant-scoped LaundryTwin reporting data"
 ```
 
 ### Task 3: Add live-state projection without exposing the state service
 
 **Files:**
-- Modify: `apps/cloud-workers/src/routes/laundrygo-read.ts`
-- Modify: `apps/cloud-workers/src/routes/laundrygo-read.test.ts`
+- Modify: `apps/cloud-workers/src/routes/laundrytwin-read.ts`
+- Modify: `apps/cloud-workers/src/routes/laundrytwin-read.test.ts`
 
 **Interfaces:**
 - Produces `GET /v1/laundrygo/branches/:branchId/live`.
@@ -261,7 +261,7 @@ it('projects live state through the IRIS service binding and marks unavailable s
     return new Response(JSON.stringify({ phase: 'RUNNING', remaining_sec: 600, last_seen: '2026-07-17T10:00:00.000Z' }));
   });
   vi.mocked(getDb).mockResolvedValue(mockBranchWithWasherMachine() as never);
-  const response = await laundryGoReadRouter.fetch(
+  const response = await laundryTwinReadRouter.fetch(
     new Request(`https://example.test/v1/laundrygo/branches/${branchId}/live`, { headers }),
     { ...env, STATE: { fetch: stateFetch } } as Env,
   );
@@ -272,7 +272,7 @@ it('projects live state through the IRIS service binding and marks unavailable s
 
 - [ ] **Step 2: Run the live-state test to verify it fails**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.test.ts`
 
 Expected: FAIL with `404` because the live route is absent.
 
@@ -284,7 +284,7 @@ For each machine, call `env.STATE.fetch('https://do/machines/<piMachineId>/state
 
 - [ ] **Step 4: Run the live-state test to verify it passes**
 
-Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrygo-read.test.ts`
+Run: `pnpm --filter @iris/cloud-workers test -- src/routes/laundrytwin-read.test.ts`
 
 Expected: PASS; live state is projected through `STATE` and no binding remains in the response.
 
@@ -297,14 +297,14 @@ Expected: both commands exit `0`.
 - [ ] **Step 6: Commit the live projection in the IRIS worktree**
 
 ```bash
-git add apps/cloud-workers/src/routes/laundrygo-read.ts apps/cloud-workers/src/routes/laundrygo-read.test.ts
-git commit -m "feat(cloud): add LaundryGo live machine projection"
+git add apps/cloud-workers/src/routes/laundrytwin-read.ts apps/cloud-workers/src/routes/laundrytwin-read.test.ts
+git commit -m "feat(cloud): add LaundryTwin live machine projection"
 ```
 
 ### Task 4: Document and freeze the integration boundary
 
 **Files:**
-- Create: `docs/contracts/laundrygo-read-v1.md`
+- Create: `docs/contracts/laundrytwin-read-v1.md`
 - Modify: `apps/cloud-workers/README.md`
 
 **Interfaces:**
@@ -326,8 +326,8 @@ Unavailable sensor fields: null plus coverage.reason
 - [ ] **Step 2: Add a source-level regression test for prohibited methods**
 
 ```ts
-it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('rejects %s on every LaundryGo resource', async (method) => {
-  const response = await laundryGoReadRouter.fetch(
+it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('rejects %s on every LaundryTwin resource', async (method) => {
+  const response = await laundryTwinReadRouter.fetch(
     new Request('https://example.test/v1/laundrygo/branches', { method, headers }),
     env,
   );
@@ -344,6 +344,6 @@ Expected: all commands exit `0`.
 - [ ] **Step 4: Commit the contract documentation in the IRIS worktree**
 
 ```bash
-git add docs/contracts/laundrygo-read-v1.md apps/cloud-workers/README.md apps/cloud-workers/src/routes/laundrygo-read.test.ts
-git commit -m "docs(cloud): specify LaundryGo read integration"
+git add docs/contracts/laundrytwin-read-v1.md apps/cloud-workers/README.md apps/cloud-workers/src/routes/laundrytwin-read.test.ts
+git commit -m "docs(cloud): specify LaundryTwin read integration"
 ```

@@ -123,6 +123,7 @@ services:
       # makes ClickHouse fail auth with 516, so there must be exactly one.
       CLICKHOUSE_SKIP_USER_SETUP: 1
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD}
       CLICKHOUSE_USER: admin
     healthcheck:
       interval: 15s
@@ -153,7 +154,7 @@ services:
     environment:
       ALLOWED_ORIGINS: https://mcp.laundrytwin.duckdns.org
       DANGEROUSLY_BIND_ALL_INTERFACES: 'true'
-      DANGEROUSLY_OMIT_AUTH: 'true'
+      DANGEROUSLY_OMIT_AUTH: 'false'
       HOST: 0.0.0.0
     image: node:24-bookworm-slim
     ports:

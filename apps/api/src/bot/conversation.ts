@@ -60,7 +60,7 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
     return "ขออภัย ยังไม่ได้ตั้งค่า API key ของผู้ช่วย กรุณาให้ผู้ดูแลระบบตั้งค่าในหน้า AI Console";
   }
 
-  const tools = await deps.mcp.listTools();
+  const tools = await deps.mcp.listTools(ctx.scope);
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
   return agenticAnswer(settings.baseUrl, settings.apiKey, settings.model, {
@@ -71,7 +71,11 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
       description: tool.description,
       parameters: tool.inputSchema as Record<string, unknown> | undefined
     })),
-    execute: async (name, args) => toolResultText(await deps.mcp.callTool(name, args)),
+    execute: async (name, args) => {
+      const toolArgs = { ...args };
+      delete toolArgs.accessScope;
+      return toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope));
+    },
     temperature: settings.temperature,
     // Single tool round-trip in v1 — enough for a branch-scoped question.
     maxSteps: 2,

@@ -1,10 +1,10 @@
-# LaundryGo Real-Data Dashboard Implementation Plan
+# LaundryTwin Real-Data Dashboard Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the LaundryGo fixed-data demo with a mobile-first, LINE LIFF stakeholder dashboard that uses its own authentication and RBAC while displaying real data solely through the IRIS read API.
+**Goal:** Replace the LaundryTwin fixed-data demo with a mobile-first, LINE LIFF stakeholder dashboard that uses its own authentication and RBAC while displaying real data solely through the IRIS read API.
 
-**Architecture:** LaundryGo keeps Better Auth for local administrator accounts and uses a verified LIFF token exchange for stakeholder sessions. The Hono API is the only component that holds the IRIS read credential; it validates the IRIS response contract, applies local branch scope, fans out bounded SSE updates, records local access and acknowledgement audit events, and never stores a production telemetry mirror.
+**Architecture:** LaundryTwin keeps Better Auth for local administrator accounts and uses a verified LIFF token exchange for stakeholder sessions. The Hono API is the only component that holds the IRIS read credential; it validates the IRIS response contract, applies local branch scope, fans out bounded SSE updates, records local access and acknowledgement audit events, and never stores a production telemetry mirror.
 
 **Tech Stack:** React 19, Vite, HeroUI, Hono on Node.js, Drizzle ORM, SQLite, Better Auth, LINE LIFF, JOSE, Zod, Vitest, Playwright.
 
@@ -13,7 +13,7 @@
 - This workspace has no Git repository. Do not run `git add`, `git commit`, `git push`, or a destructive Git command here; record verification output instead.
 - Keep code, comments, docs, environment variable names, and persisted audit values in English.
 - Keep the UI mobile-first and truthful: no hard-coded revenue, machine state, alerts, simulated freshness, or `Live` label without a successful live response.
-- Browser code only calls LaundryGo same-origin routes. It never receives `IRIS_LAUNDRYGO_READ_API_KEY` or calls IRIS directly.
+- Browser code only calls LaundryTwin same-origin routes. It never receives `IRIS_LAUNDRYGO_READ_API_KEY` or calls IRIS directly.
 - The server reads only the versioned IRIS contract. It never uses MQTT, a Durable Object binding, or a production database connection.
 - LIFF stakeholder sessions can only read data. Local writes are access requests, local approval/revocation, local alert acknowledgement, and local audit records.
 - Better Auth is retained for local administrator accounts; do not use a fake email or pretend a LIFF token is a Better Auth OAuth callback.
@@ -57,7 +57,7 @@ describe('dashboard source boundary', () => {
 
 Add `vitest` to the API and web dev dependencies, add `test` scripts, and add a root `test` script that runs both workspaces. Use the Node test environment for API tests and `jsdom` for web tests.
 
-Run: `pnpm --filter @laundrygo/api test -- src/dashboard-source.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/dashboard-source.test.ts`
 
 Expected: FAIL because the fixed revenue and demo seeding still exist.
 
@@ -68,12 +68,12 @@ Delete `apps/api/src/demo-data.ts`, remove its import and invocation from `apps/
 Replace the README demo description with this sentence:
 
 ```md
-LaundryGo shows no operational data until its server-to-server IRIS read integration is configured and returns a validated contract response.
+LaundryTwin shows no operational data until its server-to-server IRIS read integration is configured and returns a validated contract response.
 ```
 
 - [ ] **Step 4: Run the regression test to verify it passes**
 
-Run: `pnpm --filter @laundrygo/api test -- src/dashboard-source.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/dashboard-source.test.ts`
 
 Expected: PASS.
 
@@ -119,7 +119,7 @@ describe('local stakeholder scope', () => {
 
 - [ ] **Step 2: Run the access-control test to verify it fails**
 
-Run: `pnpm --filter @laundrygo/api test -- src/access-control.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/access-control.test.ts`
 
 Expected: FAIL because the access-control module does not exist.
 
@@ -148,13 +148,13 @@ export function assertRoleCanReadRevenue(role: StakeholderRole): void;
 
 - [ ] **Step 4: Run the access-control test to verify it passes**
 
-Run: `pnpm --filter @laundrygo/api test -- src/access-control.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/access-control.test.ts`
 
 Expected: PASS.
 
 - [ ] **Step 5: Run static verification**
 
-Run: `pnpm --filter @laundrygo/api check`
+Run: `pnpm --filter @laundrytwin/api check`
 
 Expected: exit `0`.
 
@@ -201,7 +201,7 @@ describe('LIFF stakeholder login', () => {
 
 - [ ] **Step 2: Run the LIFF test to verify it fails**
 
-Run: `pnpm --filter @laundrygo/api test -- src/liff-auth.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/liff-auth.test.ts`
 
 Expected: FAIL because the LIFF authentication module does not exist.
 
@@ -213,7 +213,7 @@ Implement these route results:
 
 ```text
 POST /api/liff/session { idToken }
-200 { status: "active", actor: { displayName, role, branchIds } } plus __Host-laundrygo-stakeholder cookie
+200 { status: "active", actor: { displayName, role, branchIds } } plus __Host-laundrytwin-stakeholder cookie
 202 { status: "pending" } with no session cookie
 403 { error: "ACCESS_REVOKED" } with no session cookie
 401 { error: "INVALID_LIFF_TOKEN" } with no session cookie
@@ -232,13 +232,13 @@ IRIS_LAUNDRYGO_READ_API_KEY=
 
 - [ ] **Step 4: Run the LIFF test to verify it passes**
 
-Run: `pnpm --filter @laundrygo/api test -- src/liff-auth.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/liff-auth.test.ts`
 
 Expected: PASS; unknown users receive pending state and only active records produce a session.
 
 - [ ] **Step 5: Run static verification**
 
-Run: `pnpm --filter @laundrygo/api check`
+Run: `pnpm --filter @laundrytwin/api check`
 
 Expected: exit `0`.
 
@@ -275,7 +275,7 @@ describe('local access administration', () => {
 
 - [ ] **Step 2: Run the administrator test to verify it fails**
 
-Run: `pnpm --filter @laundrygo/api test -- src/admin-access.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/admin-access.test.ts`
 
 Expected: FAIL because the access administration module does not exist.
 
@@ -295,13 +295,13 @@ Validate the exact payload below and reject technicians or managers with no bran
 
 - [ ] **Step 4: Run the administrator test to verify it passes**
 
-Run: `pnpm --filter @laundrygo/api test -- src/admin-access.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/admin-access.test.ts`
 
 Expected: PASS.
 
 - [ ] **Step 5: Run API verification**
 
-Run: `pnpm --filter @laundrygo/api test && pnpm --filter @laundrygo/api check`
+Run: `pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/api check`
 
 Expected: both commands exit `0`.
 
@@ -339,7 +339,7 @@ describe('dashboard scope filtering', () => {
 
 - [ ] **Step 2: Run the adapter tests to verify they fail**
 
-Run: `pnpm --filter @laundrygo/api test -- src/iris-read-client.test.ts src/dashboard-service.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/iris-read-client.test.ts src/dashboard-service.test.ts`
 
 Expected: FAIL because neither adapter nor dashboard service exists.
 
@@ -373,13 +373,13 @@ Call `requireStakeholderScope` first, reject an unapproved branch before calling
 
 - [ ] **Step 4: Run the adapter tests to verify they pass**
 
-Run: `pnpm --filter @laundrygo/api test -- src/iris-read-client.test.ts src/dashboard-service.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/iris-read-client.test.ts src/dashboard-service.test.ts`
 
 Expected: PASS; malformed contract data is rejected and local branch scope cannot be bypassed.
 
 - [ ] **Step 5: Run API verification**
 
-Run: `pnpm --filter @laundrygo/api test && pnpm --filter @laundrygo/api check`
+Run: `pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/api check`
 
 Expected: both commands exit `0`.
 
@@ -426,7 +426,7 @@ it('builds the fallback only from allowlisted aggregate facts', async () => {
 
 - [ ] **Step 2: Run the safety tests to verify they fail**
 
-Run: `pnpm --filter @laundrygo/api test -- src/local-alerts.test.ts src/executive-summary.test.ts src/live-stream.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/local-alerts.test.ts src/executive-summary.test.ts src/live-stream.test.ts`
 
 Expected: FAIL because the modules do not exist.
 
@@ -440,13 +440,13 @@ Implement exactly these summary tools: `getKpi`, `getBranchComparison`, `getAler
 
 - [ ] **Step 4: Run the safety tests to verify they pass**
 
-Run: `pnpm --filter @laundrygo/api test -- src/local-alerts.test.ts src/executive-summary.test.ts src/live-stream.test.ts`
+Run: `pnpm --filter @laundrytwin/api test -- src/local-alerts.test.ts src/executive-summary.test.ts src/live-stream.test.ts`
 
 Expected: PASS; missing telemetry is unavailable, duplicate rules do not create duplicate events, and the summary sees aggregate facts only.
 
 - [ ] **Step 5: Run API verification**
 
-Run: `pnpm --filter @laundrygo/api test && pnpm --filter @laundrygo/api check`
+Run: `pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/api check`
 
 Expected: both commands exit `0`.
 
@@ -467,7 +467,7 @@ Expected: both commands exit `0`.
 - Modify: `apps/web/src/styles.css`
 
 **Interfaces:**
-- Consumes same-origin LaundryGo APIs from Tasks 3–6.
+- Consumes same-origin LaundryTwin APIs from Tasks 3–6.
 - Produces a phone-first page with `pending`, `revoked`, `integration unavailable`, `stale`, `unavailable`, and `active` states.
 
 - [ ] **Step 1: Write failing pure rendering tests**
@@ -486,7 +486,7 @@ describe('freshness labels', () => {
 
 - [ ] **Step 2: Run the web test to verify it fails**
 
-Run: `pnpm --filter @laundrygo/web test -- src/components/freshness-badge.test.ts`
+Run: `pnpm --filter @laundrytwin/web test -- src/components/freshness-badge.test.ts`
 
 Expected: FAIL because the component helper does not exist.
 
@@ -500,13 +500,13 @@ Move the existing Better Auth account controls into a minimal `/mange` screen ra
 
 - [ ] **Step 4: Run the web test to verify it passes**
 
-Run: `pnpm --filter @laundrygo/web test -- src/components/freshness-badge.test.ts && pnpm --filter @laundrygo/web check`
+Run: `pnpm --filter @laundrytwin/web test -- src/components/freshness-badge.test.ts && pnpm --filter @laundrytwin/web check`
 
 Expected: both commands exit `0`.
 
 - [ ] **Step 5: Build the production client**
 
-Run: `pnpm --filter @laundrygo/web build`
+Run: `pnpm --filter @laundrytwin/web build`
 
 Expected: Vite exits `0` and produces `apps/web/dist`.
 
@@ -520,8 +520,8 @@ Expected: Vite exits `0` and produces `apps/web/dist`.
 - Modify: `deploy/.env.production.example`
 
 **Interfaces:**
-- Produces `pnpm --filter @laundrygo/web test:e2e`.
-- Uses a local mock LaundryGo API fixture, not an IRIS production URL.
+- Produces `pnpm --filter @laundrytwin/web test:e2e`.
+- Uses a local mock LaundryTwin API fixture, not an IRIS production URL.
 
 - [ ] **Step 1: Write the phone-viewport E2E scenario**
 
@@ -542,19 +542,19 @@ test('shows real-source metadata and unavailable sensor coverage without demo va
 
 - [ ] **Step 2: Run the E2E test to verify it fails before the fixture is configured**
 
-Run: `pnpm --filter @laundrygo/web test:e2e -- stakeholder-dashboard.spec.ts`
+Run: `pnpm --filter @laundrytwin/web test:e2e -- stakeholder-dashboard.spec.ts`
 
 Expected: FAIL until the local mock API and Playwright web server are configured.
 
 - [ ] **Step 3: Configure a local contract fixture and Playwright web server**
 
-Add `@playwright/test`, a `test:e2e` script, and a Vite preview web server command. Configure the Playwright server with `VITE_LIFF_TEST_MODE=true`; only in that explicit test build, `connectLiff` returns a fixed non-production ID token. In the scenario, intercept `/api/liff/session` with an active stakeholder response and intercept the same-origin LaundryGo `/api/branches`, `/api/dashboard`, `/api/alerts`, `/api/summary`, and live endpoints with valid non-sensitive contract fixtures. The fixtures must include one fresh running machine, one stale machine, and one machine without gas coverage. They must not contain production machine, customer, LINE, or payment identifiers. The Node API is never started and the browser never calls IRIS in this test.
+Add `@playwright/test`, a `test:e2e` script, and a Vite preview web server command. Configure the Playwright server with `VITE_LIFF_TEST_MODE=true`; only in that explicit test build, `connectLiff` returns a fixed non-production ID token. In the scenario, intercept `/api/liff/session` with an active stakeholder response and intercept the same-origin LaundryTwin `/api/branches`, `/api/dashboard`, `/api/alerts`, `/api/summary`, and live endpoints with valid non-sensitive contract fixtures. The fixtures must include one fresh running machine, one stale machine, and one machine without gas coverage. They must not contain production machine, customer, LINE, or payment identifiers. The Node API is never started and the browser never calls IRIS in this test.
 
 Update the README with exact local setup, required production variable names, approval flow, non-goals, health checks, backup path, and the statement that deployment requires a configured IRIS read credential. Do not add secrets or real endpoint values.
 
 - [ ] **Step 4: Run the complete local verification gate**
 
-Run: `pnpm test && pnpm check && pnpm build && pnpm --filter @laundrygo/web test:e2e`
+Run: `pnpm test && pnpm check && pnpm build && pnpm --filter @laundrytwin/web test:e2e`
 
 Expected: all commands exit `0`.
 

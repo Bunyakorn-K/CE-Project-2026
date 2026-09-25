@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { type AccessGrant, type Role } from "./access-policy";
 import { db } from "./db";
 import {
@@ -13,10 +13,11 @@ import {
 } from "./schema";
 
 type UserIdentity = { id: string; name: string; email: string };
+const DEMO_OWNER_EMAIL = "demo.owner@laundrytwin.local";
 
 export type Principal = {
   user: UserIdentity;
-  source: "better-auth" | "liff" | "demo";
+  source: "better-auth" | "liff" | "demo" | "development";
   grants: AccessGrant[];
 };
 
@@ -48,6 +49,16 @@ export function resolveLiffPrincipal(token: string | undefined): Principal | nul
 
 export function resolveDemoPrincipal(token: string | undefined): Principal | null {
   return resolveSessionPrincipal(token, "demo");
+}
+
+const developmentOwnerPrincipal: Principal = {
+  user: { id: "development-owner", name: "Development Owner", email: "development.owner@laundrytwin.local" },
+  source: "development",
+  grants: [{ id: "development-owner-grant", role: "owner", branchId: null }]
+};
+
+export function getDevelopmentOwnerPrincipal(): Principal {
+  return developmentOwnerPrincipal;
 }
 
 function resolveSessionPrincipal(token: string | undefined, source: "liff" | "demo"): Principal | null {
@@ -92,7 +103,7 @@ function createLocalSession(userId: string) {
 }
 
 export function ensureDemoOwner(): UserIdentity {
-  const email = "demo.owner@laundrytwin.local";
+  const email = DEMO_OWNER_EMAIL;
   const now = new Date();
   const existing = db.select({ id: user.id, name: user.name, email: user.email }).from(user).where(eq(user.email, email)).get();
   const demoUser = existing ?? createDemoUser(email, now);
@@ -207,7 +218,8 @@ export function revokeAccessGrant(grantId: string, actorUserId: string): "revoke
     const activeOwnerCount = db
       .select({ id: accessGrant.id })
       .from(accessGrant)
-      .where(and(eq(accessGrant.role, "owner"), isNull(accessGrant.revokedAt)))
+      .innerJoin(user, eq(accessGrant.userId, user.id))
+      .where(and(eq(accessGrant.role, "owner"), isNull(accessGrant.revokedAt), ne(user.email, DEMO_OWNER_EMAIL)))
       .all().length;
     if (activeOwnerCount <= 1) return "last-owner";
   }

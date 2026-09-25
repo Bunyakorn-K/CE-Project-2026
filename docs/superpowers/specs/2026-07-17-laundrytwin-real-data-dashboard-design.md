@@ -1,8 +1,8 @@
-# LaundryGo Real-Data Dashboard Design
+# LaundryTwin Real-Data Dashboard Design
 
 ## Status
 
-Approved architecture pending implementation planning. LaundryGo remains a
+Approved architecture pending implementation planning. LaundryTwin remains a
 standalone final-project application. IRIS is an external, read-only data
 provider and remains the source of truth for operational machine data.
 
@@ -10,9 +10,9 @@ provider and remains the source of truth for operational machine data.
 
 - Replace fixed seed values with real, traceable operational data from IRIS.
 - Provide a mobile-first LINE LIFF dashboard for stakeholders.
-- Keep LaundryGo authentication, user administration, roles, branch scopes,
+- Keep LaundryTwin authentication, user administration, roles, branch scopes,
   sessions, and audit records independent from IRIS.
-- Enforce a read-only integration boundary: LaundryGo must never issue machine
+- Enforce a read-only integration boundary: LaundryTwin must never issue machine
   commands, create payments, alter telemetry, or access the IRIS database,
   MQTT broker, or Durable Objects directly.
 - Cover the MVP reporting requirements: live machine state, KPI aggregation,
@@ -22,7 +22,7 @@ provider and remains the source of truth for operational machine data.
 
 - Replacing IRIS telemetry ingestion, MQTT validation, payment processing, or
   existing operator backoffice workflows.
-- Mirroring production data into the LaundryGo SQLite database.
+- Mirroring production data into the LaundryTwin SQLite database.
 - Presenting a value as live, calculated, or sensor-backed when the source
   integration cannot provide it.
 - Implementing Phase 2 promotion, predictive maintenance, public customer
@@ -35,7 +35,7 @@ LINE LIFF client
     |
     | verified LINE identity
     v
-LaundryGo web and Hono API on the VM
+LaundryTwin web and Hono API on the VM
     |                         |
     | local session/RBAC      +--> SQLite: users, scopes, approvals, audit
     |
@@ -47,8 +47,8 @@ IRIS read API
     +--> machine events, usage, transactions, alert evidence, aggregates
 ```
 
-The browser calls LaundryGo only. The IRIS integration credential is held by
-the LaundryGo server and is never returned to the client. The IRIS read API
+The browser calls LaundryTwin only. The IRIS integration credential is held by
+the LaundryTwin server and is never returned to the client. The IRIS read API
 maps that credential to an allowed tenant and rejects any request outside that
 tenant before querying data.
 
@@ -57,11 +57,11 @@ tenant before querying data.
 ### Stakeholder sign-in
 
 1. The LIFF client obtains a LINE ID token.
-2. `POST /api/liff/session` sends the token to the LaundryGo API.
-3. LaundryGo verifies the token against LINE for the configured channel and
+2. `POST /api/liff/session` sends the token to the LaundryTwin API.
+3. LaundryTwin verifies the token against LINE for the configured channel and
    validates issuer, audience, expiry, and subject.
-4. LaundryGo looks up the stable LINE subject in `stakeholder_identity`.
-5. An approved identity receives a short-lived, HttpOnly LaundryGo session.
+4. LaundryTwin looks up the stable LINE subject in `stakeholder_identity`.
+5. An approved identity receives a short-lived, HttpOnly LaundryTwin session.
    An unknown or revoked identity receives no data and sees a pending or
    denied access state.
 
@@ -81,7 +81,7 @@ roles plus zero or more branch scopes:
 | Manager | Assigned branches only | KPI, alerts, machine state, exports, executive summary for assigned branches |
 | Technician | Assigned branches only | Machine state, telemetry evidence, technical alerts, coin-box and gas evidence |
 
-Every LaundryGo request derives its role and branch set from the server-side
+Every LaundryTwin request derives its role and branch set from the server-side
 session. Client-supplied tenant or branch identifiers are treated only as
 filters within that already-authorized set.
 
@@ -92,7 +92,7 @@ records. They do not modify IRIS operational data.
 ## IRIS Read Integration Contract
 
 IRIS must expose a versioned, server-to-server, read-only contract dedicated
-to LaundryGo. It must not expose database credentials or a generic SQL API.
+to LaundryTwin. It must not expose database credentials or a generic SQL API.
 
 Required resources:
 
@@ -105,8 +105,8 @@ Required resources:
 | `GET /v1/laundrygo/alerts` | Alert state, rule id/version, trigger evidence, and cooldown state |
 | `GET /v1/laundrygo/summary-input` | Whitelisted aggregate facts for executive summaries |
 
-The initial live endpoint may be polled by LaundryGo at a bounded cadence. The
-LaundryGo API exposes an SSE stream to LIFF clients with reconnect support and
+The initial live endpoint may be polled by LaundryTwin at a bounded cadence. The
+LaundryTwin API exposes an SSE stream to LIFF clients with reconnect support and
 falls back to REST refresh. This preserves a near-real-time interface without
 giving the browser an IRIS credential.
 
@@ -156,16 +156,16 @@ It never lets a model construct SQL, call arbitrary endpoints, or access raw
 telemetry or personal data. Calls and returned source facts are audit logged.
 
 Cloudflare AI is an optional provider behind this tool boundary. If it is not
-configured or fails, LaundryGo renders a deterministic summary from the same
+configured or fails, LaundryTwin renders a deterministic summary from the same
 facts and states that an AI-generated summary is unavailable. It must not
 invent a narrative from missing data.
 
 ## Data Quality and Alert Rules
 
 - IRIS remains responsible for ingesting and validating MQTT or edge telemetry
-  (Requirement R01). LaundryGo surfaces validation outcome and data coverage
+  (Requirement R01). LaundryTwin surfaces validation outcome and data coverage
   as read-only evidence.
-- LaundryGo evaluates local reporting alert rules only from normalized,
+- LaundryTwin evaluates local reporting alert rules only from normalized,
   timestamped data. Each alert is deduplicated by rule, target, and cooldown.
 - An alert includes the source event, rule id, rule version, trigger time, and
   delivery or acknowledgement state.
@@ -174,7 +174,7 @@ invent a narrative from missing data.
 
 ## Persistence Model
 
-LaundryGo SQLite stores only application-owned data:
+LaundryTwin SQLite stores only application-owned data:
 
 - Better Auth tables for local administrator accounts and sessions.
 - `stakeholder_identity` for the verified LINE subject and display profile.
@@ -191,7 +191,7 @@ LaundryGo SQLite stores only application-owned data:
 1. A non-approved LIFF identity cannot retrieve dashboard data.
 2. A Manager cannot request a branch outside its local branch scope.
 3. The IRIS read credential cannot access a tenant outside its configured
-   scope, even if LaundryGo submits a modified query parameter.
+   scope, even if LaundryTwin submits a modified query parameter.
 4. Dashboard data is derived from the IRIS contract, with no fixed demo
    revenue, machines, alerts, or misleading live indicator.
 5. Every live card displays freshness and source metadata; missing fields are
@@ -201,7 +201,7 @@ LaundryGo SQLite stores only application-owned data:
 7. Executive summaries use only allowlisted aggregate tools and never contain
    data from another tenant or outside the caller's branches.
 8. Machine command, payment, telemetry mutation, and direct database routes
-   are absent from the LaundryGo public API.
+   are absent from the LaundryTwin public API.
 
 ## Verification Strategy
 
@@ -221,7 +221,7 @@ LaundryGo SQLite stores only application-owned data:
 ## Delivery Sequence
 
 1. Define and test the IRIS read-only integration contract.
-2. Replace LaundryGo demo persistence and endpoints with local access control
+2. Replace LaundryTwin demo persistence and endpoints with local access control
    plus an IRIS data adapter.
 3. Build the mobile dashboard from contract data and truthful data-quality
    states.

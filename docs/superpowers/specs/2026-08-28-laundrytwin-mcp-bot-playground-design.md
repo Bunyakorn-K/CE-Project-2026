@@ -1,4 +1,4 @@
-# LaundroTwin MCP Data Server + LINE Bot + Separate Playground
+# LaundryTwin MCP Data Server + LINE Bot + Separate Playground
 
 Date: 2026-08-28
 Status: Approved design (team review pending)
@@ -242,14 +242,12 @@ playground.laundrytwin.duckdns.org {
   the existing `web` stage) OR a separate `apps/playground/Dockerfile`.
 - `compose.yaml`: add `playground` service exposing port 8082.
 - `.env` additions:
-  ```
-  MCP_ACCESS_TOKEN=<long-random-token>
-  MCP_ALLOW_REVENUE=true            # service token capability flag
-  OPENROUTER_API_KEY=<key>
-  BOT_MODEL=<model>
-  LINE_CHANNEL_ACCESS_TOKEN=<set>   # already a placeholder in .env.example
-  LINE_CHANNEL_SECRET=<set>
-  ```
+  - `MCP_ACCESS_TOKEN`: random secret with at least 32 characters
+  - `MCP_ALLOW_REVENUE`: service-token capability flag
+  - `OPENROUTER_API_KEY`: provider credential
+  - `BOT_MODEL`: deployed model identifier
+  - `LINE_CHANNEL_ACCESS_TOKEN`: existing LINE channel credential
+  - `LINE_CHANNEL_SECRET`: existing LINE channel secret
   `MCP_ALLOW_REVENUE=false` revokes revenue tools for the service token
   regardless of `accessScope.canViewRevenue`.
 

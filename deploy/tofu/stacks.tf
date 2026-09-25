@@ -20,7 +20,7 @@ resource "null_resource" "analytics_stack" {
     EOT
   }
   provisioner "local-exec" {
-    when = destroy
+    when    = destroy
     command = <<-EOT
       if [ -f "${self.triggers.analytics_dir}/compose.yaml" ]; then
         cd "${self.triggers.analytics_dir}"
@@ -37,12 +37,12 @@ resource "null_resource" "analytics_stack" {
 resource "null_resource" "app_stack" {
   depends_on = [null_resource.install_envs, null_resource.analytics_stack]
   triggers = {
-    ref          = var.app_repo_ref
-    app_dir      = local.app_dir
-    api_docker   = filemd5("${path.module}/../../apps/api/Dockerfile")
-    web_docker   = filemd5("${path.module}/../../apps/web/Dockerfile")
-    etl_docker   = filemd5("${path.module}/../../apps/etl/Dockerfile")
-    compose      = filemd5("${path.module}/../../compose.yaml")
+    ref        = var.app_repo_ref
+    app_dir    = local.app_dir
+    api_docker = filemd5("${path.module}/../../apps/api/Dockerfile")
+    web_docker = filemd5("${path.module}/../../apps/web/Dockerfile")
+    etl_docker = filemd5("${path.module}/../../apps/etl/Dockerfile")
+    compose    = filemd5("${path.module}/../../compose.yaml")
   }
   provisioner "local-exec" {
     command = <<-EOT
@@ -54,7 +54,7 @@ resource "null_resource" "app_stack" {
     EOT
   }
   provisioner "local-exec" {
-    when = destroy
+    when    = destroy
     command = <<-EOT
       if [ -f "${self.triggers.app_dir}/compose.yaml" ]; then
         cd "${self.triggers.app_dir}"

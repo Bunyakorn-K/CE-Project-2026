@@ -114,7 +114,7 @@ describe("bot conversation loop", () => {
       .fn()
       .mockResolvedValueOnce(
         new Response(
-          `data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_cycles_daily","arguments":"{\\"from\\":\\"2026-08-01\\",\\"to\\":\\"2026-08-31\\",\\"branchId\\":\\"b1\\"}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n`,
+          `data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_cycles_daily","arguments":"{\\"from\\":\\"2026-08-01\\",\\"to\\":\\"2026-08-31\\",\\"branchId\\":\\"b1\\",\\"accessScope\\":{\\"branchIds\\":[\\"*\\"],\\"canViewRevenue\\":true}}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n`,
           { status: 200, headers: { "content-type": "text/event-stream" } }
         )
       )
@@ -131,7 +131,12 @@ describe("bot conversation loop", () => {
     );
 
     expect(answer).toBe("มีรอบการซัก 31 รอบ");
-    expect(mcp.callTool).toHaveBeenCalledWith("get_cycles_daily", expect.objectContaining({ branchId: "b1" }));
+    expect(mcp.callTool).toHaveBeenCalledWith(
+      "get_cycles_daily",
+      expect.objectContaining({ branchId: "b1" }),
+      { branchIds: ["b1"], canViewRevenue: true }
+    );
+    expect(mcp.callTool.mock.calls[0][1]).not.toHaveProperty("accessScope");
     // The tool result (JSON text) must be fed back to the model as the tool message.
     const secondCallBody = JSON.parse(fetchImpl.mock.calls[1][1].body);
     expect(secondCallBody.messages.some((m: { role: string }) => m.role === "tool")).toBe(true);

@@ -1,13 +1,11 @@
 <clickhouse>
     <!-- Read-only warehouse reader for external SDKs and notebooks.
 
-         CREATE: 2026-09-18. The `admin` user (created by the compose env,
-         /etc/clickhouse-server/users.d/default-user.xml) is the only account
-         with access_management; it is used by the ETL, API, Airflow and
-         Superset, all of which connect from the same host. This file adds a
-         least-privilege reader so ad-hoc ClickHouse SDK / Play UI access
-         never needs the admin credential, which can DROP tables and read
-         system.* (query_log, parts, disks, users).
+         CREATE: 2026-09-18. The `admin` user is reserved for the ETL and
+         controlled local operations. The API, Airflow, and Superset use this
+         least-privilege reader. This file adds a reader so ad-hoc ClickHouse
+         SDK / Play UI access never needs the admin credential, which can DROP
+         tables and read system.* (query_log, parts, disks, users).
 
          Verified 2026-09-18 on VM 117 (ClickHouse 26.3.26):
            - SELECT on laundrytwin_analytics.*: 200 OK
@@ -31,7 +29,7 @@
             <networks>
                 <ip>::/0</ip>
             </networks>
-            <password>REPLACE_WITH_ROTATED_PASSWORD</password>
+            <password from_env="CLICKHOUSE_READER_PASSWORD"/>
             <quota>default</quota>
             <access_management>0</access_management>
             <grants>

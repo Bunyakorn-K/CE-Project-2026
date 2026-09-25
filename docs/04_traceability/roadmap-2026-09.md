@@ -127,8 +127,10 @@ If scope ever changes (direct device access after IRIS retires):
   streaming gateway, MCP tools as SDK `dynamicTool`s. Demo login via
   `POST /api/demo/session` (no password accounts in demo).
 - **LibreChat MCP/agent tool testing** — free OpenRouter model
-  (`inclusionai/ling-3.0-flash-fin:free`) + Agents endpoint + agent with all
-  5 analytics MCP tools, E2E-verified (tool call → result → answer).
+  (`inclusionai/ling-3.0-flash-fin:free`) + Agents endpoint + agent with the
+  then-current 5 analytics MCP tools, E2E-verified (tool call → result → answer).
+  The current registry has 6 tools after the off-peak addition; current signed
+  scope and all six tools have local code/test evidence, not fresh browser E2E.
   Evidence: `ops-verification-2026-09-14-librechat-tools.md`.
 - **Internal docker registry** (`registry.laundrytwin.duckdns.org`) — per-app
   images via turbo prune + minimal runtime (~29–69 MB), VM pulls via

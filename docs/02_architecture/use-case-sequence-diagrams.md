@@ -1,4 +1,4 @@
-# LaundroTwin MVP — Use Case and Sequence Diagrams
+# LaundryTwin MVP — Use Case and Sequence Diagrams
 
 Scope: the **current implementation** (read-only LINE LIFF reporting surface,
 RBAC, ClickHouse analytics, MCP assistant, LINE bot, alert engine, AI console,
@@ -255,14 +255,16 @@ sequenceDiagram
 sequenceDiagram
     actor U as Owner
     participant C as LibreChat agent / AI console
-    participant M as LaundroTwin MCP server (api :8787 /mcp)
+    participant M as LaundryTwin MCP server (api :8787 /mcp)
     participant A as access scope (RBAC)
     participant CH as ClickHouse
 
     U->>C: "show daily cycles for branch b1"
     C->>M: initialize (Bearer MCP_ACCESS_TOKEN) → tools/list
-    M-->>C: 5 tools (get_cycles_daily, get_revenue_daily, ...)
-    C->>M: tools/call get_cycles_daily_mcp_laundrytwin-analytics {branchId, from, to, accessScope}
+     M-->>C: 6 tools (get_cycles_daily, get_revenue_daily, ...)
+     C->>M: tools/call get_cycles_daily_mcp_laundrytwin-analytics {branchId, from, to}
+     C->>M: signed MCP scope header from LINE session
+
     M->>A: resolve scope (branchIds, canViewRevenue)
     alt out-of-scope branch
         A-->>M: branch_out_of_scope (no query)

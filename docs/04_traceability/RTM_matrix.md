@@ -1,42 +1,77 @@
 # 🔗 Requirements Traceability Matrix (RTM)
 
-**Document Purpose:** This matrix ensures that every developed system function (F) directly satisfies a quantifiable requirement (R) and originates from a specific user story (US). It prevents "scope creep" and ensures all business needs are technically addressed.
+**Document Purpose:** This matrix connects CE Project requirements to system
+functions and user stories. Function names follow
+`docs/01_requirements/system_functions.md`; implementation status below records
+local code and test evidence, not production E2E verification.
 
-| Domain / Feature                  | User Story (US) | Requirement (R) | System Function (F)                        | Phase     |
-| :-------------------------------- | :-------------- | :-------------- | :----------------------------------------- | :-------- |
-| **Telemetry Pipeline (via IRIS)**   | US-10           | R01, R02        | F-04 (State Sync), F-05 (Data Pipeline)     | **MVP**   |
-| **RBAC & Multi-Tenant Security**  | US-09, US-11    | R04             | F-06 (RBAC), F-07 (Audit Log)              | **MVP**   |
-| **Digital Twin (Machine Status)** | US-02           | R02, R04        | F-01 (State Sync)                          | **MVP**   |
-| **Business Dashboard (Revenue)**  | US-04           | R03, R04        | F-08 (KPI Aggregation)                     | **MVP**   |
-| **Gas Early-Warning System**      | US-01           | R05, R06        | F-02 (Gas Remaining), F-10 (Alert Engine)  | **MVP**   |
-| **Coin-Box Estimation**           | US-03           | R05, R07        | F-09 (Coin-Box Logic), F-10 (Alert Engine) | **MVP**   |
-| **AI Executive Summary**          | US-05           | R04, R08        | F-11 (Safe Function Calling)               | **MVP**   |
-| **Rule-Based Maintenance Alert**  | US-08           | R05, R10        | F-10 (Alert Engine)                        | **MVP**   |
-| **AI Smart Promotion** | US-06 | R09 | F-12 (External Context) — baseline done (#35) | _Phase 2_ |
-| **Spatial Anomaly Diagnostics** | US-08 | R10 | F-03 (Spatial Layout) | _Phase 2_ |
-| **Customer Web View** | US-07 | R11 | F-13 (Public API) | _Phase 2_ |
-| **Weather Demand Analysis** | US-06 | R12 | F-12 (External Context) | _Phase 2_ |
+## Traceability
 
-**Weather schema extension (2026-09-22):** `dim_branch_location` and `fact_weather_sample` both gained `sub_district Nullable(String)` and `district Nullable(String)` columns for future per-position weather data. Currently `NULL` (no per-position TMD endpoint).
+| Domain / Feature | User Story (US) | Requirement (R) | System Function (F) | Phase |
+| :--- | :--- | :--- | :--- | :--- |
+| **Telemetry pipeline (via IRIS)** | US-10 | R01, R02 | F-04 (Telemetry Data Streaming; target), F-05 (MQTT Ingestion & Data Pipeline; current ETL path) | **MVP** |
+| **RBAC & multi-tenant security** | US-09, US-11 | R04 | F-06 (RBAC), F-07 (Authentication & Audit Log) | **MVP** |
+| **Digital Twin / machine status** | US-02 | R02, R04 | F-01 (Virtual Presence & State Sync) | **MVP** |
+| **Business dashboard** | US-04 | R03, R04 | F-08 (KPI Aggregation & Data Export) | **MVP** |
+| **Gas early-warning system** | US-01 | R05, R06 | F-02 (Estimated Gas Remaining), F-10 (Event-Driven Alert Engine) | **MVP** |
+| **Coin-box estimation** | US-03 | R05, R07 | F-09 (Estimated Coin-Box Fill & Reset), F-10 | **MVP** |
+| **AI executive summary** | US-05 | R04, R08 | F-11 (Safe Analytics Function Calling) | **MVP** |
+| **Rule-based maintenance alert** | US-08 | R05, R10 | F-10 | **MVP** |
+| **AI smart promotion** | US-06 | R09 | No F-ID assigned here; see F-12 ambiguity note | _Phase 2_ |
+| **Spatial anomaly diagnostics** | US-08 | R10 | F-03 (Spatial Layout & Error Correlation) | _Phase 2_ |
+| **Customer web view** | US-07 | R11 | F-13 (Public Machine Status API) | _Phase 2_ |
+| **Weather demand analysis** | US-06 | R12 | F-12 (External Context — Weather API) | _Phase 2_ |
+
+### F-12 ambiguity
+
+`system_functions.md` defines F-12 as **External Context (Weather API)**.
+Older planning and traceability material also used the F-12 label for the
+off-peak recommendation work. This matrix does not invent a new function ID:
+the weather item remains F-12/R12, while the off-peak baseline remains
+US-06/R09 and is evidenced through the `get_off_peak_windows` MCP tool.
+
+**Weather schema extension (2026-09-22):** `dim_branch_location` and
+`fact_weather_sample` include nullable `sub_district` and `district` fields for
+future per-position data. The current `fact_weather_sample` key is
+`(tenant_id, branch_id, timestamp)`, not `(province, timestamp)`.
 
 ---
 
-### 📌 How to maintain this document:
+## How to maintain this document
 
-- **Developers:** Before building a new feature, find its `F-ID` here. Ensure your code satisfies the linked `R-ID` criteria.
-- **Testers (QA):** Use this matrix to write test cases. A test case for `US-01` must explicitly test the logic in `F-02` and `F-10`.
+- Before building a feature, find its `F-ID`, `R-ID`, and `US-ID` here and
+  confirm the authoritative function name in `system_functions.md`.
+- A local test result does not prove staging, LINE, or browser E2E behavior.
+- Mark partial coverage as partial when the implementation does not satisfy the
+  full acceptance criteria or lacks a complete audit/evidence path.
 
----
+## Implementation status (as of 2026-09-25)
 
-### 📌 Implementation status (as of 2026-09-06)
+| Function | Status | Local evidence and remaining boundary |
+| :--- | :--- | :--- |
+| F-01 State Sync | Partial | Direct Digital Twin reports retain active inventory, preserve unknown state, and expose usage-derived freshness; `fact_machine_event` is empty and current state is not live telemetry. |
+| F-04 Telemetry Data Streaming | Not implemented directly | Direct MQTT streaming and a WebSocket/SSE client stream are not current implementation. The deployed batch path is represented by F-05 through IRIS → ClickHouse ETL. |
+| F-05 MQTT Ingestion & Data Pipeline | Implemented on current IRIS path | `apps/etl/` performs validated, watermark-based, idempotent loading into ClickHouse. The original direct MQTT path is descoped. |
+| F-06 RBAC | Implemented in local code/tests | `apps/api/src/access-policy.ts`, report/analytics scope gates, and denial tests constrain every tenant-scoped query. Production E2E remains pending. |
+| F-07 Authentication & Audit Log | Partial | Better Auth requires `BETTER_AUTH_SECRET` outside tests, public signup is disabled, and rate limits are enabled. Local audit entries exist for grants, alerts, and settings; there is no complete AI prompt/tool-call audit table. |
+| F-08 KPI Aggregation & Data Export | Implemented locally | Direct ClickHouse Dashboard/Twin reports and analytics endpoints use bound dates and branch parameters, nullable revenue redaction, and visible source/freshness/availability metadata. Production E2E remains pending. |
+| F-10 Event-Driven Alert Engine | Implemented locally | `apps/api/src/alert-engine.ts` tests idempotency, cooldowns, recipient scope, evidence, failure retry, and local alert acknowledgement. |
+| F-11 Safe Analytics Function Calling | Partial | Six allow-listed MCP tools are current. `accessScope` is not a model argument; LINE scope is server-derived and signed. `MCP_ACCESS_TOKEN` is required and `MCP_ALLOW_REVENUE` is explicit false by default. Arbitrary SQL has no path, but a complete prompt/tool-call/result audit is still absent. |
+| F-12 External Context — Weather API | Implemented baseline | TMD weather collection runs hourly (`sleep 3600`), is branch-tagged, and inserts nullable readings into `fact_weather_sample`; correlation is descriptive, not a forecast. |
+| US-06/R09 off-peak baseline | Implemented as a Phase 2 baseline | `get_off_peak_windows` uses a percentile heuristic over `fact_machine_usage`; it is not assigned a new F-ID. |
 
-| Function | Status | Evidence |
-| :------- | :----- | :------- |
-| F-01 State Sync | Partial (read-only live snapshot via IRIS; real-time MQTT telemetry not yet ingested) | `apps/api/src/iris-read-client.ts`, `apps/api/src/reporting.ts` |
-| F-06 RBAC | Implemented | `apps/api/src/access-policy.ts` + tests |
-| F-08 KPI Aggregation | Implemented (ClickHouse) | `apps/api/src/analytics/*` + tests |
-| F-10 Alert Engine (notification arm) | Implemented (idempotent LINE push + cooldown + audit) | `apps/api/src/alert-engine.ts` + `apps/api/src/alert-engine.test.ts` |
-| F-11 Safe Function Calling | Implemented (allow-listed analytics MCP) | `apps/api/src/analytics/mcp.ts` + tests |
-| F-04/F-05 Pipeline | Implemented via IRIS Postgres → ClickHouse ETL (watermark + ReplacingMergeTree idempotency); direct MQTT ingestion descoped 2026-09-07 — device ingestion is IRIS's responsibility | `apps/etl/` |
-| F-12 Weather Context | Implemented (TMD collector live on VM 117 + `fact_weather_sample` + Superset chart + MCP tool); correlation now **evaluable and significant** at n=77 (temp +0.418 / rh −0.359, p<0.05); one effective weather series — TMD returns identical values for both provinces, so per-province split is duplicated | `apps/etl/src/weather.ts`, `apps/api/src/analytics/weather.ts`, `docs/04_traceability/f12-weather-evaluation-2026-09-07.md` |
-| F-12 ML off-peak baseline (#35) | Implemented (`get_off_peak_windows` MCP tool, percentile heuristic, verified on Chiang Mai branch); feature engineering guide at `docs/06_ml/ml-training-data-guide.md` | `apps/api/src/analytics/mcp.ts`, `docs/06_ml/algorithm-comparison.md` |
+## Current MCP tool names
+
+The current server exposes exactly these six allow-listed tools:
+
+- `get_revenue_daily`
+- `get_cycles_daily`
+- `get_utilization_heatmap`
+- `get_temperature_curve`
+- `get_weather_usage_correlation`
+- `get_off_peak_windows`
+
+MCP access uses a service bearer token. The LINE bot signs a per-session scope
+derived from server-resolved grants; scope is not supplied by the model. The
+current analytics envelope is `{ meta, data }`, not the richer target envelope
+shown in presentation material.

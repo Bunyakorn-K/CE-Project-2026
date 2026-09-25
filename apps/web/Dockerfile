@@ -1,4 +1,4 @@
-# LaundroTwin — Web image (static frontend).
+# LaundryTwin — Web image (static frontend).
 #
 # Per-app Dockerfile using turbo prune --docker:
 #   build   : vite build (from full pruned tree) -> apps/web/dist

@@ -1,8 +1,8 @@
-# LaundroTwin MVP Data and Activity Diagrams
+# LaundryTwin MVP Data and Activity Diagrams
 
-This document describes the target LaundroTwin MVP. It is a logical design for
+This document describes the target LaundryTwin MVP. It is a logical design for
 the CE Project report and future implementation; it does not claim that every
-entity and workflow is already implemented by the current LaundryGo application.
+entity and workflow is already implemented by the current LaundryTwin application.
 
 ## Entity Relationship Diagram
 

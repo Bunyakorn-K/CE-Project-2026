@@ -1,4 +1,4 @@
-"""Build the LaundroTwin "Safe AI Executive Assistant" deck as a .pptx.
+"""Build the LaundryTwin "Safe AI Executive Assistant" deck as a .pptx.
 
 Everything is emitted as native PowerPoint shapes, text frames and tables
 (no rasterised images), so individual elements can be selected and copied
@@ -280,7 +280,7 @@ accent.line.fill.background()
 accent.shadow.inherit = False
 
 _, tf = textbox(slide, Inches(0.95), Inches(1.5), Inches(11.2), Inches(0.3))
-para(tf, "FINAL PROJECT · LAUNDROTWIN (LAUNDRYGO)", first=True, size=11,
+para(tf, "FINAL PROJECT · LAUNDRYTWIN", first=True, size=11,
      bold=True, color=BRAND, spacing=1.0, space_after=0)
 
 _, tf = textbox(slide, Inches(0.95), Inches(1.95), Inches(11.2), Inches(1.7))
@@ -291,14 +291,14 @@ para(tf, "ที่ตอบจาก “ข้อมูลจริง” ไ�
 
 _, tf = textbox(slide, Inches(0.95), Inches(3.75), Inches(8.6), Inches(1.1))
 para(tf, "ออกแบบโครงสร้างข้อมูล (Data Structure for LLM) และ Function Calling ที่ปลอดภัย "
-         "เพื่อให้ผู้บริหารถามเป็นภาษาคนแล้วได้คำตอบที่ตรวจสอบย้อนกลับได้ทุกตัวเลข "
-         "ภายใต้สิทธิ์และขอบเขตสาขาของผู้ใช้",
+         "เพื่อให้ผู้บริหารถามเป็นภาษาคนแล้วได้คำตอบที่ตรวจสอบแหล่งที่มาและขอบเขตได้ "
+         "ภายใต้สิทธิ์ของผู้ใช้",
      first=True, size=13, color=MUTED, spacing=1.6, space_after=0)
 
 meta = [
     ("ขอบเขต", "R08 · F-11 · F-07 · US-05 (MVP)"),
-    ("ต่อยอด", "R09 · F-12 · US-06 (Phase 2)"),
-    ("สถานะปัจจุบัน", "implement แล้ว · MCP allow-list + RBAC scope + audit (ยืนยัน 2026-09-06)"),
+    ("ต่อยอด", "R09 · US-06 (Phase 2; F-12 คือ Weather Context)"),
+    ("สถานะปัจจุบัน", "โครงสร้างข้อมูลและ allow-list บางส่วน implement แล้ว · local code/test evidence (ยืนยัน 2026-09-25)"),
     ("ฐานที่มีแล้ว", "Telemetry · Dashboard · RBAC · LINE Alert"),
 ]
 mx = Inches(0.95)
@@ -309,7 +309,7 @@ for label, value in meta:
     para(tf, value, size=10.5, color=MUTED, spacing=1.35, space_after=0)
     mx += Inches(2.95)
 
-footer(slide, "LaundroTwin — Smart Laundry Management and Analytics Platform",
+footer(slide, "LaundryTwin — Smart Laundry Management and Analytics Platform",
        "1 / 11")
 
 # --------------------------------------------------------------------------
@@ -357,7 +357,7 @@ for item in [
     "Backend ตรวจ RBAC และ branch_id ก่อน query เสมอ",
     "ส่งเฉพาะข้อมูลสรุปแล้วขนาดเล็กเข้า context",
     "ผลลัพธ์คงที่ ทดสอบซ้ำได้ด้วย unit test",
-    "Audit log ครบ: prompt, tool, args, ผลลัพธ์อ้างอิง",
+     "Audit ปัจจุบันครอบคลุม grant / alert / settings; complete AI prompt-tool audit ยังเป็น target",
 ]:
     para(tf, "•  " + item, size=11, color=INK2, spacing=1.5, space_after=3)
 pill(slide, gap_x + Inches(0.16), y + Inches(0.14), "แบบที่จะทำ", fg=OK,
@@ -380,13 +380,13 @@ footer(slide, "อ้างอิงข้อกำหนด R08 — “LLM must
 slide, y = new_slide(
     "ภาพรวมระบบ",
     "ข้อมูลเดินทางจากเครื่องซักผ้า ถึงคำตอบผู้บริหารอย่างไร",
-    "กล่องที่ติดป้าย “ใหม่” คือส่วนที่เพิ่มในหัวข้อนี้ ส่วนที่เหลือคือฐานที่ระบบมีอยู่แล้ว")
+     "ภาพรวมนี้แยก current code ออกจาก target architecture: current มี scope, allow-list, direct reports และ envelope จริง; rollup กับ audit เต็มเป็นขั้นต่อไป")
 
 row1 = [
-    ("1. Edge / IoT", "เครื่องซักผ้าส่ง Modbus frame เป็น telemetry event ทุก event ต้องมี branch_id และ machine_id", False),
-    ("2. Ingestion", "ตรวจ schema ปฏิเสธ branch_id ที่ไม่รู้จัก แปลงเป็น MACHINE_CYCLE และหลักฐานการชำระเงิน", False),
-    ("3. Rollup", "สรุปล่วงหน้าเป็นราย ชั่วโมง / วัน × สาขา × เครื่อง เก็บเป็นตารางสรุปพร้อมใช้", True),
-    ("4. Analytics Functions", "ฟังก์ชันสถิติแบบ parameterized ที่ allow-list ไว้ คืนค่าเป็น envelope มาตรฐาน", True),
+    ("1. Edge / IoT", "Target physical path: Modbus/MQTT → telemetry event; current direct MQTT ingestion is descoped and IRIS is the ingestion boundary", False),
+    ("2. Ingestion", "Target semantic model: validate branch/machine and derive MACHINE_CYCLE; current ETL normalizes usage, temperature, and weather into ClickHouse", False),
+    ("3. Rollup", "Target: pre-aggregate by hour × branch × machine; current code still queries ClickHouse fact tables directly", True),
+    ("4. Analytics Functions", "Target: semantic layer with a standard envelope; current has six MCP tools and `{ meta, data }`", True),
 ]
 cw = Inches(2.95)
 cx = M
@@ -399,9 +399,9 @@ for title, body, is_new in row1:
 
 y2 = y + Inches(1.9)
 row2 = [
-    ("5. Assistant Orchestrator", "รับคำถาม ตรวจ session และสิทธิ์ ให้ LLM เลือก tool ตรวจ argument เรียก Analytics แล้วเรียบเรียงคำตอบจากผลลัพธ์เท่านั้น", True),
-    ("6. Audit Log", "บันทึกแบบ append-only ว่าใครถาม ใช้ tool อะไร argument ที่ sanitize แล้ว ขอบเขตสาขา ผลลัพธ์อ้างอิง และ outcome", False),
-    ("7. หน้าใช้งาน", "Dashboard บนเว็บ และ LINE LIFF ผู้ใช้เห็นคำตอบพร้อมช่วงเวลา ตัวชี้วัด และข้อจำกัดของข้อมูล", False),
+    ("5. Assistant Orchestrator", "Current: รับคำถาม ตรวจ session ให้ LLM เลือก tool ตรวจ argument เรียก MCP แล้วเรียบเรียงคำตอบจากผลลัพธ์", True),
+    ("6. Audit (บางส่วน)", "Current audit ครอบคลุม grant / alert / settings; target คือ prompt + tool + sanitized args + scope + result_ref + outcome", False),
+    ("7. หน้าใช้งาน", "Current web มี branch/date, source/freshness/availability, analytics, alerts, AI settings/history, owner Playground และ legal navigation; browser QA pending", False),
 ]
 cw3 = Inches(4.0)
 cx = M
@@ -467,7 +467,7 @@ steps2 = [
     ("ตรวจ 2", "tool อยู่ใน allow-list หรือไม่", "gate"),
     ("สร้าง args", "แปลงเป็น argument แบบมีโครงสร้าง", ""),
     ("ตรวจ 3", "args ผ่าน schema validation แบบเข้มหรือไม่", "gate"),
-    ("ตรวจ 4", "ขอบเขต tenant และสาขา ได้รับอนุญาตหรือไม่", "gate"),
+    ("ตรวจ 4", "server ตรวจ tenant/branch scope; LINE scope ถูก sign จาก session", "gate"),
 ]
 sw2 = Inches(1.63)
 sx = M + Inches(0.18)
@@ -479,7 +479,7 @@ y3 = y2 + Inches(1.5)
 lane(slide, M, y3, CONTENT_W, Inches(1.2), "Analytics Service")
 steps3 = [
     ("ประมวลผล", "รันฟังก์ชันสถิติแบบ parameterized ไม่มี SQL จาก LLM", ""),
-    ("Log", "เก็บชื่อ tool, args, scope และ result reference", ""),
+    ("บันทึก (target)", "เก็บชื่อ tool, sanitized args, scope, result_ref และ outcome; full AI audit ยังไม่มี", ""),
     ("ตรวจ 5", "ข้อมูลพอและตรวจย้อนกลับได้หรือไม่", "gate"),
 ]
 sw3 = Inches(3.88)
@@ -490,7 +490,7 @@ for tag, body, kind in steps3:
 
 y4 = y3 + Inches(1.32)
 step(slide, M, y4, Inches(6.0), Inches(0.7), "ผ่านทั้งหมด",
-     "เรียบเรียงคำตอบจากผลลัพธ์ของ tool เท่านั้น แล้วปิด audit", "done")
+     "เรียบเรียงคำตอบจากผลลัพธ์ของ tool เท่านั้น; audit ที่มีจริงยังไม่ครบ full AI call", "done")
 step(slide, M + Inches(6.15), y4, Inches(5.95), Inches(0.7), "ไม่ผ่าน",
      "ปฏิเสธ / ไม่รองรับคำถาม / ข้อมูลไม่พอ พร้อมบันทึกเหตุผล", "deny")
 
@@ -546,12 +546,13 @@ footer(slide, "สอดคล้องกับ docs/03_data_contracts/data_con
 
 slide, y = new_slide(
     "Data Structure for LLM · ชั้นที่ 2",
-    "Pre-aggregated Rollup — สรุปไว้ล่วงหน้า ไม่ให้ LLM แตะข้อมูลดิบ")
+    "Pre-aggregated Rollup — target architecture ไม่ใช่ตารางที่ current code มีแล้ว")
 
 left_w = Inches(5.6)
 _, tf = textbox(slide, M, y, left_w, Inches(0.9))
-para(tf, "ข้อมูลดิบระดับ event มีปริมาณมากเกินกว่าจะใส่ context และช้าเกินกว่าจะตอบสด "
-         "จึงสรุปเป็นตารางระดับ ชั่วโมง × สาขา × เครื่อง ไว้ก่อน",
+para(tf, "แนวคิด target คือสรุปข้อมูลดิบระดับ event ให้เล็กและเร็วขึ้น "
+         "จึงสรุปเป็นตารางระดับ ชั่วโมง × สาขา × เครื่อง ไว้ก่อน "
+         "แต่ current implementation ยัง query ClickHouse fact tables โดยตรง",
      first=True, size=11.5, color=MUTED, spacing=1.55, space_after=0)
 
 bullets = [
@@ -605,23 +606,24 @@ footer(slide, "ชั้นนี้คือภาษากลางระห�
 
 slide, y = new_slide(
     "Data Structure for LLM · ชั้นที่ 3",
-    "Allow-listed Tools — LLM เลือกได้เฉพาะเครื่องมือที่เราสร้างไว้",
+    "Current MCP Tools — LLM เลือกได้เฉพาะ 6 เครื่องมือที่ server allow-list ไว้",
     "LLM ไม่ได้รับสิทธิ์เขียน SQL แต่ได้รับเมนูฟังก์ชันที่ผ่านการทดสอบแล้วเท่านั้น")
 
 tool_rows = [
-    ("get_revenue_summary", "รายได้รวมหรือแยกสาขา ในช่วงเวลาหนึ่ง"),
-    ("compare_period", "เทียบเดือนต่อเดือน (MoM) ตามตัวอย่างใน R08"),
-    ("get_utilization", "อัตราการใช้งานเครื่อง คุ้มค่าหรือไม่"),
-    ("get_cycle_stats", "จำนวนรอบ เวลาเฉลี่ย และความผิดปกติ"),
-    ("get_peak_hours", "ช่วงพีคและช่วงว่าง ฐานของ Phase 2"),
+    ("get_revenue_daily", "รายได้และรอบรายวัน; ต้องมี revenue scope"),
+    ("get_cycles_daily", "รอบรายวันและ duration เฉลี่ย"),
+    ("get_utilization_heatmap", "ช่วงเวลา/เครื่องสำหรับ utilization"),
+    ("get_temperature_curve", "อุณหภูมิตามช่วงเวลา ไม่เกิน 5,000 จุด"),
+    ("get_weather_usage_correlation", "correlation เท่านั้น ไม่ใช่ forecast"),
+    ("get_off_peak_windows", "baseline ช่วงว่าง Phase 2"),
 ]
 left_w = Inches(6.0)
-table(slide, M, y, left_w, Inches(2.3), ["Tool", "ใช้ตอบคำถามแบบไหน"],
+table(slide, M, y, left_w, Inches(2.7), ["Current tool", "ใช้ตอบคำถามแบบไหน"],
       [[[(n, {"font": MONO, "size": 9.5, "color": INK})], d]
        for n, d in tool_rows],
       [42, 58], row_h=Inches(0.38))
 
-card(slide, M, y + Inches(2.5), left_w, Inches(0.72), None,
+card(slide, M, y + Inches(2.85), left_w, Inches(0.72), None,
      "คำถามที่ไม่มี tool รองรับ ระบบตอบว่า “ยังไม่รองรับ” ซึ่งดีกว่าเดาแล้วผิด",
      fill=WASH, border=LINE, body_size=11)
 
@@ -629,19 +631,17 @@ code_x = M + left_w + Inches(0.5)
 code_w = CONTENT_W - left_w - Inches(0.5)
 code_block(slide, code_x, y, code_w, Inches(2.42), [
     [("// นิยาม argument แบบเข้มงวด (zod / JSON Schema)", "c")],
-    "get_revenue_summary({",
-    [("  branch_ids:  ", ""), ("string[]", "k"), ("   ", ""),
-     ("// ต้องเป็นสับเซตของสิทธิ์ผู้ใช้", "c")],
-    [("  period:      { start, end }  ", ""), ("// ISO, [start, end)", "c")],
-    [("  granularity: ", ""), ('"day"', "s"), (" | ", ""), ('"month"', "s")],
-    [("  compare_to:  { start, end } | ", ""), ("null", "k")],
+    "get_cycles_daily({",
+    [("  from:     ", ""), ('"2026-08-01"', "s")],
+    [("  to:       ", ""), ('"2026-08-31"', "s")],
+    [("  branchId: ", ""), ('"b1"', "s"), (" // server-bound scope; ไม่มี accessScope argument", "c")],
     "})",
 ])
 code_block(slide, code_x, y + Inches(2.56), code_w, Inches(1.95), [
     [("// ลำดับการตรวจฝั่ง backend (ไม่เชื่อ LLM)", "c")],
     [("1.", "k"), (" parse ด้วย schema — ผิดรูปคือปฏิเสธ", "")],
-    [("2.", "k"), (" branch_ids ตัดกับสิทธิ์ผู้ใช้ = ขอบเขตจริง", "")],
-    [("3.", "k"), (" ถ้าเซตว่าง = ปฏิเสธ พร้อมบันทึก audit", "")],
+    [("2.", "k"), (" server-bound scope = ขอบเขตจริงจาก session/grants", "")],
+    [("3.", "k"), (" ถ้า scope ไม่ผ่าน = ปฏิเสธก่อน query; full AI audit ยังเป็น target", "")],
     [("4.", "k"), (" จำกัดความยาวช่วงเวลาและจำนวนแถว", "")],
     [("5.", "k"), (" query แบบ parameterized เท่านั้น", "")],
 ])
@@ -660,46 +660,34 @@ footer(slide, "ตรงกับ F-11 และ US-05")
 
 slide, y = new_slide(
     "Data Structure for LLM · ชั้นที่ 4",
-    "Result Envelope — รูปแบบผลลัพธ์เดียว ที่บังคับให้คำตอบมีที่มา")
+    "Result Envelope — current `{ meta, data }` และ target ที่จะเพิ่ม trace fields")
 
 code_w = Inches(6.15)
 code_block(slide, M, y, code_w, Inches(4.55), [
     "{",
-    [('  "scope"', "s"), (":    { ", ""), ('"branch_ids"', "s"), (": [", ""),
-     ('"BKK-SILOM"', "s"), ("],", "")],
-    [("                ", ""), ('"granted_by"', "s"), (": ", ""),
-     ('"role:owner"', "s"), (" },", "")],
-    [('  "period"', "s"), (":   { ", ""), ('"start"', "s"), (": ", ""),
-     ('"2026-07-01T00:00+07:00"', "s"), (",", "")],
-    [("                ", ""), ('"end"', "s"), (":   ", ""),
-     ('"2026-08-01T00:00+07:00"', "s"), (" },", "")],
-    [('  "metric"', "s"), (":   ", ""), ('"revenue"', "s"), (",", "")],
-    [('  "unit"', "s"), (":     ", ""), ('"satang"', "s"), (",", "")],
-    [('  "rows"', "s"), (":     [ ... ],", "")],
-    [('  "row_count"', "s"), (": 31,", "")],
-    [('  "coverage"', "s"), (": { ", ""), ('"expected_hours"', "s"), (": 744,", "")],
-    [("                ", ""), ('"observed_hours"', "s"), (": 731 },", "")],
-    [('  "caveats"', "s"), (":  [", ""), ('"telemetry ขาดหาย 13 ชั่วโมง"', "s"), ("],", "")],
-    [('  "source"', "s"), (":   ", ""), ('"metric_rollup_hourly"', "s"), (",", "")],
-    [('  "generated_at"', "s"), (": ", ""), ('"2026-07-31T09:12+07:00"', "s"), (",", "")],
-    [('  "result_ref"', "s"), (":   ", ""), ('"res_01J..."', "s")],
+    [('  "meta"', "s"), (": {", "")],
+    [('    "range"', "s"), (": { ", ""), ('"from"', "s"), (": ", ""), ('"2026-08-01"', "s"), (", ", ""), ('"to"', "s"), (": ", ""), ('"2026-08-31"', "s"), (" },", "")],
+    [('    "branchId"', "s"), (": ", ""), ('"b1"', "s"), (",", "")],
+    [('    "dataSource"', "s"), (": ", ""), ('"real"', "s")],
+    "  },",
+    [('  "data"', "s"), (": [ ... ]", "")],
     "}",
 ])
 
 rx = M + code_w + Inches(0.45)
 rw = CONTENT_W - code_w - Inches(0.45)
 notes = [
-    ("ทำไมต้องมี unit และ period",
-     "บังคับให้คำตอบระบุหน่วยและช่วงเวลาเสมอ ผู้บริหารจึงไม่ตีความผิด และตรงตามเกณฑ์ยอมรับของ R08",
+    ("Current envelope",
+     "meta มี range, branchId, dataSource และบาง tool มี method/rules/caveats; data เป็นแถวผลลัพธ์",
      PAPER, LINE, INK),
-    ("ทำไมต้องมี coverage และ caveats",
-     "ข้อมูล IoT มีช่วงขาดหายจริง ระบบต้องบอกตรง ๆ ว่าตัวเลขครอบคลุมแค่ไหน แทนที่จะทำเป็นว่าสมบูรณ์",
+    ("Target envelope ที่ยังไม่ ship",
+     "จะเพิ่ม scope, period, metric, unit, coverage, source, generated_at และ result_ref เพื่อให้ตรวจย้อนกลับได้",
      PAPER, LINE, INK),
-    ("ทำไมต้องมี result_ref",
-     "เป็นหมายเลขอ้างอิงผลลัพธ์ที่บันทึกใน audit log ย้อนกลับไปตรวจได้ว่าคำตอบวันนั้นมาจากตัวเลขชุดใด",
+    ("ทำไมยังไม่เรียกว่า audit เต็ม",
+     "Current schema มี audit สำหรับ grants, alerts, settings; ยังไม่มี prompt/tool-call/result audit",
      PAPER, LINE, INK),
-    ("คำสั่งควบคุม LLM",
-     "“ตอบจากผลลัพธ์ของ tool เท่านั้น ห้ามประมาณเอง ถ้าข้อมูลไม่พอให้บอกว่าไม่พอ และต้องระบุช่วงเวลา ตัวชี้วัด และข้อจำกัดทุกครั้ง”",
+    ("Target system prompt",
+     "“ตอบจากผลลัพธ์ของ tool เท่านั้น ห้ามประมาณเอง ถ้าข้อมูลไม่พอให้บอกว่าไม่พอ”",
      OK_SOFT, RGBColor(0xB7, 0xE0, 0xCD), OK),
 ]
 ny = y
@@ -708,7 +696,7 @@ for title, body_text, fill, border, tcolor in notes:
          border=border, title_color=tcolor, title_size=12, body_size=10.5)
     ny += Inches(1.16)
 
-footer(slide, "Envelope เดียวกันนี้ใช้กับทุก tool เพื่อให้ทดสอบและตรวจสอบง่าย")
+footer(slide, "Current `{ meta, data }` ใช้กับทุก tool; richer envelope เป็น target")
 
 # --------------------------------------------------------------------------
 # slide 9 — security
@@ -716,15 +704,15 @@ footer(slide, "Envelope เดียวกันนี้ใช้กับท�
 
 slide, y = new_slide(
     "ความปลอดภัยและการตรวจสอบ",
-    "สามเสาที่ทำให้ตรวจสอบย้อนกลับได้ทุกคำตอบ")
+    "ความปลอดภัยที่มีแล้ว และสิ่งที่ยังเป็น target")
 
 pillars = [
     ("เสา 1", "RBAC + Branch Scope",
      "สิทธิ์ถูกตัดสินจาก session ฝั่ง server ไม่ใช่จากสิ่งที่ LLM ขอ ทุก query ผูกกับ branch_id ที่ตัดกับสิทธิ์จริงแล้ว"),
-    ("เสา 2", "Append-only Audit Log",
-     "บันทึก actor, prompt ที่ sanitize, ชื่อ tool, arguments, ขอบเขต, result_ref, outcome และเวลา แก้ย้อนหลังไม่ได้ ตาม F-07"),
-    ("เสา 3", "Golden-question Eval",
-     "ชุดคำถามมาตรฐานพร้อมคำตอบที่รู้ค่าจริง ใช้รันอัตโนมัติเพื่อจับ regression และการหลอนตัวเลข"),
+    ("เสา 2", "Audit (บางส่วน)",
+     "Current audit entries ครอบคลุม grants, alerts, settings; complete AI prompt/tool-call/result audit ยังเป็น target"),
+    ("เสา 3", "Golden-question Eval (target)",
+     "ชุดคำถามมาตรฐานพร้อมคำตอบที่รู้ค่าจริง จะใช้จับ regression และการหลอนตัวเลข; ยังไม่ใช่ current automated evidence"),
 ]
 cw = Inches(3.96)
 cx = M
@@ -736,11 +724,11 @@ for tag, title, body_text in pillars:
 ty = y + Inches(1.88)
 sec_rows = [
     ("Manager ถามข้อมูลสาขาที่ไม่ได้ดูแล",
-     "ปฏิเสธ ไม่คืนตัวเลขใด ๆ และบันทึก audit ว่าถูกปฏิเสธเพราะขอบเขตสาขา"),
+     "ปฏิเสธก่อน query; local test ยืนยัน scope gate แต่ยังไม่ใช่ full AI audit"),
     ("ถามเรื่องที่ยังไม่มี tool รองรับ",
      "ตอบว่ายังไม่รองรับ ไม่พยายามเดาคำตอบ"),
     ("ช่วงเวลาที่ถามมี telemetry ขาดหายมาก",
-     "ตอบพร้อมระบุความครอบคลุมและข้อจำกัด หรือแจ้งว่าข้อมูลไม่พอ"),
+     "Current อาจมี freshness/caveats; target จะเพิ่ม coverage และบอกชัดว่าข้อมูลไม่พอ"),
     ("ถามคำถามเดิมซ้ำสองครั้ง",
      "ได้ตัวเลขเดิม เพราะตัวเลขมาจากฟังก์ชัน ไม่ใช่จากการสร้างข้อความ"),
 ]
@@ -757,16 +745,16 @@ footer(slide, "ชุดหลักฐานสำหรับการสา�
 slide, y = new_slide(
     "แผนดำเนินงาน",
     "ลำดับงานและสิ่งส่งมอบ",
-    "เรียงจากชั้นล่างขึ้นบน — ชั้นข้อมูลต้องนิ่งก่อน จึงต่อ LLM ทีหลัง")
+    "Target roadmap: current มี direct reports, RBAC และ 6 MCP tools; semantic rollup, richer envelope, full AI audit และ golden eval ยังต้องทำ")
 
 plan_rows = [
     ("1", "สรุป Metric Catalog และเขตเวลา หน่วย", "เอกสารนิยามตัวชี้วัดใน docs/03_data_contracts/", "ทีมเห็นตรงกันทุกนิยาม"),
-    ("2", "สร้างชั้น Rollup รายชั่วโมง", "ตารางสรุป งานสรุปข้อมูล และ unit test", "ตัวเลขตรงกับการนับจากข้อมูลดิบ"),
-    ("3", "เขียน Analytics Functions", "ฟังก์ชัน 5 ตัว คืนค่าเป็น envelope มาตรฐาน", "มี test ครบทุกฟังก์ชัน"),
+    ("2", "สร้างชั้น Rollup รายชั่วโมง (target)", "ตารางสรุป งานสรุปข้อมูล และ unit test", "ยังไม่มีใน current schema; ต้องพิสูจน์กับ fact tables"),
+    ("3", "เขียน Analytics Functions (target expansion)", "เก็บ current 6 tools; target อาจเพิ่ม semantic functions", "current tool allow-list มี test; target ต้องมี test ครบ"),
     ("4", "บังคับ RBAC และ branch scope", "ชั้นตรวจสิทธิ์ก่อนทุก query", "เคส Manager ข้ามสาขาต้องถูกปฏิเสธ"),
     ("5", "ต่อ LLM ด้วย tool schema", "Orchestrator, allow-list และ system prompt", "ไม่มีเส้นทางใดที่ LLM ส่ง SQL ได้"),
-    ("6", "Audit log และหน้าใช้งาน", "บันทึกครบถ้วน และ UI ถาม-ตอบ", "เปิด log ย้อนดูได้ทุกคำถาม"),
-    ("7", "ชุดทดสอบ Golden question", "ชุดคำถามและคำตอบมาตรฐาน", "รันผ่านทั้งชุด"),
+    ("6", "AI audit เต็มและหน้าใช้งาน (target)", "เก็บ prompt/tool/result ครบ + UI ถาม-ตอบ", "current มี audit เฉพาะ grant/alert/settings; full audit ยังไม่มี"),
+    ("7", "ชุดทดสอบ Golden question (target)", "ชุดคำถามและคำตอบมาตรฐาน", "ยังไม่ใช่ current automated evidence"),
 ]
 table(slide, M, y, CONTENT_W, Inches(3.1),
       ["ลำดับ", "งาน", "สิ่งส่งมอบ", "ตรวจรับด้วย"],
@@ -775,14 +763,13 @@ table(slide, M, y, CONTENT_W, Inches(3.1),
       [8, 30, 34, 28], row_h=Inches(0.36))
 
 sy = y + Inches(3.3)
-card(slide, M, sy, Inches(5.95), Inches(0.95), "ขอบเขต MVP ที่จะส่ง",
-     "R08 · F-11 · F-07 · US-05 — ถามรายได้ รอบซัก อัตราการใช้งาน และเทียบเดือนต่อเดือน "
-     "ภายในสาขาที่มีสิทธิ์", fill=BRAND_SOFT, border=RGBColor(0xC4, 0xDC, 0xF6),
+card(slide, M, sy, Inches(5.95), Inches(0.95), "Current MVP ที่มี local evidence",
+     "R08 · F-11 · US-05 — direct reports, RBAC scope, 6 MCP tools และ LINE bot; production/LINE/browser E2E ยัง pending",
+     fill=BRAND_SOFT, border=RGBColor(0xC4, 0xDC, 0xF6),
      title_color=BRAND)
 shape = card(slide, M + Inches(6.15), sy, Inches(5.95), Inches(0.95),
-             "ต่อยอด Phase 2",
-             "R09 ข้อเสนอช่วงโปรโมชันจากชั่วโมงว่าง และ F-12 บริบทสภาพอากาศ "
-             "ระบุเป็นความสัมพันธ์ ไม่ใช่การพยากรณ์",
+             "Phase 2 / target",
+             "R09 off-peak baseline ใช้ percentile; weather เป็น correlation ไม่ใช่ forecast; richer semantic layer และ full audit ยังต้องพัฒนา",
              fill=PHASE2_SOFT, border=RGBColor(0xD8, 0xCD, 0xF0),
              title_color=PHASE2)
 pill(slide, M + Inches(6.15) + Inches(5.95) - Inches(1.35), sy + Inches(0.12),
@@ -800,9 +787,9 @@ points = [
     ("1", "LLM ไม่แตะข้อมูลดิบ",
      "ทำหน้าที่แปลคำถามและเรียบเรียงคำตอบ ตัวเลขทั้งหมดมาจากฟังก์ชันที่ทดสอบแล้ว"),
     ("2", "สิทธิ์ตัดสินที่ server",
-     "ขอบเขตสาขาถูกบังคับก่อน query เสมอ คำขอที่เกินสิทธิ์ถูกตัดทิ้งและบันทึกไว้"),
-    ("3", "ทุกคำตอบตรวจย้อนกลับได้",
-     "มีช่วงเวลา หน่วย ความครอบคลุม ข้อจำกัด และหมายเลขอ้างอิงผลลัพธ์"),
+     "ขอบเขตสาขาถูกบังคับก่อน query เสมอ; LINE bot ส่ง scope ที่ server derive และ sign ไว้"),
+    ("3", "ตรวจย้อนกลับได้ในระดับฐาน",
+     "มีช่วงเวลา source freshness และ caveat; full AI result_ref audit เป็น target"),
 ]
 cw = Inches(3.96)
 cx = M
@@ -824,13 +811,13 @@ para(tf, [("เป้าหมายของหัวข้อนี้ไม�
           (" ซึ่งเป็นสิ่งที่ระบบธุรกิจจริงต้องการ", {})],
      first=True, size=15, color=INK2, spacing=1.6, space_after=0)
 
-footer(slide, "LaundroTwin — Smart Laundry Management and Analytics Platform",
+footer(slide, "LaundryTwin — Smart Laundry Management and Analytics Platform",
        "จบการนำเสนอ")
 
 # --------------------------------------------------------------------------
 
 out = Path(__file__).resolve().parent / "llm-analytics-slides.pptx"
-prs.core_properties.title = "LaundroTwin — Safe AI Executive Assistant (R08 / F-11)"
-prs.core_properties.author = "LaundroTwin final project"
+prs.core_properties.title = "LaundryTwin — Safe AI Executive Assistant (R08 / F-11)"
+prs.core_properties.author = "LaundryTwin final project"
 prs.save(out)
 print(f"wrote {out}  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")

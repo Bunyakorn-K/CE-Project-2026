@@ -7,6 +7,9 @@ export type ScopeResult =
   | { ok: false; status: 400 | 403; code: string; message: string };
 
 export function resolveAnalyticsScope(grants: AccessGrant[], requestedBranchId?: string): ScopeResult {
+  if (grants.length === 0) {
+    return { ok: false, status: 403, code: "ACCESS_NOT_GRANTED", message: "Your access has been revoked or has not been granted" };
+  }
   if (requestedBranchId) {
     return canAccessBranch(grants, requestedBranchId)
       ? { ok: true, branchId: requestedBranchId }

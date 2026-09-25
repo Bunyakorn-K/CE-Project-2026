@@ -1,4 +1,4 @@
-# LaundroTwin MVP Mermaid Diagrams Design
+# LaundryTwin MVP Mermaid Diagrams Design
 
 ## Goal
 
@@ -9,8 +9,8 @@ database and workflow implementation.
 
 ## Scope
 
-The diagrams describe the target LaundroTwin MVP, not only the tables currently
-implemented by LaundryGo. Current implementation status remains documented in
+The diagrams describe the target LaundryTwin MVP, not only the tables currently
+implemented by LaundryTwin. Current implementation status remains documented in
 the repository README.
 
 The document will contain:

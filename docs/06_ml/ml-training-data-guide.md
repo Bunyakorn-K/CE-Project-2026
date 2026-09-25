@@ -1,6 +1,6 @@
 # 🧠 ML Training Data & Feature Engineering Guide
 
-**Document Purpose:** Define the schema, features, and data pipeline for training ML models on LaundroTwin usage + weather data. This document is the single source of truth for anyone building a predictive model on this warehouse.
+**Document Purpose:** Define the schema, features, and data pipeline for training ML models on LaundryTwin usage + weather data. This document is the single source of truth for anyone building a predictive model on this warehouse.
 
 **Created:** 2026-09-22
 **Data source:** ClickHouse `laundrytwin_analytics` on VM 117

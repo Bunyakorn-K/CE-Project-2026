@@ -12,6 +12,7 @@ locals {
     LINE_CHANNEL_ACCESS_TOKEN=${var.line_channel_access_token}
     LINE_CHANNEL_SECRET=${var.line_channel_secret}
     LAUNDRYTWIN_DEMO_MODE=${var.laundrytwin_demo_mode ? "true" : "false"}
+    LAUNDRYTWIN_DEV_BYPASS=false
     ANALYTICS_READ_API_KEY=${var.analytics_read_api_key}
     MCP_ACCESS_TOKEN=${var.mcp_access_token}
     MCP_ALLOW_REVENUE=${var.mcp_allow_revenue ? "true" : "false"}
@@ -19,8 +20,8 @@ locals {
     BOT_MODEL=${var.bot_model}
     BOT_MCP_URL=${var.bot_mcp_url}
     CLICKHOUSE_URL=${var.clickhouse_url}
-    CLICKHOUSE_USER=${var.clickhouse_user}
-    CLICKHOUSE_PASSWORD=${var.clickhouse_password}
+    CLICKHOUSE_USER=reader
+    CLICKHOUSE_PASSWORD=${var.clickhouse_reader_password}
     CLICKHOUSE_DATABASE=${var.clickhouse_database}
     VITE_LIFF_ID=${var.vite_liff_id}
   EOT
@@ -40,8 +41,10 @@ locals {
   )
 
   analytics_env = trimspace(<<-EOT
-    CLICKHOUSE_PASSWORD=${var.clickhouse_password}
+    CLICKHOUSE_USER=reader
+    CLICKHOUSE_PASSWORD=${var.clickhouse_reader_password}
     AIRFLOW_ADMIN_PASSWORD=${var.airflow_admin_password}
+    AIRFLOW_DB_PASSWORD=${var.airflow_db_password}
     SUPERSET_SECRET_KEY=${var.superset_secret_key}
     ANALYTICS_READ_API_KEY=${var.analytics_read_api_key}
   EOT

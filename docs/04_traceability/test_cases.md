@@ -1,197 +1,180 @@
-# 🧪 Test Case Documentation (LaundroTwin)
+# 🧪 Test Case Documentation (LaundryTwin)
 
-**Document Purpose:** Maps every MVP user story (US-01..US-11) and system
-function (F-*) to concrete test cases, with the automated evidence that exists
-in the repository. A manual test must pass against the deployed stack before a
-story is claimed complete.
+**Document Purpose:** Map MVP and Phase 2 user stories to current local test
+coverage without claiming that every target function is complete. A local test
+pass is not staging, LINE, browser E2E, or production evidence.
 
-**Run everything:**
+## Commands and current evidence
+
+Repository verification uses Node.js 24.13.0 and pnpm 10.33.4.
 
 ```bash
-# Node 22+ (repo pins 24.13.0 via .nvmrc)
-pnpm test     # vitest suites (api + web + etl)
-pnpm check    # tsc across all packages
-pnpm build    # production builds
+pnpm test
+pnpm check
+pnpm build
 ```
 
-Current state (2026-09-14): 124 automated tests green
-(api 87 / web 2 / etl 35), `check` and `build` pass.
+Current local automated result (2026-09-25): **181 tests green** —
+**142 API**, **2 web**, and **37 ETL**. The following focused checks also pass:
 
----
+```bash
+pnpm --filter @laundrytwin/api check
+pnpm --filter @laundrytwin/web check
+pnpm --filter @laundrytwin/web test
+pnpm --filter @laundrytwin/web build
+pnpm --filter @laundrytwin/etl test
+```
 
-## TC Matrix (US → Test Cases → Evidence)
+The 181-test result is local automated evidence. Do not use it to claim staging,
+LINE authentication, browser, or production E2E verification. Screenshot and
+browser QA of the active web router remain pending.
+
+## TC Matrix (US → local evidence)
 
 ### US-01 — Low-gas LINE alert (F-02, F-10) · MVP
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-01.1 | Alert sweep sends a unique message | Run `runAlertSweep` with an IRIS alert; recipient has a matching grant + LINE link | Exactly one push; `alert_notification` row `status=sent`; message contains branch/sensor/time |
-| TC-01.2 | Idempotency: same alert re-fetched | Run sweep twice with the same alert id (second run outside cooldown) | `sent=1, deduplicated=1`; adapter called once; 1 row per recipient |
-| TC-01.3 | Cooldown: repeat occurrence of same class | Same `branch:rule:severity`, new alert id, within `ALERT_COOLDOWN_MS` | `cooldown=1`; no push; `audit_log` `alert.skipped_cooldown` |
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-01.1 | Alert sweep with an eligible recipient | One push and a `sent` notification row containing branch, machine, severity, and evidence | Automated in `apps/api/src/alert-engine.test.ts` |
+| TC-01.2 | Same alert re-fetched | Adapter called once; deduplication count increments | Automated |
+| TC-01.3 | Repeat alert class inside cooldown | No second push; cooldown audit/skipped result | Automated |
+| TC-01.4 | Technician/manager/owner recipient and branch scope | Only eligible role and granted branch receive alert | Automated |
 
-**Automated evidence:** `apps/api/src/alert-engine.test.ts` (14 cases:
-idempotency, cooldown, branch isolation, severity roles, failed/stale retry,
-acknowledged skip, evidence storage, no-recipient).
+The low-gas trend evaluator is not implemented because a verified gas-pressure
+register is not available. The notification arm is tested; F-02 is partial.
 
-### US-02 — View machine status/remaining time/temperature (F-01) · MVP
+### US-02 — Machine status / Digital Twin (F-01) · MVP
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-02.1 | Dashboard shows verified live status | `GET /api/report/live?branchId=` as manager | Machines with `state`, `remainingSeconds`, `temperatureC`, freshness `fresh/stale/unavailable` |
-| TC-02.2 | Stale/unknown data is not fabricated | Source reports missing telemetry | `null` fields preserved; freshness `stale` or `unavailable` with reason |
-| TC-02.3 | Technician sees machines, not revenue | Technician requests dashboard | `redactDashboardRevenue` hides `revenueSatang` |
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-02.1 | Dashboard/Twin request from an authorized principal | ClickHouse report executes within server branch scope | Automated in `apps/api/src/index.test.ts` and `report/clickhouse-report.test.ts` |
+| TC-02.2 | No grants or request outside grant | `403` before ClickHouse or IRIS is called | Automated |
+| TC-02.3 | Strict calendar range | Malformed, inverted, and overlong `from`/`to` return `400` before query | Automated |
+| TC-02.4 | Active machine has no usage rows | Machine remains in inventory with `cycleCount: null`, source `unavailable`, and state `unknown` where evidence is missing | Automated |
+| TC-02.5 | Unrecognized status or missing telemetry | Unknown/unavailable state is preserved; no value is fabricated | Automated |
+| TC-02.6 | Technician dashboard | Revenue is `null`/redacted while operational counts remain available | Automated |
 
-**Automated evidence:** `apps/api/src/reporting.test.ts` (revenue redaction);
-`iris-read-client.test.ts` (envelope validation, unavailable errors).
+Current Twin state is usage-derived, not live `fact_machine_event` telemetry.
+IRIS-backed live reporting and LINE browser flows still require E2E verification.
 
-### US-03 — Coin-box threshold alert + reset audit (F-09, F-10) · MVP
+### US-03 — Coin-box alert and reset (F-09, F-10) · MVP
 
-> Current implementation note: `paid` semantics, coin-box reset behavior, and
-> `coinbox_open` mapping are **unresolved upstream** (see
-> `docs/03_data_contracts/`). The alert channel (TC-01.x) is implemented; the
-> coin-box estimator and reset path are not yet implementable with verified
-> evidence.
+`paid` semantics, coin-box reset behavior, and `coinbox_open` mapping remain
+unresolved upstream. The alert recipient and evidence path is tested, but the
+coin-box estimator and verified reset path are not implemented.
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-03.1 | Coin-box alert routes to manager | IRIS alert tagged for coin-box threshold, branch assigned | Manager (and owner) receive push; technician does not |
-| TC-03.2 | Reset requires mapped `coinbox_open` | Attempt reset without mapped event | Rejected; audit record **not** created |
-| TC-03.3 | Reset audit trail | Reset via authorized path | `audit_log` entry with actor, action, target, timestamp |
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-03.1 | Alert tagged to a granted branch | Owner/manager/technician roles follow alert severity rules | Automated alert tests |
+| TC-03.2 | Unmapped reset input | No reset is inferred from door status | Not implemented; blocked by contract |
+| TC-03.3 | Mapped reset and audit | Reset creates an auditable event | Not implemented; blocked by contract |
 
-**Automated evidence:** alert recipient selection in `alert-engine.test.ts`;
-audit writes in `access-store.ts` (via `acknowledgeAlert`/grants — same
-`writeAudit` helper).
+### US-04 — Revenue/cycles/utilization (F-08) · MVP
 
-### US-04 — Revenue/cycles/utilization by branch + time (F-08) · MVP
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-04.1 | Owner requests Dashboard | Tenant-wide usage-derived totals and source/availability metadata | Automated in `index.test.ts` |
+| TC-04.2 | Manager requests a granted branch | Query receives the granted branch as a ClickHouse bind parameter | Automated |
+| TC-04.3 | Technician requests Dashboard | Revenue is nullable/redacted; cross-branch requests are denied | Automated |
+| TC-04.4 | Dashboard and Twin dates | Dates are strict `YYYY-MM-DD` calendar ranges and are not interpolated into SQL | Automated in `index.test.ts`, `scope.test.ts`, `clickhouse-report.test.ts` |
+| TC-04.5 | Analytics v1 routes | Session, zero-grant, branch-scope, and range gates run before ClickHouse | Automated in analytics route/scope tests |
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-04.1 | Owner views tenant totals | `GET /api/v1/analytics/revenue` + `/utilization` | Aggregates from ClickHouse; envelope carries source + freshness |
-| TC-04.2 | Manager scoped to own branch | Same call with manager grant | Response filtered to granted `branchId` |
-| TC-04.3 | Traceability: totals match source window | Compare API totals vs ClickHouse query for the same window | Consistent `amount_satang` aggregates (integer satang) |
+Production dashboard and staging evidence are not claimed.
 
-**Automated evidence:** `apps/api/src/analytics/revenue.test.ts`,
-`utilization.test.ts`, `scope.test.ts` (branch scoping, 30-day default,
-90-day cap, malformed/inverted range rejection), `routes.test.ts`,
-`clickhouse.test.ts`.
+### US-05 — Scoped Executive Assistant (F-11, F-07) · MVP
 
-### US-05 — Scoped Executive Summary via assistant (F-11) · MVP
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-05.1 | Six current tools are listed | Names are exactly the current allow-list in RTM | Automated in `analytics/mcp.test.ts` |
+| TC-05.2 | Model supplies an `accessScope` argument | Argument is absent from every tool schema; bot removes it before calling MCP | Automated in `mcp.test.ts` and `bot.test.ts` |
+| TC-05.3 | LINE user asks a question | Bot derives branch and revenue scope from server-resolved grants and signs per-session scope | Automated in `bot/bot.test.ts` and `analytics/mcp.test.ts` |
+| TC-05.4 | Out-of-scope branch | MCP returns branch-scope error before querying | Automated |
+| TC-05.5 | MCP service token missing/wrong | `/mcp` returns `401`; correct token can initialize a session | Automated |
+| TC-05.6 | Service revenue flag | `MCP_ALLOW_REVENUE=false` disables revenue tool calls by default | Automated |
+| TC-05.7 | Unsupported request | No arbitrary SQL path; assistant says the request is unsupported or data is insufficient | Partial local behavior |
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-05.1 | Assistant answers from allow-listed tools only | Ask MoM revenue question to LINE bot | Tool call routed to MCP; answer composed from tool result |
-| TC-05.2 | No arbitrary SQL | Prompt attempting SQL | No SQL path exists; unsupported request response |
-| TC-05.3 | MCP bearer auth | Wrong/missing bearer token | 401; correct token starts a session |
-| TC-05.4 | Scope enforced per branch | Analytics tool with out-of-scope branch | 403 from `resolveAnalyticsScope` |
+Current schema has audit entries for grants, alerts, and settings, but no
+complete append-only prompt/tool-call/result audit table. Full F-07/F-11 audit
+traceability remains partial.
 
-**Automated evidence:** `apps/api/src/bot/bot.test.ts` (identity scopes,
-conversation loop, signature rejection), `analytics/mcp.test.ts` (auth),
-`analytics/scope.test.ts`.
+### US-06 — Off-peak promotion (R09) · Phase 2 baseline
 
-### US-06 — Off-peak promotion recommendations (R09) · **Phase 2**
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-06.1 | `get_off_peak_windows` | Percentile-ranked local-hour buckets include rules and caveats | Automated in `mcp.test.ts` and ETL/API tests |
+| TC-06.2 | Model/promotion decision | Branch, timeframe, metric, and rules are stated; no price or campaign write-back is implied | Baseline only |
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-06.1 | Recommendation specifies branch/timeframe/rules | (Phase 2 — not implemented) | Output must state branch, timeframe, metric, and rules used |
+`get_off_peak_windows` is a current Phase 2 baseline. F-12 is formally weather
+context; no new function ID is assigned to this work in the RTM.
 
-**Automated evidence:** none (out of MVP scope).
+### US-07 — Public machine availability (F-13) · Phase 2
 
-### US-07 — Public machine availability (F-13) · **Phase 2**
+No public availability endpoint is implemented. Revenue, raw telemetry, and
+cross-branch exclusion remain target acceptance criteria, not current test
+evidence.
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-07.1 | Public endpoint excludes revenue/raw telemetry | (Phase 2 — not implemented) | Schema excludes revenue, raw MQTT, cross-branch data |
+### US-08 — Maintenance alert evidence (F-10) · MVP
 
-**Automated evidence:** none (out of MVP scope).
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-08.1 | Critical vs warning severity | Critical can reach technicians; warning does not page technicians | Automated |
+| TC-08.2 | Alert evidence | Machine ID, rule/version fields, severity, timestamp, and evidence are stored in the notification row | Automated |
+| TC-08.3 | Failed or stale delivery | Failed row is retryable; stale in-flight claim is reclaimed | Automated |
 
-### US-08 — Technician anomaly alert with machine ID + evidence (F-10) · MVP
+### US-09 — Multi-branch access (R04) · MVP
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-08.1 | Critical severity reaches technicians | IRIS alert `severity=critical` | `rolesForSeverity("critical")` includes technician |
-| TC-08.2 | Alert carries machine ID + rule version + evidence | Inspect pushed message + row | Message includes `เครื่อง:`, title/detail; `evidence` JSON stored |
-| TC-08.3 | Warning does not page technicians | `severity=warning` | Technician excluded; owner/manager receive |
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-09.1 | Owner with no branch filter | Tenant-wide scope is allowed | Automated |
+| TC-09.2 | Single granted branch and no filter | Scope auto-resolves to that branch | Automated |
+| TC-09.3 | Several granted branches and no filter | `400 BRANCH_REQUIRED` | Automated |
+| TC-09.4 | Requested branch outside grant | `403 BRANCH_FORBIDDEN`; source is not called | Automated |
 
-**Automated evidence:** `alert-engine.test.ts` (severity role mapping,
-evidence storage, branch scoping).
+### US-10 — Performance and streaming targets (R01, R02) · MVP
 
-### US-09 — Multi-branch view under one account (R04) · MVP
+Current local tests validate app boot, report boundaries, ETL schema, null
+preservation, and data-path behavior. They do not establish the target p95
+latency, MQTT/SSE reconnect behavior, or live browser refresh behavior. Those
+requirements remain partial or unverified.
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-09.1 | Owner switches branches | Owner requests multiple `branchId`s across sessions | Each response authorized tenant-wide |
-| TC-09.2 | Manager with one branch auto-scopes | No `branchId` requested | Auto-scopes to the single granted branch |
-| TC-09.3 | Manager with several branches must choose | No `branchId` requested | 400 `BRANCH_REQUIRED` |
+### US-11 — RBAC and data privacy (R04, F-06) · MVP
 
-**Automated evidence:** `analytics/scope.test.ts` (all five scope cases),
-`access-policy.test.ts`, `reporting.test.ts`.
+| TC-ID | Scenario | Expected result | Evidence/status |
+| :--- | :--- | :--- | :--- |
+| TC-11.1 | Unauthenticated request | `401 AUTHENTICATION_REQUIRED`; source is not called | Automated |
+| TC-11.2 | Zero grants | `403 ACCESS_NOT_GRANTED`; source is not called | Automated |
+| TC-11.3 | Cross-branch request | `403 BRANCH_FORBIDDEN`; no data leak | Automated |
+| TC-11.4 | Technician revenue request | Revenue is redacted or denied | Automated |
+| TC-11.5 | Better Auth configuration | `BETTER_AUTH_SECRET` required outside test; public signup disabled; rate limits enabled | Automated in `auth.test.ts` |
+| TC-11.6 | Demo mode | Explicit demo session cookie is required; demo is not an automatic fallback | Automated in `index.test.ts` and `demo-read-client` tests |
+| TC-11.7 | Development bypass | Requires both `NODE_ENV=development` and `LAUNDRYTWIN_DEV_BYPASS=true`; owner is in-memory and not persisted | Automated in `index.test.ts` |
 
-### US-10 — Performance targets (R01, R02) · MVP
+## Cross-cutting failure cases
 
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-10.1 | E2E dashboard latency | Superset E2E against live API (2026-09-03) | 7/7 charts 200; cold 0.7–2.5 s, warm 0.26–0.53 s per chart |
-| TC-10.2 | Analytics cold start | Start API (esbuild bundle) | Compiled `dist/index.mjs` used in prod (`start` script) |
+| TC-ID | Scenario | Expected result |
+| :--- | :--- | :--- |
+| TC-F1 | IRIS unavailable or misconfigured | `REPORTING_SOURCE_UNAVAILABLE`; no silent demo substitution |
+| TC-F2 | Invalid analytics dates | `400`; range is calendar-date validated and capped at 90 days for analytics |
+| TC-F3 | Missing LINE channel token | Alert delivery records failure and remains retryable |
+| TC-F4 | Invalid LINE webhook signature | `401`; event is not processed |
+| TC-F5 | ClickHouse unavailable | Explicit analytics source-unavailable result |
+| TC-F6 | ETL source/transform failure | Watermark and null-preservation behavior are tested; no fabricated values |
 
-**Automated evidence:** `apps/api/src/index.test.ts` (app boots, auth
-gating); deploy stack E2E recorded in hindsight bank (VM 117, 2026-09-03);
-perf commits `34df5fb` (gzip) + `15138c4` (esbuild).
+## Package-level coverage summary
 
-### US-11 — RBAC branch isolation (R04, F-06) · MVP
-
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-11.1 | Cross-branch API request denied | Manager of B1 requests B2 data | 403 `BRANCH_FORBIDDEN`; no data leak |
-| TC-11.2 | Technician stays out of revenue | Technician requests dashboard/analytics | Revenue redacted or denied |
-| TC-11.3 | Unauthenticated request denied | No session/LIFF/demo cookie | 401 `AUTHENTICATION_REQUIRED`; source not called |
-| TC-11.4 | Demo mode never auto-falls back | Real IRIS unavailable + demo disabled | 503/error surfaced; demo never substitutes silently |
-
-**Automated evidence:** `access-policy.test.ts` (technician isolated,
-owner tenant-wide), `analytics/scope.test.ts` (403 out-of-grant),
-`index.test.ts` (401 before source call, demo gating),
-`demo-read-client.test.ts` (demo envelope only when enabled).
-
----
-
-## Failure & tenant-isolation corner cases (cross-cutting)
-
-| TC-ID | Scenario | Steps | Expected result |
-| :---- | :------- | :---- | :-------------- |
-| TC-F1 | IRIS read API unreachable | Dashboard/alerts while IRIS down | `IrisReadResponseError` mapped to 502/503; no partial fabricated data |
-| TC-F2 | IRIS misconfigured (no env) | Any report call without base URL/key | `IrisReadUnavailableError` surfaced; demo NOT substituted |
-| TC-F3 | LINE channel token absent | Alert sweep runs | Attempts recorded `status=failed` with `LINE_CHANNEL_ACCESS_TOKEN is not configured`; retried next sweep |
-| TC-F4 | LINE API rejects a message | Sweep with failing adapter | Row `status=failed` + error; same alert retried next sweep (`failed` rows are reclaimable) |
-| TC-F5 | Sweep crashes mid-delivery | Claim inserted, process dies | Stale `sending` row (>5 min) reclaimed on next sweep |
-| TC-F6 | Invalid analytics range | `from` after `to`, malformed ISO | 400; 90-day cap enforced |
-| TC-F7 | Unknown LINE webhook signature | POST without valid signature | 401; events not processed |
-
-**Automated evidence:** `iris-read-client.test.ts` (F1–F2),
-`alert-engine.test.ts` (F3–F5), `analytics/scope.test.ts` (F6),
-`bot/bot.test.ts` (F7), `etl/test/` (transform/watermark/schema/run:
-idempotent batch load, watermark advance after commit, null preservation).
-
----
-
-## Coverage summary
-
-| Source | Count | Notes |
-| :----- | :---- | :---- |
-| `apps/api/src/alert-engine.test.ts` | 14 | alert engine (new) |
-| `apps/api/src/analytics/*.test.ts` | ~25 | revenue, utilization, temperature, scope, routes, clickhouse, mcp |
-| `apps/api/src/access-policy.test.ts` | 2 | RBAC isolation |
-| `apps/api/src/index.test.ts` | 2 | boot + auth gating |
-| `apps/api/src/iris-read-client.test.ts` | + | IRIS contract + errors |
-| `apps/api/src/reporting.test.ts` | + | revenue redaction |
-| `apps/api/src/bot/bot.test.ts` | 9 | identity, conversation, webhook |
-| `apps/api/src/analytics/mcp.test.ts` + `weather.test.ts` | + | MCP allow-list/auth/scope, weather correlation |
-| `apps/etl/test/*.test.ts` | 37 | pipeline (run/schema/transform/watermark/weather) |
-| `apps/web/src/dashboard-metrics.test.ts` | 2 | web formatting |
-
-Total: **126 tests green** (`pnpm test`), `pnpm check` + `pnpm build` clean.
+| Package | Count | Scope |
+| :--- | ---: | :--- |
+| `apps/api` | 142 | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
+| `apps/web` | 2 | Local web formatting/unit coverage; active-router screenshot/browser QA is pending |
+| `apps/etl` | 37 | Schema, transform, null preservation, watermark/idempotency, ETL run, and weather collection |
+| **Total** | **181** | **Local automated evidence only** |
 
 ## Maintenance rules
 
-- A code change that alters behavior must add/update a test here; re-run
-  `pnpm test && pnpm check && pnpm build` before commit.
-- Phase 2 items (US-06, US-07) keep rows marked **Phase 2** until an approved
-  scope change moves them to MVP.
+- A behavior change must add or update focused tests, especially tenant
+  isolation, date validation, revenue redaction, unknown-state preservation, and
+  MCP scope boundaries.
+- Re-run the focused package checks before committing; do not convert a local
+  pass into a staging, LINE, browser, or production claim without evidence.
+- Phase 2 rows remain partial or baseline until their target acceptance criteria
+  and deployment/manual evidence exist.

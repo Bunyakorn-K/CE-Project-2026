@@ -1,5 +1,5 @@
 #!/bin/sh
-# LaundroTwin pre-push hook: scan the FULL history of branches being pushed.
+# LaundryTwin pre-push hook: scan the FULL history of branches being pushed.
 # Second line of defense — catches anything that slipped past pre-commit
 # (e.g. committed with --no-verify, or by a contributor without the hook).
 # Bypass: git push --no-verify (discouraged)

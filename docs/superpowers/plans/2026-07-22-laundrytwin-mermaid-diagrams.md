@@ -1,8 +1,8 @@
-# LaundroTwin MVP Mermaid Diagrams Implementation Plan
+# LaundryTwin MVP Mermaid Diagrams Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a report-ready target-MVP ER diagram and four focused Mermaid Activity diagrams for LaundroTwin.
+**Goal:** Add a report-ready target-MVP ER diagram and four focused Mermaid Activity diagrams for LaundryTwin.
 
 **Architecture:** Keep all five diagrams in one architecture document so entity names and workflow terminology remain consistent. Model the durable target data in one `erDiagram`, then use four `flowchart TD` blocks with responsibility-oriented subgraphs for ingestion, access control, alerts, and safe AI analytics.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Describe the target LaundroTwin MVP rather than claiming the current LaundryGo SQLite implementation is complete.
+- Describe the target LaundryTwin MVP rather than claiming the current LaundryTwin SQLite implementation is complete.
 - Use English labels and `snake_case` database attributes.
 - Use only existing MQTT, Modbus, and pressure data; do not introduce new hardware.
 - Pressure trends may support low-gas estimation but never gas-leak detection.
@@ -89,7 +89,7 @@ with Mermaid CLI. Each block must exit successfully and produce non-empty SVG.
 Run:
 
 ```bash
-npx --yes @mermaid-js/mermaid-cli@11.12.0 --input - --output /tmp/laundrotwin-diagram.svg
+npx --yes @mermaid-js/mermaid-cli@11.12.0 --input - --output /tmp/laundrytwin-diagram.svg
 ```
 
 Expected: exit code `0` for each of the five Mermaid blocks.
@@ -133,5 +133,5 @@ a gas leak, and no staged secrets.
 
 ```bash
 git add AGENTS.md README.md docs/02_architecture/data-and-activity-diagrams.md
-git commit -m "docs: add LaundroTwin data and activity diagrams"
+git commit -m "docs: add LaundryTwin data and activity diagrams"
 ```

@@ -5,6 +5,15 @@ import { parseAnalyticsRange, resolveAnalyticsScope } from "./scope";
 const grant = (role: AccessGrant["role"], branchId: string | null): AccessGrant => ({ id: `${role}-${branchId}`, role, branchId });
 
 describe("resolveAnalyticsScope", () => {
+  it("denies a principal with no grants", () => {
+    expect(resolveAnalyticsScope([])).toEqual({
+      ok: false,
+      status: 403,
+      code: "ACCESS_NOT_GRANTED",
+      message: "Your access has been revoked or has not been granted"
+    });
+  });
+
   it("accepts a requested branch inside the grant list", () => {
     const result = resolveAnalyticsScope([grant("manager", "b1")], "b1");
     expect(result).toEqual({ ok: true, branchId: "b1" });

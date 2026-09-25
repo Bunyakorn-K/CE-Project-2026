@@ -1,93 +1,74 @@
+import { Link, useNavigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useAuth } from "../atoms/auth";
 import { apiUrl } from "../api/client";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/machines", label: "Machines", icon: "🧺" },
-  { href: "/analytics", label: "Analytics", icon: "📈" },
-  { href: "/playground", label: "Playground", icon: "🧪" }
+type NavIconName = "dashboard" | "machines" | "analytics" | "playground" | "admin" | "ai" | "menu" | "logout";
+type NavItem = { to: "/dashboard" | "/machines" | "/analytics" | "/playground" | "/admin" | "/admin/ai"; label: string; icon: NavIconName };
+
+const navItems: NavItem[] = [
+  { to: "/dashboard", label: "ภาพรวม", icon: "dashboard" },
+  { to: "/machines", label: "เครื่องซักผ้า", icon: "machines" },
+  { to: "/analytics", label: "วิเคราะห์", icon: "analytics" }
+];
+const ownerItems: NavItem[] = [
+  { to: "/playground", label: "Playground", icon: "playground" },
+  { to: "/admin", label: "ผู้ดูแล", icon: "admin" },
+  { to: "/admin/ai", label: "ตั้งค่า AI", icon: "ai" }
 ];
 
-const adminNavItems = [
-  { href: "/admin", label: "Admin", icon: "⚙️" },
-  { href: "/admin/ai", label: "AI Settings", icon: "🤖" }
-];
+function NavIcon({ name }: { name: NavIconName }) {
+  const paths: Record<NavIconName, ReactNode> = {
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    machines: <><path d="M6 3h12v18H6z" /><path d="M9 7h6M9 17h6M9 11h6" /></>,
+    analytics: <><path d="M4 19V5M4 19h17" /><path d="m7 15 3-4 3 2 5-7" /></>,
+    playground: <><path d="m9 3 6 0 0 6 6 0 0 6-6 0 0 6-6 0 0-6-6 0 0-6 6 0z" /></>,
+    admin: <><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><circle cx="12" cy="12" r="5" /></>,
+    ai: <><path d="M6 4h12v12H6z" /><path d="M9 19h6M9 22h6M9 8h6M9 12h4" /></>,
+    menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
+    logout: <><path d="M10 5H5v14h5M14 8l4 4-4 4M9 12h9" /></>
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, signOut } = useAuth();
-  const pathname = window.location.pathname;
-  const grants = user?.grants ?? [];
-  const isOwner = grants.some((g: { role: string }) => g.role === "owner");
+function NavigationLink({ item }: { item: NavItem }) {
+  return <Link to={item.to} className="nav-link" activeOptions={{ exact: item.to === "/admin" }} activeProps={{ "aria-current": "page", "data-active": "true" }}><NavIcon name={item.icon} /><span>{item.label}</span></Link>;
+}
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const { user, signOut, isOwner } = useAuth();
+  const navigate = useNavigate();
+  const visibleItems = isOwner ? [...navItems, ...ownerItems] : navItems;
 
   async function handleSignOut() {
-    try {
-      await fetch(apiUrl("/api/auth/sign-out"), { method: "POST", credentials: "include" });
-    } catch {
-      // ignore — local state reset below still applies
-    }
+    await Promise.allSettled([
+      fetch(apiUrl("/api/auth/sign-out"), { method: "POST", credentials: "include" }),
+      fetch(apiUrl("/api/auth/liff/logout"), { method: "POST", credentials: "include" })
+    ]);
     signOut();
-    window.location.href = "/login";
+    void navigate({ to: "/login", replace: true });
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <nav className="sticky top-0 z-40 border-b border-divider bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold">LaundroTwin</span>
-            <span className="text-xs text-default-400">Backoffice</span>
-          </div>
-          <div className="hidden flex-1 gap-1 sm:flex">
-            {navItems.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  pathname === item.href
-                    ? "bg-primary/10 text-primary"
-                    : "text-default-500 hover:bg-default-100"
-                }`}
-              >
-                <span>{item.icon}</span>
-                <span>{item.label}</span>
-              </a>
-            ))}
-            {isOwner &&
-              adminNavItems.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                    pathname === item.href
-                      ? "bg-primary/10 text-primary"
-                      : "text-default-500 hover:bg-default-100"
-                  }`}
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </a>
-              ))}
-          </div>
-          <div className="flex items-center gap-3">
-            {isOwner && (
-              <a
-                href="/admin"
-                className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-              >
-                Go to backoffice
-              </a>
-            )}
-            <span className="hidden text-sm text-default-500 sm:inline">{user?.name}</span>
-            <button
-              onClick={() => void handleSignOut()}
-              className="rounded-lg px-3 py-2 text-sm text-default-500 hover:bg-default-100"
-            >
-              Sign out
-            </button>
+    <div className="app-shell">
+      <nav className="app-topbar" aria-label="เมนูหลัก">
+        <div className="app-topbar-inner">
+          <Link to="/dashboard" className="brand-lockup" aria-label="LaundryTwin ภาพรวมการดำเนินงาน">
+            <span className="brand-symbol brand-symbol--text">LT</span>
+            <span><span className="brand-name">LaundryTwin</span><span className="brand-context">Operations workspace</span></span>
+          </Link>
+          <div className="primary-nav">{visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}</div>
+          <div className="account-actions">
+            <span className="account-name">{user?.name}</span>
+            <button type="button" onClick={() => void handleSignOut()} className="signout-button" aria-label="ออกจากระบบ"><span>ออกจากระบบ</span><NavIcon name="logout" /></button>
+            <details className="mobile-nav">
+              <summary className="mobile-nav-summary" aria-label="เปิดเมนู"><NavIcon name="menu" /><span>เมนู</span></summary>
+              <div className="mobile-nav-panel">{visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}</div>
+            </details>
           </div>
         </div>
       </nav>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="content-frame">{children}</main>
     </div>
   );
 }

@@ -1,6 +1,6 @@
-# LaundroTwin — ER Diagram of the Current Implementation (3NF)
+# LaundryTwin — ER Diagram of the Current Implementation (3NF)
 
-This diagram documents the **implemented** data model (2026-09-06). It is the
+This diagram documents the **implemented** data model (2026-09-25). It is the
 physical counterpoint to the target design in `data-and-activity-diagrams.md`
 (which describes the full MVP target with telemetry/register maps). Three
 stores are shown:
@@ -197,14 +197,19 @@ erDiagram
         UUID tenant_id
         UUID branch_id
         String province
+        Nullable String sub_district
+        Nullable String district
         Float64 lat
         Float64 lon
+        UInt32 version
     }
     FACT_WEATHER_SAMPLE {
         DateTime64 timestamp
         UUID tenant_id
         UUID branch_id
-        String province
+        Nullable String province
+        Nullable String sub_district
+        Nullable String district
         Nullable Float32 weather_temp_c
         Nullable Float32 weather_humidity_pct
         Nullable Float32 weather_rain_mm
@@ -218,19 +223,21 @@ Notes:
   `fact_machine_usage` is also `ReplacingMergeTree` (idempotent re-insert),
   `fact_temperature_sample` is `MergeTree` partitioned by month.
 - `fact_weather_sample` (F-12) is `ReplacingMergeTree` keyed by
-  `(province, timestamp)` — a re-run converges to one row per observation;
-  its nullable weather fields stay NULL, never fabricated. Fields include
-  `sub_district` and `district` (currently `NULL`, reserved for future
-  per-position data).
+  `(tenant_id, branch_id, timestamp)` — a re-run converges to one observation
+  per registered branch and timestamp. Its nullable weather and position
+  fields stay NULL when source data is missing; they are never fabricated.
 - `dim_branch_location` is **ops-provisioned** (province/sub_district/district/lat/lon per branch)
   and NOT written by the ETL — `dim_branch` itself is IRIS-mirrored and any
   manual column there gets overwritten with NULL on the next sync. The weather
   collector joins `dim_branch_location` × `dim_branch active=1` for targets.
 - Nulls are preserved (`Nullable(...)`); the ETL never fabricates a value.
-- `amount_satang` stays integer satang until presentation (engineering
-  invariant).
+- Current direct Dashboard and Digital Twin reports use ClickHouse usage data;
+  they retain active inventory, preserve unknown state, and expose usage-derived
+  freshness. `fact_machine_event` is empty, so these routes are not live
+  telemetry. Local code/tests cover the boundaries, but production E2E remains
+  pending.
 
-## IRIS source (external, read-only — not owned by LaundroTwin)
+## IRIS source (external, read-only — not owned by LaundryTwin)
 
 The API reads these shapes through `iris-read-client.ts` and never writes to
 them:

@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.4",
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @laundrytwin/api dev\" \"pnpm --filter @laundrytwin/web dev\"",
+    "dev": "NODE_ENV=development LAUNDRYTWIN_DEV_BYPASS=true concurrently -n api,web -c cyan,magenta \"pnpm --filter @laundrytwin/api dev\" \"pnpm --filter @laundrytwin/web dev\"",
     "build": "pnpm --filter @laundrytwin/api build && pnpm --filter @laundrytwin/web build",
     "check": "pnpm --filter @laundrytwin/api check && pnpm --filter @laundrytwin/web check && pnpm --filter @laundrytwin/etl check",
     "test": "pnpm --filter @laundrytwin/api test && pnpm --filter @laundrytwin/web test && pnpm --filter @laundrytwin/etl test",

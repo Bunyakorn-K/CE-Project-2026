@@ -121,6 +121,12 @@ variable "clickhouse_password" {
   nullable  = false
 }
 
+variable "clickhouse_reader_password" {
+  type      = string
+  sensitive = true
+  nullable  = false
+}
+
 variable "clickhouse_database" {
   type    = string
   default = "laundrytwin_analytics"
@@ -162,6 +168,12 @@ variable "etl_temperature_batch" {
 # ---------------------------------------------------------------------------
 
 variable "airflow_admin_password" {
+  type      = string
+  sensitive = true
+  nullable  = false
+}
+
+variable "airflow_db_password" {
   type      = string
   sensitive = true
   nullable  = false

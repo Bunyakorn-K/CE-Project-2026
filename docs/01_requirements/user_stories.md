@@ -1,4 +1,4 @@
-# 👥 User Stories (LaundroTwin Project)
+# 👥 User Stories (LaundryTwin Project)
 
 **Document Purpose:** This document captures the functional needs from the perspective of different users (Owner, Manager, Technician, Customer, Marketer). It is used to drive the development of features and maintain the Requirements Traceability Matrix (RTM).
 

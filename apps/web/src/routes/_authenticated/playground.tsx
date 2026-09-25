@@ -1,208 +1,141 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Button, Card, Input } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import { apiUrl } from "../../lib/api/client";
+import { useState } from "react";
+import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
 
 export const Route = createFileRoute("/_authenticated/playground")({
   component: PlaygroundPage
 });
 
-type Grant = { id?: string; role: string; branchId: string | null };
-type Branch = { id: string; code: string; name: string; timezone: string; status: string };
+type Branch = { id: string; name: string; status: string };
 type Health = { ok: boolean; reportingConfigured: boolean; demoMode: boolean };
+type Tab = "health" | "analytics";
+type CheckKey = "revenue" | "cycles" | "utilization" | "temperature";
 
-type Tab = "health" | "explorer" | "analytics";
+type AnalyticsEnvelope = { meta: { range: { from: string; to: string }; branchId: string | null; dataSource: string; caveats?: string[] }; data: unknown[] };
+
+const CHECKS: Array<{ key: CheckKey; label: string; path: string }> = [
+  { key: "revenue", label: "รายได้รายวัน", path: "/api/v1/analytics/revenue/daily" },
+  { key: "cycles", label: "รอบซักรายวัน", path: "/api/v1/analytics/cycles/daily" },
+  { key: "utilization", label: "แผนผังการใช้งาน", path: "/api/v1/analytics/utilization/heatmap" },
+  { key: "temperature", label: "เส้นอุณหภูมิ", path: "/api/v1/analytics/temperature/curve" }
+];
+
+function localDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function recentRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(to.getDate() - 6);
+  return { from: localDate(from), to: localDate(to) };
+}
+
+async function fetchJson<T>(path: string, fallback: string): Promise<T> {
+  const response = await fetch(apiUrl(path), { credentials: "include" });
+  if (!response.ok) throw new Error(await apiErrorMessage(response, `${fallback} (HTTP ${response.status})`));
+  return (await response.json()) as T;
+}
 
 function PlaygroundPage() {
   const [user] = useAtom(authAtom);
-  const [activeTab, setActiveTab] = useState<Tab>("health");
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [apiResponse, setApiResponse] = useState<{ status: number; data: unknown; duration: number } | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testConfig, setTestConfig] = useState({ method: "GET", path: "/health", body: "" });
+  const isOwner = user?.grants.some((grant) => grant.role === "owner") ?? false;
+  const [tab, setTab] = useState<Tab>("health");
+  const [check, setCheck] = useState<CheckKey>("cycles");
+  const [branchId, setBranchId] = useState("");
+  const [range, setRange] = useState(recentRange);
 
-  useEffect(() => {
-    fetch(apiUrl("/api/report/branches"), { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.branches) setBranches(d.branches);
-      })
-      .catch(() => {});
-    fetch(apiUrl("/health"))
-      .then((r) => r.json())
-      .then(setHealth)
-      .catch(() => setHealth({ ok: false, reportingConfigured: false, demoMode: false }));
-  }, []);
+  const healthQuery = useQuery({
+    queryKey: ["playground", "health"],
+    queryFn: () => fetchJson<Health>("/health", "ไม่สามารถตรวจสอบ health ได้"),
+    enabled: isOwner
+  });
 
-  async function runApiTest() {
-    setIsTesting(true);
-    setApiResponse(null);
-    setError(null);
-    const start = performance.now();
-    try {
-      const res = await fetch(apiUrl(testConfig.path), {
-        method: testConfig.method,
-        headers: { "content-type": "application/json" },
-        body: testConfig.method !== "GET" && testConfig.body ? testConfig.body : undefined,
-        credentials: "include"
-      });
-      const data = await res.json().catch(() => null);
-      setApiResponse({ status: res.status, data, duration: Math.round(performance.now() - start) });
-    } catch (nextError) {
-      setApiResponse({ status: 0, data: { error: String(nextError) }, duration: Math.round(performance.now() - start) });
-    } finally {
-      setIsTesting(false);
-    }
+  const branchesQuery = useQuery({
+    queryKey: ["report", "branches", "playground"],
+    queryFn: () => fetchJson<{ branches: Branch[] }>("/api/report/branches", "ไม่สามารถโหลดรายชื่อสาขาได้"),
+    enabled: isOwner
+  });
+
+  const selectedCheck = CHECKS.find((item) => item.key === check) ?? CHECKS[1];
+  const checkQuery = useQuery({
+    queryKey: ["playground", "analytics", check, branchId, range.from, range.to],
+    queryFn: () => {
+      const params = new URLSearchParams({ from: range.from, to: range.to });
+      if (branchId) params.set("branchId", branchId);
+      return fetchJson<AnalyticsEnvelope>(`${selectedCheck.path}?${params.toString()}`, "ไม่สามารถตรวจสอบ analytics ได้");
+    },
+    enabled: isOwner && tab === "analytics" && Boolean(range.from && range.to && range.from <= range.to)
+  });
+
+  if (!isOwner) {
+    return (
+      <div className="page-content">
+        <section className="surface-card restricted-state">
+          <h1>เข้าถึงไม่ได้</h1>
+          <p>Playground นี้เปิดให้เฉพาะเจ้าของ เพราะเป็นพื้นที่ตรวจสอบระบบภายใน</p>
+          <Link to="/dashboard" className="secondary-button w-fit">กลับภาพรวม</Link>
+        </section>
+      </div>
+    );
   }
 
-  const grants: Grant[] = user?.grants ?? [];
-  const roles = [...new Set(grants.map((g) => g.role))].join(" · ") || "No active access grant";
+  const roles = Array.from(new Set((user?.grants ?? []).map((grant) => grant.role))).join(" · ");
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <p className="text-xs uppercase tracking-wide text-default-400">Internal tools</p>
-        <h1 className="text-2xl font-bold">Team Playground</h1>
-        <p className="text-sm text-default-500">System health, API testing, and quick analytics queries</p>
+    <div className="page-content">
+      <section className="surface-card surface-card--dark">
+        <h1>Playground ระบบ</h1>
+        <p>ตรวจสอบ health และ allow-listed analytics เท่านั้น · ไม่มี API explorer และไม่มีการรัน SQL อิสระ</p>
+      </section>
+
+      <div className="view-switcher playground-tabs" role="tablist" aria-label="Playground sections">
+        <button type="button" role="tab" id="playground-health-tab" aria-controls="playground-health-panel" aria-selected={tab === "health"} className={tab === "health" ? "is-active" : ""} onClick={() => setTab("health")}>ตรวจสอบระบบ</button>
+        <button type="button" role="tab" id="playground-analytics-tab" aria-controls="playground-analytics-panel" aria-selected={tab === "analytics"} className={tab === "analytics" ? "is-active" : ""} onClick={() => setTab("analytics")}>Allow-listed analytics</button>
       </div>
 
-      <div className="flex gap-2" role="tablist" aria-label="Playground sections">
-        {(["health", "explorer", "analytics"] as Tab[]).map((tab) => (
-          <Button
-            key={tab}
-            variant={activeTab === tab ? "primary" : "ghost"}
-            onPress={() => setActiveTab(tab)}
-          >
-            {tab === "health" ? "System Health" : tab === "explorer" ? "API Explorer" : "Analytics"}
-          </Button>
-        ))}
-      </div>
-
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-
-      {activeTab === "health" && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <HealthCard label="API Status" ok={health?.ok === true} value={health?.ok ? "Operational" : "Down"} note="Live check" />
-          <HealthCard label="IRIS Reporting" ok={health?.reportingConfigured === true} value={health?.reportingConfigured ? "Configured" : "Not Configured"} note="Upstream source" />
-          <HealthCard label="Demo Mode" ok={health?.demoMode === true} value={health?.demoMode ? "Enabled" : "Disabled"} note="Simulated data" />
-          <HealthCard label="Branches" ok value={String(branches.length)} note="Accessible branches" />
-          <HealthCard label="Your Role" ok value={roles} note="Auth grants" />
-        </div>
+      {tab === "health" && (
+        <section id="playground-health-panel" role="tabpanel" aria-labelledby="playground-health-tab" className="surface-card admin-section">
+          {healthQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังตรวจสอบ health</div>}
+          {healthQuery.isError && <div className="error-message" role="alert">ไม่สามารถตรวจสอบ health ได้: {healthQuery.error.message}</div>}
+          {healthQuery.data && <div className="health-grid">
+            <HealthCard label="API" value={healthQuery.data.ok ? "ทำงาน" : "ไม่ทำงาน"} status={healthQuery.data.ok ? "พร้อมใช้งาน" : "ไม่พร้อมใช้งาน"} tone={healthQuery.data.ok ? "success" : "danger"} />
+            <HealthCard label="ระบบรายงาน" value={healthQuery.data.reportingConfigured ? "ตั้งค่าแล้ว" : "ยังไม่ตั้งค่า"} status={healthQuery.data.reportingConfigured ? "พร้อมใช้งาน" : "ไม่พร้อมใช้งาน"} tone={healthQuery.data.reportingConfigured ? "success" : "warning"} />
+            <HealthCard label="โหมด Demo" value={healthQuery.data.demoMode ? "เปิดอยู่" : "ปิดอยู่"} status={healthQuery.data.demoMode ? "ข้อมูลจำลอง" : "ข้อมูลจริงตามการตั้งค่า"} tone={healthQuery.data.demoMode ? "warning" : "neutral"} />
+            <HealthCard label="สาขาที่เข้าถึงได้" value={String(branchesQuery.data?.branches.length ?? "กำลังโหลด")} status="ขอบเขตจาก grant" tone="neutral" />
+            <HealthCard label="บทบาท" value={roles || "ไม่มี grant"} status="จาก /api/me" tone="neutral" />
+          </div>}
+          {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}
+        </section>
       )}
 
-      {activeTab === "explorer" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <div className="flex flex-col gap-3 p-4">
-              <h3 className="font-semibold">Test API Endpoint</h3>
-              <div className="flex gap-2">
-                <select
-                  className="rounded-lg border border-divider bg-background px-2 py-2 text-sm"
-                  value={testConfig.method}
-                  onChange={(e) => setTestConfig((c) => ({ ...c, method: e.target.value }))}
-                >
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
-                </select>
-                <Input
-                  className="flex-1"
-                  placeholder="/api/report/branches"
-                  value={testConfig.path}
-                  onChange={(e) => setTestConfig((c) => ({ ...c, path: e.target.value }))}
-                />
-              </div>
-              <label className="flex flex-col gap-1 text-sm">
-                <span>Request Body (JSON)</span>
-                <textarea
-                  className="rounded-lg border border-divider bg-background p-2 font-mono text-xs"
-                  value={testConfig.body}
-                  onChange={(e) => setTestConfig((c) => ({ ...c, body: e.target.value }))}
-                  rows={6}
-                  placeholder='{ "key": "value" }'
-                />
-              </label>
-              <Button variant="primary" onPress={() => void runApiTest()} isDisabled={isTesting}>
-                {isTesting ? "Running…" : "Send Request"}
-              </Button>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex flex-col gap-2 p-4">
-              <h3 className="font-semibold">Response</h3>
-              {apiResponse ? (
-                <>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className={apiResponse.status >= 200 && apiResponse.status < 300 ? "text-success" : "text-danger"}>
-                      {apiResponse.status || "Network Error"}
-                    </span>
-                    <span className="text-default-400">{apiResponse.duration}ms</span>
-                  </div>
-                  <pre className="overflow-auto rounded-lg bg-default-100 p-3 text-xs">{JSON.stringify(apiResponse.data, null, 2)}</pre>
-                </>
-              ) : (
-                <p className="text-sm text-default-400">No request sent yet</p>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {activeTab === "analytics" && (
-        <Card>
-          <div className="flex flex-col gap-3 p-4">
-            <h3 className="font-semibold">Quick Analytics Queries</h3>
-            <p className="text-xs text-default-400">Pre-configured queries for common analytics endpoints</p>
-            <div className="flex flex-wrap gap-2">
-              {QUICK_QUERIES.map((q) => (
-                <Button
-                  key={q.label}
-                  variant="ghost"
-                  onPress={() => {
-                    setTestConfig({ method: "GET", path: q.path, body: "" });
-                    setActiveTab("explorer");
-                  }}
-                >
-                  {q.label}
-                </Button>
-              ))}
-            </div>
+      {tab === "analytics" && (
+        <section id="playground-analytics-panel" role="tabpanel" aria-labelledby="playground-analytics-tab" className="surface-card admin-section">
+          <div className="section-heading"><h2>ตรวจสอบ allow-listed endpoint</h2><span>ใช้เฉพาะ GET และ query ที่ระบบกำหนด</span></div>
+          <div className="filter-panel nested-filter-panel">
+            <div className="filter-field"><label htmlFor="playground-check">ชุดข้อมูล</label><select id="playground-check" value={check} onChange={(event) => setCheck(event.target.value as CheckKey)}>{CHECKS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></div>
+            <div className="filter-field"><label htmlFor="playground-branch">สาขา</label><select id="playground-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">ทุกสาขาที่มีสิทธิ์</option>{(branchesQuery.data?.branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></div>
+            <div className="filter-field"><label htmlFor="playground-from">ตั้งแต่วันที่</label><input id="playground-from" type="date" value={range.from} max={range.to} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} /></div>
+            <div className="filter-field"><label htmlFor="playground-to">ถึงวันที่</label><input id="playground-to" type="date" value={range.to} min={range.from} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} /></div>
           </div>
-        </Card>
+          {checkQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังตรวจสอบ {selectedCheck.label}</div>}
+          {checkQuery.isError && <div className="error-message" role="alert">ไม่สามารถตรวจสอบ {selectedCheck.label} ได้: {checkQuery.error.message}</div>}
+          {checkQuery.data && <>
+            <div className="data-context analytics-meta"><span className="source-pill">แหล่งข้อมูล: {checkQuery.data.meta.dataSource}</span><strong>{checkQuery.data.meta.range.from} — {checkQuery.data.meta.range.to}</strong><span>แถวที่ได้: {checkQuery.data.data.length}</span></div>
+            {checkQuery.data.data.length === 0 ? <div className="state-message">ไม่มีข้อมูลในช่วงเวลานี้</div> : <pre className="response-preview">{JSON.stringify(checkQuery.data, null, 2)}</pre>}
+          </>}
+        </section>
       )}
     </div>
   );
 }
 
-function HealthCard({ label, ok, value, note }: { label: string; ok: boolean; value: string; note: string }) {
-  return (
-    <Card>
-      <div className="flex flex-col gap-1 p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-default-400">{label}</span>
-          <span className={`h-2 w-2 rounded-full ${ok ? "bg-success" : "bg-danger"}`} />
-        </div>
-        <strong className={ok ? "text-success" : "text-danger"}>{value}</strong>
-        <small className="text-default-400">{note}</small>
-      </div>
-    </Card>
-  );
+function HealthCard({ label, value, status, tone }: { label: string; value: string; status: string; tone: "success" | "warning" | "danger" | "neutral" }) {
+  return <div className="health-card surface-card"><span>{label}</span><strong>{value}</strong><span className={`status-pill status-pill--${tone}`}>{status}</span></div>;
 }
-
-function last7dQuery() {
-  const to = new Date().toISOString().split("T")[0];
-  const from = new Date(Date.now() - 7 * 864e5).toISOString().split("T")[0];
-  return `?from=${from}&to=${to}`;
-}
-
-const QUICK_QUERIES = [
-  { label: "Revenue (Last 7d)", path: `/api/v1/analytics/revenue/daily${last7dQuery()}` },
-  { label: "Cycles (Last 7d)", path: `/api/v1/analytics/cycles/daily${last7dQuery()}` },
-  { label: "Utilization Heatmap", path: `/api/v1/analytics/utilization/heatmap${last7dQuery()}` },
-  { label: "Temperature Curve", path: `/api/v1/analytics/temperature/curve${last7dQuery()}` }
-];

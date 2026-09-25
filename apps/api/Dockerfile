@@ -1,4 +1,4 @@
-# LaundroTwin — API image.
+# LaundryTwin — API image.
 #
 # Strategy (community pattern, pnpm.io/docker Example 1 + turbo prune):
 #   prepare : turbo prune --docker -> out/json (deps) + out/full (source) for

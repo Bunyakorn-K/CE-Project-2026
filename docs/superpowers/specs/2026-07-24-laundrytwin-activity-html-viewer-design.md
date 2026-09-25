@@ -1,9 +1,9 @@
-# LaundroTwin Activity Diagram Offline HTML Viewer Design
+# LaundryTwin Activity Diagram Offline HTML Viewer Design
 
 ## Goal
 
 Create one self-contained English-language HTML file that presents the four
-target LaundroTwin MVP activity workflows at a readable scale. A user must be
+target LaundryTwin MVP activity workflows at a readable scale. A user must be
 able to double-click the file and use the complete viewer without a web server,
 internet access, package installation, or browser extension.
 
@@ -47,7 +47,7 @@ external availability and version dependency.
 
 The artifact will be:
 
-`docs/02_architecture/laundrotwin-activity-diagrams.html`
+`docs/02_architecture/laundrytwin-activity-diagrams.html`
 
 It will contain:
 

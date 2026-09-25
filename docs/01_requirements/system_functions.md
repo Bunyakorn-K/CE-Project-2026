@@ -1,6 +1,6 @@
 # ⚙️ System Functions (Functional Decomposition)
 
-**Document Purpose:** This document defines the core functional capabilities of the LaundroTwin platform, outlining the technical details, acceptance criteria, and security constraints. These functions trace back to the project's Quantifiable Requirements (QR).
+**Document Purpose:** This document defines the core functional capabilities of the LaundryTwin platform, outlining the technical details, acceptance criteria, and security constraints. These functions trace back to the project's Quantifiable Requirements (QR).
 
 | ID       | Category        | Function Name                      | Technical Details                                                                                                                   | Use Case                                                                                          | Phase     | Acceptance Criteria                                                                          | Constraints / Security                                                                 |
 | :------- | :-------------- | :--------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------- | :------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
