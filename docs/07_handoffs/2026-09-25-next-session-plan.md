@@ -2,7 +2,7 @@
 
 ## Current State
 
-LaundryTwin security, reporting, MCP authorization, active web workflows, deployment configuration, and documentation changes are implemented locally. No commit, push, staging deployment, production migration, or live machine action has been performed.
+LaundryTwin security, reporting, MCP authorization, active web workflows, deployment configuration, and documentation changes are implemented locally. The reviewed checkpoint is committed locally as `2b19a82`; no push, staging deployment, production migration, or live machine action has been performed.
 
 Working tree is intentionally dirty and contains broad existing changes. Preserve unrelated changes and review every path before staging.
 
@@ -19,7 +19,7 @@ Working tree is intentionally dirty and contains broad existing changes. Preserv
 
 ## Recommended Commit And Push
 
-Commit and push are appropriate after final review because the next session needs a remote checkpoint. Do not push the current dirty tree directly.
+Commit and push are appropriate after final review because the next session needs a remote checkpoint. The reviewed checkpoint is now committed locally; push only after the remote branch and approval are confirmed.
 
 1. Inspect `git status --short`, `git diff --stat`, and `git diff --check`.
 2. Fetch `origin` and compare the current branch with `origin/main` before staging.
@@ -33,7 +33,7 @@ Commit and push are appropriate after final review because the next session need
 6. Run the repository verification and `gitleaks` again after staging.
 7. Review the staged diff and commit messages before creating commits. Push only to the intended remote branch; do not force-push.
 
-Do not create a commit until the staged file list and commit message are explicitly approved. Do not deploy while committing.
+Do not push until the remote branch and approval are confirmed. Do not deploy while committing.
 
 ## Staging Gate
 
@@ -53,7 +53,7 @@ Production deployment, production migration, live telemetry ingestion, machine c
 
 ## Remaining Follow-up Work
 
-- [ ] Review and commit the current logical change groups
+- [x] Review and commit the current logical change groups
 - [ ] Push the reviewed commits to the intended remote branch
 - [ ] Provide staging host, approved ref, rollback ref, and backup confirmation
 - [ ] Execute the staging rollout gate and record smoke evidence
