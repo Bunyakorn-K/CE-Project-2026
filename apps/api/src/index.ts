@@ -218,8 +218,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (scope instanceof Response) return scope;
 
     try {
-      const branchId = typeof scope === "string" ? scope : undefined;
-      const dashboard = await queryDashboard(clickhouse, range.from, range.to, branchId, principal);
+      const dashboard = await queryDashboard(clickhouse, range.from, range.to);
       return c.json({ dashboard });
     } catch (error) {
       return irisError(c, error);

@@ -56,7 +56,6 @@ SELECT
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
 WHERE u.started_at >= {from:String} AND u.started_at < toDate({to:String}) + 1
-  AND ({branchId:String} = '' OR u.branch_id = {branchId:UUID})
 GROUP BY u.branch_id, b.branch_name, u.machine_code, u.machine_kind, u.status`;
 
 const MACHINE_STATE_SQL = `
@@ -147,16 +146,9 @@ export async function queryBranches(ch: ClickHouseExecutor): Promise<BranchInfo[
 export async function queryDashboard(
   ch: ClickHouseExecutor,
   from: string,
-  to: string,
-  branchId: string | undefined,
-  principal: Principal | null
+  to: string
 ): Promise<DashboardData> {
-  const branchIdParam = branchId ?? "";
-  const rows = await ch<MachineUsageRow>(DASHBOARD_SQL, {
-    from,
-    to,
-    branchId: branchIdParam
-  });
+  const rows = await ch<MachineUsageRow>(DASHBOARD_SQL, { from, to });
 
   const branchMap = new Map<
     string,
