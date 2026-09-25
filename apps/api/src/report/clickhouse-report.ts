@@ -33,7 +33,7 @@ type MachineStateRow = {
 };
 
 // ---------------------------------------------------------------------------
-// Queries (fixed SQL; user input passes through bind params)
+// Queries (dates embedded via sqlDate; no ClickHouse named params needed)
 // ---------------------------------------------------------------------------
 
 const BRANCH_SQL = `
@@ -42,7 +42,8 @@ FROM dim_branch AS b
 WHERE b.active = 1
 ORDER BY b.branch_name`;
 
-const DASHBOARD_SQL = `
+export function buildDashboardSQL(from: string, to: string): string {
+  return `
 SELECT
   u.branch_id,
   b.branch_name,
@@ -56,10 +57,12 @@ SELECT
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
 INNER JOIN dim_machine AS m ON u.machine_id = m.machine_id
-WHERE u.started_at >= {from:String} AND u.started_at < toDate({to:String}) + 1
+WHERE u.started_at >= '${from}' AND u.started_at < '${to}' + INTERVAL 1 DAY
 GROUP BY u.branch_id, b.branch_name, m.machine_code, m.machine_kind, u.status`;
+}
 
-const MACHINE_STATE_SQL = `
+export function buildMachineStateSQL(from: string): string {
+  return `
 SELECT
   u.branch_id,
   b.branch_name,
@@ -70,13 +73,10 @@ SELECT
 FROM fact_machine_usage AS u
 INNER JOIN dim_branch AS b ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
 INNER JOIN dim_machine AS m ON u.machine_id = m.machine_id
-WHERE u.started_at >= {from:String}
+WHERE u.started_at >= '${from}'
 GROUP BY u.branch_id, b.branch_name, m.machine_code, m.machine_kind
-ORDER BY last_active_at DESC`
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+ORDER BY last_active_at DESC`;
+}
 
 function sqlDate(days: number): string {
   const d = new Date();
@@ -150,7 +150,8 @@ export async function queryDashboard(
   from: string,
   to: string
 ): Promise<DashboardData> {
-  const rows = await ch<MachineUsageRow>(DASHBOARD_SQL, { from, to });
+  const sql = buildDashboardSQL(from, to);
+  const rows = await ch<MachineUsageRow>(sql, {});
 
   const branchMap = new Map<
     string,
@@ -212,7 +213,8 @@ export async function queryMachineStates(
   ch: ClickHouseExecutor,
   from: string
 ): Promise<MachineInfo[]> {
-  const rows = await ch<MachineStateRow>(MACHINE_STATE_SQL, { from });
+  const sql = buildMachineStateSQL(from);
+  const rows = await ch<MachineStateRow>(sql, {});
 
   const statusMap: Record<string, MachineInfo["status"]> = {
     running: "running",
