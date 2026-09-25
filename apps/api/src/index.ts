@@ -242,7 +242,14 @@ export function createApp(dependencies: AppDependencies = {}) {
     const sql = buildDashboardSQL("2026-09-18", "2026-09-26");
     try {
       const rows = await clickhouse(sql, {});
-      return c.json({ ok: true, count: rows.length });
+      // Test data processing
+      const branchMap = new Map();
+      for (const r of rows) {
+        const key = r.branch_id || r.machine_code;
+        if (!branchMap.has(key)) branchMap.set(key, { count: 0 });
+        branchMap.get(key).count++;
+      }
+      return c.json({ ok: true, rows: rows.length, keys: Object.keys(rows[0] || {}).join(","), branchMapSize: branchMap.size });
     } catch (e: any) {
       return c.json({ err: e.message });
     }
