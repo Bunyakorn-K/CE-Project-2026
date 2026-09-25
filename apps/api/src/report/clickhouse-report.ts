@@ -141,7 +141,8 @@ export async function queryDashboard(
   from: string,
   to: string
 ): Promise<DashboardData> {
-  const sql = buildDashboardSQL(from, to);
+  const normalizeDate = (d: string) => d.slice(0, 10);
+  const sql = buildDashboardSQL(normalizeDate(from), normalizeDate(to));
   const rows = await ch<MachineUsageRow>(sql, {});
 
   const branchMap = new Map<
@@ -204,7 +205,8 @@ export async function queryMachineStates(
   ch: ClickHouseExecutor,
   from: string
 ): Promise<MachineInfo[]> {
-  const sql = buildMachineStateSQL(from);
+  const normalizeDate = (d: string) => d.slice(0, 10);
+  const sql = buildMachineStateSQL(normalizeDate(from));
   const rows = await ch<MachineStateRow>(sql, {});
 
   const statusMap: Record<string, MachineInfo["status"]> = {
