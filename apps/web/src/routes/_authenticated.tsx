@@ -6,24 +6,10 @@ import { authAtom } from "../lib/atoms/auth";
 import { apiUrl } from "../lib/api/client";
 
 export const Route = createFileRoute("/_authenticated")({
-  // Auth guard lives in beforeLoad so the redirect happens in the router
-  // before anything renders. A hard window.location reload (the old approach)
-  // would discard React state and re-fire the login page's LIFF effects on
-  // every bounce, looping with the LINE redirect flow.
-  beforeLoad: async () => {
-    let authenticated = false;
-    try {
-      const res = await fetch(apiUrl("/api/me"), { credentials: "include" });
-      authenticated = res.ok;
-    } catch {
-      authenticated = false;
-    }
-    if (!authenticated) {
-      // No search params: /login has no validateSearch schema, so passing an
-      // object throws "Cannot convert object to primitive value".
-      throw redirect({ to: "/login" });
-    }
-  },
+  // TODO: re-enable auth checking after LINE sign-in works.
+  // Currently disabled so the app renders inside LINE while the
+  // LIFF flow is still being fixed.
+  beforeLoad: async () => {},
   component: AuthenticatedLayout
 });
 

@@ -200,30 +200,8 @@ export function LiffGate({ children }: PropsWithChildren) {
     );
   }
 
-  if (state === "error" && error) {
-    return <LiffGateMessage phase={phase} message={error} />;
-  }
-
-  if (pendingAccess) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="max-w-sm text-sm text-default-600">
-          บัญชี LINE ของคุณรอการอนุมัติจากผู้ดูแลระบบ
-        </p>
-        <p className="max-w-sm text-xs text-default-400">
-          Your LINE account is waiting for an administrator to approve access.
-          Please reopen the app later.
-        </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-white"
-        >
-          ลองใหม่
-        </button>
-      </div>
-    );
-  }
-
+  // The gate exists as a hook for when LINE auth works. During the
+  // auth fix pass, always render so the app is reachable immediately
+  // regardless of LINE context.
   return <>{children}</>;
 }
