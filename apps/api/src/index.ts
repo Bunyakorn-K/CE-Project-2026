@@ -220,7 +220,8 @@ export function createApp(dependencies: AppDependencies = {}) {
     try {
       const dashboard = await queryDashboard(clickhouse, range.from, range.to);
       return c.json({ dashboard });
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error("DASHBOARD_ERROR:", error instanceof Error ? error.message : error);
       return irisError(c, error);
     }
   });
