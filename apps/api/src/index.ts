@@ -25,7 +25,7 @@ import {
   revokeAccessGrant,
   type Principal
 } from "./access-store";
-import { createClickHouseClient } from "./analytics/clickhouse";
+import { createClickHouseClient, type ClickHouseExecutor } from "./analytics/clickhouse";
 import { createMcpServer, type McpTransport } from "./analytics/mcp";
 import { buildOpenApiDocument } from "./analytics/openapi";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
@@ -43,6 +43,7 @@ import { runAlertSweep } from "./alert-engine";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
+import { queryDashboard, queryMachineStates } from "./report/clickhouse-report";
 
 type AppVariables = {
   principal: Principal | null;
@@ -217,8 +218,22 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (scope instanceof Response) return scope;
 
     try {
-      const dashboard = await iris.getDashboard({ ...range, branchId: scope });
-      return c.json({ dashboard: redactDashboardRevenue(dashboard, mayViewRevenue(principal.grants)) });
+      const branchId = typeof scope === "string" ? scope : undefined;
+      const dashboard = await queryDashboard(clickhouse, range.from, range.to, branchId, principal);
+      return c.json({ dashboard });
+    } catch (error) {
+      return irisError(c, error);
+    }
+  });
+
+  app.get("/api/twin", async (c) => {
+    const principal = requirePrincipal(c);
+    if (principal instanceof Response) return principal;
+    try {
+      const from = new Date();
+      from.setDate(from.getDate() - 7);
+      const states = await queryMachineStates(clickhouse, from.toISOString().slice(0, 10));
+      return c.json({ machines: states });
     } catch (error) {
       return irisError(c, error);
     }
