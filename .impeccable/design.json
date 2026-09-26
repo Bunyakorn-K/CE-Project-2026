@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-25T00:00:00Z",
+  "title": "Design System: LaundryTwin Operations Workspace",
+  "extensions": {
+    "colorMeta": {
+      "brand": {
+        "role": "primary",
+        "displayName": "LaundryTwin Teal",
+        "canonical": "#0f6269",
+        "tonalRamp": ["#062d32", "#0a4248", "#0f6269", "#2b9292", "#6cb9b5", "#a9d9d4", "#dff1ed", "#f4fbf9"]
+      },
+      "brand-dark": {
+        "role": "primary-deep",
+        "displayName": "Deep Teal Navy",
+        "canonical": "#123b40",
+        "tonalRamp": ["#06181b", "#0c292d", "#123b40", "#1d5559", "#3b7778", "#6e9b9a", "#b7d2d0", "#edf7f4"]
+      },
+      "canvas": {
+        "role": "neutral-bg",
+        "displayName": "Operations Canvas",
+        "canonical": "#f4f7f6",
+        "tonalRamp": ["#172022", "#34484a", "#617477", "#8ca09f", "#b6c6c2", "#d7e3e0", "#eaf0ed", "#f4f7f6"]
+      },
+      "surface": {
+        "role": "neutral-surface",
+        "displayName": "Work Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#172022", "#34484a", "#617477", "#8ca09f", "#b6c6c2", "#d7e3e0", "#edf4f2", "#ffffff"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Operations Display",
+        "purpose": "Page and workspace headings only."
+      },
+      "body": {
+        "displayName": "Operations Body",
+        "purpose": "Thai-first explanatory copy and UI text."
+      },
+      "data": {
+        "displayName": "Measurement Data",
+        "purpose": "Machine IDs, timestamps, codes, and telemetry values."
+      }
+    },
+    "shadows": [
+      {
+        "name": "surface-ambient",
+        "value": "0 1px 2px rgb(18 59 64 / 4%), 0 8px 24px rgb(18 59 64 / 4%)",
+        "purpose": "Normal card separation from the canvas."
+      },
+      {
+        "name": "brand-panel-lift",
+        "value": "0 14px 32px rgb(18 59 64 / 16%)",
+        "purpose": "Dark overview and workspace panels."
+      },
+      {
+        "name": "popover-lift",
+        "value": "0 18px 38px rgb(18 59 64 / 14%)",
+        "purpose": "Mobile navigation and overlay surfaces."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "160ms ease",
+        "purpose": "Hover, focus, selection, and state feedback without page-load choreography."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "639px"
+      },
+      {
+        "name": "tablet",
+        "value": "1023px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single primary action in a flow.",
+      "html": "<button class=\"ds-btn-primary\">บันทึกการตั้งค่า</button>",
+      "css": ".ds-btn-primary { min-height: 44px; padding: 0 16px; color: #ffffff; background: #0f6269; border: 1px solid #0f6269; border-radius: 10px; font: 700 13px/1.4 'Noto Sans Thai', system-ui, sans-serif; transition: filter 160ms ease, background-color 160ms ease; } .ds-btn-primary:hover { filter: brightness(1.06); } .ds-btn-primary:focus-visible { outline: 3px solid rgb(43 146 146 / 32%); outline-offset: 2px; }"
+    },
+    {
+      "name": "Surface Card",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "A bordered white work surface for operational groups.",
+      "html": "<article class=\"ds-card-surface\"><h3>ผลประกอบการรายสาขา</h3><p>ข้อมูลจาก ClickHouse</p></article>",
+      "css": ".ds-card-surface { padding: 20px; color: #12353a; background: #ffffff; border: 1px solid #d7e3e0; border-radius: 14px; box-shadow: 0 1px 2px rgb(18 59 64 / 4%), 0 8px 24px rgb(18 59 64 / 4%); font: 400 14px/1.6 'Noto Sans Thai', system-ui, sans-serif; } .ds-card-surface h3 { margin: 0 0 8px; color: #12353a; font-size: 15px; font-weight: 800; } .ds-card-surface p { margin: 0; color: #829496; font-size: 12px; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-success",
+      "description": "Compact semantic state with text and color together.",
+      "html": "<span class=\"ds-status-success\">กำลังใช้งาน</span>",
+      "css": ".ds-status-success { display: inline-flex; align-items: center; min-height: 26px; padding: 5px 9px; color: #087a5b; background: #e5f6ee; border: 1px solid #c4e8d6; border-radius: 999px; font: 800 11px/1.2 'Noto Sans Thai', system-ui, sans-serif; }"
+    },
+    {
+      "name": "Operations Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Sticky authenticated navigation with a compact mobile menu.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-active\" href=\"#\">Dashboard</a><a class=\"ds-nav-link\" href=\"#\">Machines</a></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 4px; min-height: 72px; padding: 12px 24px; background: rgb(255 255 255 / 90%); border-bottom: 1px solid #d7e3e0; } .ds-nav-link, .ds-nav-active { padding: 9px 12px; border-radius: 10px; font: 700 13px/1.4 'Noto Sans Thai', system-ui, sans-serif; } .ds-nav-link { color: #4e686b; } .ds-nav-active { color: #123b40; background: #edf4f2; border: 1px solid #c6e3df; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Accessible HeroUI-compatible field with explicit label and focus state.",
+      "html": "<label class=\"ds-field\"><span>อีเมล</span><input class=\"ds-input\" type=\"email\" placeholder=\"อีเมล\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: #4e686b; font: 700 12px/1.4 'Noto Sans Thai', system-ui, sans-serif; } .ds-input { min-height: 42px; padding: 0 12px; color: #12353a; background: #ffffff; border: 1px solid #b8ccca; border-radius: 10px; font: 400 14px/1.4 'Noto Sans Thai', system-ui, sans-serif; } .ds-input:focus-visible { outline: 3px solid rgb(43 146 146 / 32%); outline-offset: 2px; border-color: #0f6269; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Operations Room",
+    "overview": "LaundryTwin is an operational interface for people making decisions under real branch conditions. The visual world is restrained, evidence-first, and calm: a cool canvas, white work surfaces, navy-teal action color, and clear semantic status states. Density supports scanning across branches, machines, KPIs, and alerts while mobile LINE LIFF views preserve the same hierarchy with fewer columns and larger touch targets.",
+    "keyCharacteristics": [
+      "Calm navy, teal, and cool-neutral surfaces",
+      "High information density with clear operational hierarchy",
+      "Source, demo, freshness, unknown, stale, and unavailable states stay visible",
+      "One Thai-capable sans system with monospace reserved for identifiers and measurements",
+      "No emoji as primary navigation or KPI iconography"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Teal marks action, selection, and identity. It is not decoration and does not compete with semantic status colors.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measurement Rule",
+        "body": "Use monospace only where the user compares, scans, or copies a value. Do not set entire labels, paragraphs, or navigation in monospace.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Do not add a shadow to every card. Use borders and tonal surfaces for ordinary grouping; add depth only for hierarchy, overlay, or interaction state.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the deep teal navy and teal tokens for brand surfaces, actions, and selected states.",
+      "Do keep source, demo, freshness, range, and uncertainty visible next to operational data.",
+      "Do use HeroUI components for accessible interaction primitives and custom tokens for the local visual layer.",
+      "Do pair status color with explicit Thai or English status text.",
+      "Do use the LT mark and the canonical LaundryTwin name until a brand asset is approved.",
+      "Do keep desktop layouts dense but scan-friendly and mobile layouts structurally collapsed."
+    ],
+    "donts": [
+      "Don't use emoji as primary navigation, KPI, status, or machine iconography.",
+      "Don't use teal as decoration on every surface or add saturated color to inactive controls.",
+      "Don't add thick colored card borders, hard offset shadows, glass decoration, or page-load choreography.",
+      "Don't hide missing, stale, unknown, offline, or unavailable states to make a dashboard look complete.",
+      "Don't make cloud-derived machine state look like a physical safety system or imply machine commands.",
+      "Don't use custom control shapes that bypass HeroUI semantics when an accessible HeroUI primitive fits."
+    ]
+  }
+}
