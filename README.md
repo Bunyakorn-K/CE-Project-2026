@@ -134,7 +134,7 @@ is the percentile heuristic (`get_off_peak_windows` MCP tool).
 
 ## Run locally
 
-1. Install Node.js 24.13.0 (see `.nvmrc`; better-sqlite3 is compiled for ABI 137)
+1. Install Node.js 24.x (see `.nvmrc`; better-sqlite3 is compiled for ABI 137)
    and pnpm 10.33.4.
 2. Copy `.env.example` to `.env`.
 3. Set a unique `BETTER_AUTH_SECRET` and a
@@ -188,8 +188,8 @@ mode is not a production design.
 | Technician | One assigned branch per grant | No | No |
 
 These controls have local code/test evidence on direct Dashboard/Twin and
-analytics routes. Production E2E, staging, LINE, and browser verification are
-still pending.
+analytics routes. Production E2E, LINE, and browser verification are still
+pending.
 
 Alert acknowledgement is local to LaundryTwin and audit-logged. It does not
 acknowledge an upstream alert.
@@ -202,7 +202,11 @@ for legacy configuration. Channel secrets, access tokens, upstream read keys,
 and the Better Auth secret must remain server-side.
 
 `POST /webhooks/line` is optional and remains disabled until the LINE Messaging
-API variables are configured. For container deployment, each app builds from
+API variables are configured. LaundryTwin has two deployment tiers: local (env
+files plus the `dev` run mode) and production on the existing VM documented in
+[`docs/02_architecture/deploy-runbook.md`](docs/02_architecture/deploy-runbook.md).
+`dev` is a local run mode, not a deployed environment. There is no staging
+environment. For container deployment, each app builds from
 its own `apps/<pkg>/Dockerfile` (turbo prune + minimal runtime, ~29–69 MB
 compressed) and images are pushed to the internal registry
 (`registry.laundrytwin.duckdns.org`; VM pulls via `10.10.0.117:5000`), then
@@ -212,9 +216,11 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on 2026-09-25: **181 tests green** — API 142, web 2,
-ETL 37. `pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL
-test pass. This does not establish staging, LINE, browser, or production E2E.
+Local automated evidence on 2026-09-27: **180 tests green** — API 142, web 1,
+ETL 37 (web fell from 2 because the dead-code deletion removed
+`dashboard-metrics.test.ts`). That run used Node 24.21.0, which is within the
+supported 24.x line. `pnpm --filter @laundrytwin/api check`, web check/test/build,
+and ETL test pass. This does not establish production, LINE, or browser E2E.
 
 ```bash
 pnpm test

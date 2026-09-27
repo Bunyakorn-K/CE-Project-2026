@@ -176,24 +176,34 @@ defining the same user make ClickHouse fail every login with Code 516, so
   - Pi: SSH is open on 192.168.88.10 but requires the Pi's authorized key —
     ask the machine owner for access before changing the Caddyfile.
 
-## Staging rollout gate
+## Production rollout gate
 
-Run this gate only after the target staging host, approved application ref, and rollback ref are recorded in the change ticket. Do not use `main`, a local working tree, or an uncommitted image as the deployment ref.
+LaundryTwin has two deployment tiers: local (env files plus the `dev` run mode)
+and production on the existing VM 117 documented in `Topology` above. `dev` is
+a local run mode, not a deployed environment. There is no staging environment,
+and no staging rollout should be planned or described.
+
+Run this gate for any production apply, and only after the production target,
+approved application ref, and rollback ref are recorded in the change ticket.
+Do not use `main`, a local working tree, or an uncommitted image as the
+deployment ref.
 
 ### Before apply
 
 1. Record the current deployed app ref and analytics configuration as `<last-known-good-ref>`.
-2. Confirm the target is staging, not the production VM, and confirm the staging data boundary.
+2. Confirm the target is the production VM above and that the change is inside
+   the approved scope. Production deployment, production migration, and live
+   machine actions require separate explicit approval.
 3. Back up the app SQLite database, ETL watermark, and analytics volumes before changing the stack.
 4. Verify all required Tofu variables are supplied through an untracked `terraform.tfvars` or `-var-file`; never put values in this repository. `airflow_db_password` is required in addition to the existing Airflow/Superset/ClickHouse secrets.
 5. Run `tofu fmt -check`, `tofu validate`, and `tofu plan` from `deploy/tofu`. Review the plan for app, ETL, ClickHouse, Airflow, and Superset changes.
-6. Run `docker compose -f deploy/analytics/compose.yaml config --quiet` with the target env values available locally or on the staging host. Resolve missing-variable warnings before apply.
+6. Run `docker compose -f deploy/analytics/compose.yaml config --quiet` with the target env values available locally or on the VM. Resolve missing-variable warnings before apply.
 
 ### Apply and smoke
 
 1. Set `app_repo_ref` to the approved immutable commit or tag and run `tofu apply` once.
 2. Check `sudo docker compose -f /opt/analytics/compose.yaml ps` and confirm ClickHouse, Postgres, Airflow roles, Superset, Redis, and API/web are healthy.
-3. Check `http://127.0.0.1:8787/health`, `http://127.0.0.1:8080/`, and `http://127.0.0.1:8088/health` on the staging host.
+3. Check `http://127.0.0.1:8787/health`, `http://127.0.0.1:8080/`, and `http://127.0.0.1:8088/health` on the VM.
 4. Verify an unauthenticated report request is denied, an approved session is branch-scoped, invalid calendar dates return `400`, and logout revokes the session.
 5. Verify the ClickHouse reader can query the analytics database and cannot use the admin credential from the API or browser.
 6. Verify public TLS routes only after internal smoke passes. Keep the MCP inspector local-only and keep `MCP_ALLOW_REVENUE=false` unless separately approved.
@@ -205,7 +215,10 @@ Run this gate only after the target staging host, approved application ref, and 
 3. If a schema or data migration is involved, restore the recorded app SQLite, ETL watermark, and analytics backups only after confirming the target backup and migration compatibility.
 4. Re-run the internal health, auth, branch-scope, ClickHouse-reader, Airflow, and Superset smoke checks. Record the result in the change ticket before closing the incident.
 
-Production deployment, production migration, and live machine actions are outside this gate and require a separate explicit approval.
+This gate documents how a production change is made; it does not authorize
+one. Any production deployment, production migration, live telemetry ingestion,
+machine command, or payment write requires a separate explicit user request,
+the recorded rollback ref, and the post-change smoke checks above.
 
 ## Troubleshooting quick reference
 

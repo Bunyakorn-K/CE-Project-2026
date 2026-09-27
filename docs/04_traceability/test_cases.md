@@ -2,11 +2,16 @@
 
 **Document Purpose:** Map MVP and Phase 2 user stories to current local test
 coverage without claiming that every target function is complete. A local test
-pass is not staging, LINE, browser E2E, or production evidence.
+pass is not production, LINE, or browser E2E evidence.
 
 ## Commands and current evidence
 
-Repository verification uses Node.js 24.13.0 and pnpm 10.33.4.
+Repository verification targets the Node.js 24.x line (see `.nvmrc`, which CI
+reads via `node-version-file`) and pnpm 10.33.4, which is exact because
+`packageManager: "pnpm@10.33.4"` is corepack-enforced. The Node range is
+documented, not enforced locally: no `package.json` declares `engines`, and
+`apps/web/Dockerfile` builds from the floating `node:24-bookworm-slim` tag. The
+2026-09-27 run below used Node 24.21.0, within the 24.x line.
 
 ```bash
 pnpm test
@@ -14,8 +19,10 @@ pnpm check
 pnpm build
 ```
 
-Current local automated result (2026-09-25): **181 tests green** —
-**142 API**, **2 web**, and **37 ETL**. The following focused checks also pass:
+Current local automated result (2026-09-27): **180 tests green** —
+**142 API**, **1 web**, and **37 ETL**. Web fell from 2 because the dead-code
+deletion removed `dashboard-metrics.test.ts`. The following focused checks also
+pass:
 
 ```bash
 pnpm --filter @laundrytwin/api check
@@ -25,8 +32,8 @@ pnpm --filter @laundrytwin/web build
 pnpm --filter @laundrytwin/etl test
 ```
 
-The 181-test result is local automated evidence. Do not use it to claim staging,
-LINE authentication, browser, or production E2E verification. Screenshot and
+The 180-test result is local automated evidence. Do not use it to claim
+production, LINE authentication, or browser E2E verification. Screenshot and
 browser QA of the active web router remain pending.
 
 ## TC Matrix (US → local evidence)
@@ -79,7 +86,7 @@ coin-box estimator and verified reset path are not implemented.
 | TC-04.4 | Dashboard and Twin dates | Dates are strict `YYYY-MM-DD` calendar ranges and are not interpolated into SQL | Automated in `index.test.ts`, `scope.test.ts`, `clickhouse-report.test.ts` |
 | TC-04.5 | Analytics v1 routes | Session, zero-grant, branch-scope, and range gates run before ClickHouse | Automated in analytics route/scope tests |
 
-Production dashboard and staging evidence are not claimed.
+Production dashboard evidence is not claimed.
 
 ### US-05 — Scoped Executive Assistant (F-11, F-07) · MVP
 
@@ -165,9 +172,9 @@ requirements remain partial or unverified.
 | Package | Count | Scope |
 | :--- | ---: | :--- |
 | `apps/api` | 142 | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
-| `apps/web` | 2 | Local web formatting/unit coverage; active-router screenshot/browser QA is pending |
+| `apps/web` | 1 | Development API proxy configuration; active-router screenshot/browser QA is pending |
 | `apps/etl` | 37 | Schema, transform, null preservation, watermark/idempotency, ETL run, and weather collection |
-| **Total** | **181** | **Local automated evidence only** |
+| **Total** | **180** | **Local automated evidence only** |
 
 ## Maintenance rules
 
@@ -175,6 +182,6 @@ requirements remain partial or unverified.
   isolation, date validation, revenue redaction, unknown-state preservation, and
   MCP scope boundaries.
 - Re-run the focused package checks before committing; do not convert a local
-  pass into a staging, LINE, browser, or production claim without evidence.
+  pass into a production, LINE, or browser claim without evidence.
 - Phase 2 rows remain partial or baseline until their target acceptance criteria
   and deployment/manual evidence exist.

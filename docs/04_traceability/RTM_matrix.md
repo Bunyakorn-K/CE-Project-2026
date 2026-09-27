@@ -41,7 +41,7 @@ future per-position data. The current `fact_weather_sample` key is
 
 - Before building a feature, find its `F-ID`, `R-ID`, and `US-ID` here and
   confirm the authoritative function name in `system_functions.md`.
-- A local test result does not prove staging, LINE, or browser E2E behavior.
+- A local test result does not prove production, LINE, or browser E2E behavior.
 - Mark partial coverage as partial when the implementation does not satisfy the
   full acceptance criteria or lacks a complete audit/evidence path.
 

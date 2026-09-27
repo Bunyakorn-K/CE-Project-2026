@@ -16,8 +16,15 @@ explicitly requested.
   evidence and acknowledgement, owner-only admin access/grants, AI settings and
   history, owner-only Playground, legal navigation, and LIFF error retry.
 - Screenshot/browser QA is still pending. LINE/browser E2E is not verified.
-- Local automated evidence is 181 tests: API 142, web 2, ETL 37. The API check,
-  web check/test/build, and ETL test pass under Node.js 24.13.0.
+- Local automated evidence is 180 tests: API 142, web 1, ETL 37 (re-run
+  2026-09-27 after the dead-code deletion). The API check,
+  web check/test/build, and ETL test pass. That re-run used Node.js 24.21.0 and
+  pnpm 10.33.4, both within what the project targets. The Node 24.x range lives
+  in `.nvmrc`, which CI reads via `node-version-file`; the pnpm version is exact
+  and corepack-enforced by `packageManager: "pnpm@10.33.4"`. No `package.json`
+  declares `engines`, and `apps/web/Dockerfile` builds from the floating
+  `node:24-bookworm-slim` tag, so nothing local enforces a narrower Node
+  version.
 - Better Auth requires `BETTER_AUTH_SECRET` outside tests, disables public
   signup, and enables rate limits. Development bypass requires both
   `NODE_ENV=development` and `LAUNDRYTWIN_DEV_BYPASS=true`, creates an in-memory

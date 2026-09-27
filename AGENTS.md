@@ -123,6 +123,13 @@ apps/etl/   Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather) +
 deploy/     Docker and Nginx deployment files (analytics compose: ClickHouse, Superset, Airflow, Postgres, Redis)
 ```
 
+Deployment scope: LaundryTwin has two deployment tiers — local (env files plus
+the `dev` run mode) and production on the existing VM
+(`docs/02_architecture/deploy-runbook.md`). `dev` is a local run mode
+(`pnpm dev`, `NODE_ENV=development` + `LAUNDRYTWIN_DEV_BYPASS=true`), not a
+deployed environment. There is no staging environment, and no staging rollout
+should be planned or described as pending work.
+
 The current LaundryTwin paths are:
 
 ```text
@@ -143,8 +150,7 @@ The direct ClickHouse report endpoints have local code/test evidence for
 server-side branch scope, zero-grant denial, strict calendar ranges, bound
 ClickHouse parameters, nullable revenue redaction, active-inventory retention,
 usage-derived freshness, and unknown-state preservation. Treat that as local
-verification only; production E2E, staging behavior, and LINE/browser E2E are
-still pending.
+verification only; production, LINE, and browser E2E are still pending.
 
 The weather collector (`laundrytwin-weather-1` on VM 117) runs
 hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts
@@ -216,11 +222,16 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 ## Verification
 
-Use Node.js 24.13.0 and pnpm 10.33.4.
+Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on 2026-09-25: **181 tests green** — API 142, web 2,
-ETL 37. `pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL
-test pass. This does not establish staging, LINE, browser, or production E2E.
+Local automated evidence on 2026-09-27: **180 tests green** — API 142, web 1,
+ETL 37 (web fell from 2 because the dead-code deletion removed
+`dashboard-metrics.test.ts`). That run used Node 24.21.0, which is within the
+supported 24.x line; no `package.json` declares `engines` and the Dockerfiles
+build from the floating `node:24-bookworm-slim` tag, so nothing local enforces
+a narrower Node version. `pnpm --filter @laundrytwin/api check`, web
+check/test/build, and ETL test pass. This does not establish production, LINE,
+or browser E2E.
 
 ```bash
 pnpm test
