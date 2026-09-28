@@ -26,7 +26,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         # version comes from package.json "packageManager"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Node 24.x, resolved from .nvmrc so the pin lives in one place.
           # Must come after pnpm/action-setup: the cache input shells out to
