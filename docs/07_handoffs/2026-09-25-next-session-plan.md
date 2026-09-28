@@ -10,10 +10,11 @@
 
 LaundryTwin security, reporting, MCP authorization, active web workflows, deployment configuration, and documentation changes are implemented locally. The reviewed checkpoints `2b19a82`, `75c87b6`, `cc57a17`, and `fe118da` are pushed to `origin/main`. This change set performed no deployment, no production migration, and no live machine action, and left the existing VM 117 deployment documented in `README.md` and `docs/02_architecture/deploy-runbook.md` unchanged. The 2026-09-28 session likewise performed no deployment, no production migration, and no live machine action, and pushed nothing. That statement is about what this work did, not about the state of the world: a production deployment does exist.
 
-Working tree was clean at the reviewed checkpoint `fe118da` (current `origin/main` HEAD). It was not clean for most of the 2026-09-28 session and is clean again now. The uncommitted change set that this document originally described — ten modified tracked files plus four tracked files staged for deletion as dead code — has been committed as seven commits, all on `main` and **none pushed**:
+Working tree was clean at the reviewed checkpoint `fe118da` (current `origin/main` HEAD). It was not clean for most of the 2026-09-28 session and is clean again now. `origin/main` is still at `fe118da`, so **nine commits are unpushed**, not the four below: `eb5dd2a` (the dead-code deletion) plus the seven 2026-09-28 commits listed here.
 
 | Commit | Subject |
 | :--- | :--- |
+| `eb5dd2a` | `chore(repo): drop staging tier, remove dead web code, relax Node pin` |
 | `9745d80` | `fix(web,etl,api): browser-QA defect fixes, playground branch scope, ETL clock, seed script` |
 | `d8e5af8` | `fix(api): drop nonexistent branch_code from the branch report query` |
 | `0a58da1` | `fix(web): collapse nav into the hamburger between 640px and 1019px` |
@@ -22,7 +23,7 @@ Working tree was clean at the reviewed checkpoint `fe118da` (current `origin/mai
 | `70f5e5d` | `fix(web): collapse the inline nav below 1171px, not 1041px` |
 | `183fbb0` | `test(web): add a Playwright layout regression suite for the shell` |
 
-The dead-code deletion (`apps/web/src/App.tsx`, `apps/web/src/auth-client.ts`, `apps/web/src/dashboard-metrics.ts`, `apps/web/src/dashboard-metrics.test.ts`) is in `eb5dd2a`, which is already pushed. The work described as "still open" later in this document is now largely closed: browser visual QA ran, and the layout behaviour is pinned by a committed test suite. `core.hooksPath` is now set to `.githooks` in this working copy (it was unset, so the gitleaks hooks had not been running); that is local git config and is not committed.
+The dead-code deletion (`apps/web/src/App.tsx`, `apps/web/src/auth-client.ts`, `apps/web/src/dashboard-metrics.ts`, `apps/web/src/dashboard-metrics.test.ts`) is in `eb5dd2a`, which is **local only, not pushed** — `git branch -r --contains eb5dd2a` returns nothing. The work described as "still open" later in this document is now largely closed: browser visual QA ran, and the layout behaviour is pinned by a committed test suite. `core.hooksPath` is now set to `.githooks` in this working copy (it was unset, so the gitleaks hooks had not been running); that is local git config and is not committed.
 
 ## Verified Locally
 
@@ -139,11 +140,11 @@ the browser QA imply any of it.
 
 ## Recommended Commit And Push
 
-The 2026-09-28 change set is now committed as the seven commits listed under
-Current State. **None of them has been pushed.** `origin/main` is still at the
-reviewed checkpoint `fe118da`. Pushing is a separate decision that was
-deliberately not taken, so the next session should not assume the remote has
-any of this work.
+The 2026-09-28 change set is now committed. **Nothing after `fe118da` has been
+pushed**: `origin/main` is still at the reviewed checkpoint `fe118da`, and
+`git log --oneline origin/main..HEAD` lists nine commits from `eb5dd2a`
+onward. Pushing is a separate decision that was deliberately not taken, so the
+next session should not assume the remote has any of this work.
 
 Before pushing, or before staging any further change:
 
@@ -185,8 +186,10 @@ The gate does not authorize the apply. A production deployment, production migra
 - [x] Review and commit the reviewed change groups through checkpoint `fe118da`
 - [x] Push the reviewed commits to the intended remote branch
 - [x] Run browser visual QA at mobile and desktop widths (2026-09-28, Chromium)
-- [x] Commit the 2026-09-28 change set as seven commits
-- [ ] **Push the 2026-09-28 commits** — `9745d80` through `183fbb0` are local only
+- [x] Commit the 2026-09-28 change set as seven commits (plus `eb5dd2a`, which
+      was already local before this session)
+- [ ] **Push the nine local commits** — `eb5dd2a` through `afc3a6d`;
+      `origin/main` is still at `fe118da`
 - [ ] Verify the LINE flow separately; `VITE_LIFF_ID` is empty, so it has never run
 - [ ] Add a CI workflow and wire in `pnpm test`, `pnpm check`, and `test:layout`
 - [ ] Extend the layout suite beyond Chromium (WebKit, Firefox)
