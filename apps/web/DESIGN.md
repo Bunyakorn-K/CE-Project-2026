@@ -178,7 +178,7 @@ The palette is a quiet operational neutral field with one recurring teal action 
 
 ## Layout
 
-The application uses a responsive content frame with a `24px` desktop gutter, `16px` mobile gutter, and a `1280px` maximum width. The top navigation is `72px` high on desktop and tablet, and `64px` on mobile; the inline navigation fits on one line only at `1041px` and above, so between `1020px` and `1040px` the links wrap and the bar grows past its `72px` minimum. The application shell is sticky, while page content provides the main scroll context.
+The application uses a responsive content frame with a `24px` desktop gutter, `16px` mobile gutter, and a `1280px` maximum width. The top navigation is `72px` high on desktop and tablet, and `64px` on mobile; the inline navigation begins at `1041px` and narrower viewports use the menu control instead of wrapping the links. The owner header's intrinsic width is `1159.03px` (brand, six nav links, account block, gaps, and `48px` of padding), so the inline nav only reaches a single `72px` line at `1172px` and above; between `1042px` and `1171px` it still wraps and grows the bar to `83px`–`102.5px`. The application shell is sticky, while page content provides the main scroll context.
 
 Page sections use a `24px` rhythm. KPI grids collapse from four columns to two at tablet widths; they remain two columns on larger mobile viewports and become one column at `420px`. Branch and machine grids use two columns on tablet and one column on mobile. Dashboard/Twin switching uses HeroUI `Tabs` and preserves separate operational meanings for the business overview and Digital Twin.
 
@@ -245,8 +245,8 @@ HeroUI v3 provides the interaction primitives. Local CSS tokens supply the Laund
 
 ### Navigation
 - **Style:** Sticky white top bar with `LT` mark, LaundryTwin wordmark, “Operations workspace” context, and inline SVG icons.
-- **Desktop (≥ `1020px`):** Horizontal navigation with active quiet-teal background and border. The widest role (owner, six links) needs `1017px` of viewport before the bar can stop scrolling, so this mode cannot be compressed into a narrower band.
-- **Tablet (`640–1019px`):** The compact menu control replaces the inline navigation. The account name and sign-out stay in the bar, so sign-out never depends on opening the panel.
+- **Desktop (≥ `1041px`):** Horizontal navigation with active quiet-teal background and border. The header's intrinsic width is `1159.03px`, so this mode cannot be compressed into a narrower band; it only renders on one `72px` line from `1172px`.
+- **Tablet (`640–1040px`):** The compact menu control replaces the inline navigation. The account name and sign-out stay in the bar, so sign-out never depends on opening the panel.
 - **Mobile (≤ `639px`):** Same menu control, with the account name dropped and sign-out reduced to a `36px` icon button.
 - **Sign-out:** uses a logout icon and does not duplicate admin navigation.
 - **Public:** Login, Privacy, and Terms render outside the authenticated operations shell.

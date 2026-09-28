@@ -1098,12 +1098,17 @@ main {
   }
 }
 
-/* The owner header needs 1017px before it can scroll: brand 203 + nav 533 +
-   account 208 + 2x24 gaps, with 24px of the right padding absorbed. Nothing in
-   that row can shrink (`.brand-lockup` is min-width max-content, `.primary-nav`
-   has no min-width 0), so every viewport below 1017px overflows. Collapse the
-   nav into the existing hamburger below 1017 + 2. */
-@media (max-width: 1019px) {
+/* The owner header's intrinsic width is 1159.03px (brand 203.25 + 24 + nav 611 +
+   24 + account 248.78 + 2x24 padding), and the inline nav only sits on one 72px
+   line from a 1172px viewport up. The superseded 1019 threshold used 1017, which
+   is where the bar stops scrolling, not the width it needs, so 1020-1040 rendered
+   the nav compressed at 102.5px. Nothing in that row can shrink (`.brand-lockup`
+   is min-width max-content, `.primary-nav` has no min-width 0), so 1041 is the
+   approved collapse point and closes only the 1020-1040 band: the bar still grows
+   to 102.5px from 1042 to 1091 and 83px from 1092 to 1171. Reuse the 639px
+   block's two declarations verbatim; `.account-actions` is content-sized and
+   nests `.mobile-nav`, so `margin-left: 0` on it strands the hamburger. */
+@media (max-width: 1041px) {
   .primary-nav {
     display: none;
   }
