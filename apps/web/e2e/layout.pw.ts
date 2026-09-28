@@ -203,6 +203,48 @@ test.describe("admin grants layout", () => {
     }
   });
 
+  test("keeps human-readable card values in the body font and identifiers monospace", async ({ page }) => {
+    // The card list was reusing `.request-identity`, whose rules set 10px
+    // monospace labels and 11px monospace values, so a grant's user name, role
+    // and branch name rendered as data. DESIGN.md's measurement rule allows
+    // monospace for identifiers, timestamps and measurements only. This reads
+    // the computed style rather than the stylesheet, because the defect was a
+    // cascade-layer problem: Tailwind's `font-sans text-sm` inside
+    // `.request-identity` is silently defeated by the unlayered rules, so a
+    // source-level assertion would pass while the defect was still on screen.
+    await setViewport(page, 390);
+    await gotoAuthenticated(page, "/admin");
+
+    const fields = await page.locator("[data-grant-card]").first().evaluate((card) => {
+      const read = (el: Element) => {
+        const style = getComputedStyle(el);
+        return { text: el.textContent ?? "", family: style.fontFamily, size: parseFloat(style.fontSize) };
+      };
+      const groups = [...card.querySelectorAll("div > div")];
+      return groups.map((group) => ({
+        label: read(group.querySelector("span")!),
+        values: [...group.querySelectorAll("strong, small")].map(read)
+      }));
+    });
+
+    // One group per field: user (name + email), role, scope, granted-at.
+    expect(fields).toHaveLength(4);
+    for (const { label } of fields) {
+      expect(label.size, `label "${label.text}" is below 12px`).toBeGreaterThanOrEqual(12);
+    }
+    // Name, role and scope are prose the owner reads, so body font at 12px or
+    // more. The email, the branch UUID and the granted-at timestamp are the
+    // identifier and timestamp cases the rule keeps in monospace.
+    for (const value of [fields[0].values[0], fields[1].values[0], fields[2].values[0]]) {
+      expect(value.family, `"${value.text}" is set in monospace`).not.toContain("monospace");
+      expect(value.size, `"${value.text}" is only ${value.size}px`).toBeGreaterThanOrEqual(12);
+    }
+    for (const value of [fields[0].values[1], fields[3].values[0]]) {
+      expect(value.family, `"${value.text}" lost its monospace data treatment`).toContain("monospace");
+      expect(value.size, `"${value.text}" is only ${value.size}px`).toBeGreaterThanOrEqual(12);
+    }
+  });
+
   test("does not overflow horizontally on the admin page at any width", async ({ page }) => {
     // The table has five columns, so it is the most likely place for a new
     // overflow regression to appear. `.table-scroll` is allowed to scroll

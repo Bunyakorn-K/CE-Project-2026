@@ -1798,6 +1798,43 @@ main {
   overflow-wrap: anywhere;
 }
 
+/* Grants card, shown below the 768px table breakpoint. The table it replaces
+   renders these four fields in the body font, so the card has to as well:
+   reusing `.request-identity` here put the user name, role label and branch
+   name in 10-11px monospace, which the measurement rule reserves for
+   identifiers and measurements. These rules are unlayered and card-scoped, so
+   they beat `@layer utilities` by cascade layer rather than by specificity. */
+.grant-facts {
+  display: grid;
+  gap: 12px;
+}
+
+.grant-facts > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.grant-facts span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.grant-value {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* The email, an unresolved branch UUID and the granted-at timestamp keep the
+   data treatment, one step up from the 11px table tier because this card is a
+   touch-sized surface. */
+.grant-facts .data-code {
+  font-size: 12px;
+}
+
 .grant-fields {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) auto;

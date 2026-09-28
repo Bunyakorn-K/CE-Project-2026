@@ -101,7 +101,14 @@ export function AdminHome() {
   }
 
   const branches = branchesQuery.data?.branches ?? [];
-  const branchName = (id: string | null) => id === null ? "ทั้งผู้ใช้งาน" : branches.find((branch) => branch.id === id)?.name ?? id;
+  // A grant whose branch is not in the active list shows the raw UUID, which the
+  // measurement rule renders as an identifier; a resolved branch name does not.
+  const branchScope = (id: string | null): { label: string; isCode: boolean } => {
+    if (id === null) return { label: "ทั้งผู้ใช้งาน", isCode: false };
+    const branch = branches.find((candidate) => candidate.id === id);
+    return { label: branch?.name ?? id, isCode: branch === undefined };
+  };
+  const branchName = (id: string | null) => branchScope(id).label;
 
   return (
     <div className="page-content">
@@ -148,17 +155,20 @@ export function AdminHome() {
           {grantsQuery.data && grantsQuery.data.grants.length === 0 && <div className="state-message">ไม่มีสิทธิ์ที่ใช้งานอยู่</div>}
           <div className="md:hidden">
             <ul className="admin-list" aria-label="สิทธิ์ที่ใช้งานอยู่">
-              {grantsQuery.data?.grants.map((grant) => (
-                <li key={grant.id} data-grant-card className="access-request-form">
-                  <div className="request-identity">
-                    <div><span>ผู้ใช้</span><strong>{grant.userName}</strong><small className="data-code">{grant.userEmail}</small></div>
-                    <div><span>บทบาท</span><strong>{roleLabel(grant.role)}</strong></div>
-                    <div><span>ขอบเขต</span><strong>{branchName(grant.branchId)}</strong></div>
-                    <div><span>ให้สิทธิ์เมื่อ</span><strong>{formatDate(grant.grantedAt)}</strong></div>
-                  </div>
-                  <button type="button" className="danger-button w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
-                </li>
-              ))}
+              {grantsQuery.data?.grants.map((grant) => {
+                const scope = branchScope(grant.branchId);
+                return (
+                  <li key={grant.id} data-grant-card className="access-request-form">
+                    <div className="grant-facts">
+                      <div><span>ผู้ใช้</span><strong className="grant-value">{grant.userName}</strong><small className="data-code">{grant.userEmail}</small></div>
+                      <div><span>บทบาท</span><strong className="grant-value">{roleLabel(grant.role)}</strong></div>
+                      <div><span>ขอบเขต</span><strong className={scope.isCode ? "data-code" : "grant-value"}>{scope.label}</strong></div>
+                      <div><span>ให้สิทธิ์เมื่อ</span><strong className="data-code">{formatDate(grant.grantedAt)}</strong></div>
+                    </div>
+                    <button type="button" className="danger-button w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
           <div className="table-scroll hidden md:block">
