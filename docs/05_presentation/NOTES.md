@@ -15,9 +15,13 @@ explicitly requested.
   source/freshness/availability states, analytics series and tables, alert
   evidence and acknowledgement, owner-only admin access/grants, AI settings and
   history, owner-only Playground, legal navigation, and LIFF error retry.
-- Screenshot/browser QA is still pending. LINE/browser E2E is not verified.
-- Local automated evidence is 180 tests: API 142, web 1, ETL 37 (re-run
-  2026-09-27 after the dead-code deletion). The API check,
+- Screenshot/browser QA was performed 2026-09-28 (390/430/1440 plus a
+  320-1920 width sweep, against a locally seeded ClickHouse) and found and
+  fixed real defects. It is still manual, Chromium-only, and leaves no
+  committed visual baseline. LINE/browser E2E is not verified.
+- Local automated evidence is 227 tests: API 152, web 38, ETL 37 (re-run
+  2026-09-28). A separate Playwright layout suite adds 10 more tests outside
+  `pnpm test`. The API check,
   web check/test/build, and ETL test pass. That re-run used Node.js 24.21.0 and
   pnpm 10.33.4, both within what the project targets. The Node 24.x range lives
   in `.nvmrc`, which CI reads via `node-version-file`; the pnpm version is exact

@@ -216,11 +216,14 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on 2026-09-27: **180 tests green** — API 142, web 1,
-ETL 37 (web fell from 2 because the dead-code deletion removed
-`dashboard-metrics.test.ts`). That run used Node 24.21.0, which is within the
-supported 24.x line. `pnpm --filter @laundrytwin/api check`, web check/test/build,
-and ETL test pass. This does not establish production, LINE, or browser E2E.
+Local automated evidence on 2026-09-28: **227 tests green** — API 152, web 38,
+ETL 37 (web had fallen to 1 after the dead-code deletion removed
+`dashboard-metrics.test.ts`; it is now 38). That run used Node 24.21.0, which is
+within the supported 24.x line. `pnpm --filter @laundrytwin/api check`, web
+check/test/build, and ETL test pass. Manual browser QA of the active router was
+performed on 2026-09-28 and found real defects, but it is manual, Chromium-only,
+and leaves no committed visual baseline. This does not establish production, LINE,
+or browser E2E.
 
 ```bash
 pnpm test

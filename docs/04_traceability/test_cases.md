@@ -19,9 +19,10 @@ pnpm check
 pnpm build
 ```
 
-Current local automated result (2026-09-27): **180 tests green** —
-**142 API**, **1 web**, and **37 ETL**. Web fell from 2 because the dead-code
-deletion removed `dashboard-metrics.test.ts`. The following focused checks also
+Current local automated result (2026-09-28): **227 tests green** —
+**152 API**, **38 web**, and **37 ETL**. Web had fallen to 1 after the
+dead-code deletion removed `dashboard-metrics.test.ts`; it is now 38.
+The following focused checks also
 pass:
 
 ```bash
@@ -32,9 +33,20 @@ pnpm --filter @laundrytwin/web build
 pnpm --filter @laundrytwin/etl test
 ```
 
-The 180-test result is local automated evidence. Do not use it to claim
-production, LINE authentication, or browser E2E verification. Screenshot and
-browser QA of the active web router remain pending.
+The 227-test result is local automated evidence. Do not use it to claim
+production, LINE authentication, or browser E2E verification. Manual
+screenshot and browser QA of the active web router was performed on
+2026-09-28 at 390/430/1440 plus a 320–1920 width sweep, against a locally
+seeded ClickHouse, and found the real defects listed in the 2026-09-25
+handoff; it is still manual QA with no committed visual baseline, and it
+covered Chromium only.
+
+Responsive layout additionally has a committed Playwright suite,
+`apps/web/e2e/layout.pw.ts` (**10 tests**, `pnpm --filter
+@laundrytwin/web test:layout`). It is deliberately **not** part of `pnpm
+test` — specs are named `*.pw.ts` so vitest's glob cannot collect them — and
+is not counted in the 227 above. It runs against the built bundle with a
+stubbed API and needs no API process, ClickHouse, or SQLite.
 
 ## TC Matrix (US → local evidence)
 
@@ -172,10 +184,13 @@ requirements remain partial or unverified.
 
 | Package | Count | Scope |
 | :--- | ---: | :--- |
-| `apps/api` | 142 | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
-| `apps/web` | 1 | Development API proxy configuration; active-router screenshot/browser QA is pending |
+| `apps/api` | 152 | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
+| `apps/web` | 38 | Development API proxy configuration, branch scope, machine status mapping, dashboard view formatting, plus manual browser QA of the active router (2026-09-28) |
 | `apps/etl` | 37 | Schema, transform, null preservation, watermark/idempotency, ETL run, and weather collection |
-| **Total** | **180** | **Local automated evidence only** |
+| **Total** | **227** | **Local automated evidence only** |
+
+A separate Playwright layout suite adds 10 more tests outside `pnpm test`
+(see the note above); those are also local automated evidence only.
 
 ## Maintenance rules
 
