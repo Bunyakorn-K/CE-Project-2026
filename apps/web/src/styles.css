@@ -1099,16 +1099,27 @@ main {
 }
 
 /* The owner header's intrinsic width is 1159.03px (brand 203.25 + 24 + nav 611 +
-   24 + account 248.78 + 2x24 padding), and the inline nav only sits on one 72px
-   line from a 1172px viewport up. The superseded 1019 threshold used 1017, which
-   is where the bar stops scrolling, not the width it needs, so 1020-1040 rendered
-   the nav compressed at 102.5px. Nothing in that row can shrink (`.brand-lockup`
-   is min-width max-content, `.primary-nav` has no min-width 0), so 1041 is the
-   approved collapse point and closes only the 1020-1040 band: the bar still grows
-   to 102.5px from 1042 to 1091 and 83px from 1092 to 1171. Reuse the 639px
-   block's two declarations verbatim; `.account-actions` is content-sized and
-   nests `.mobile-nav`, so `margin-left: 0` on it strands the hamburger. */
-@media (max-width: 1041px) {
+   24 + account 248.78 + 2x24 padding), so the inline nav only sits on one 72px
+   line from a 1172px viewport up and the collapse has to run through 1171. The
+   superseded 1041 threshold (before that 1019) came from treating 1040.78 as the
+   header width, which is only where the bar stops needing to scroll: 1042-1091
+   rendered three nav line boxes and grew the bar to 102.5px, and 1092-1171 two
+   line boxes at 83px. Nothing in that row can shrink (`.brand-lockup` is
+   min-width max-content, `.primary-nav` has no min-width 0).
+
+   1172 is a measurement, not a constant. It was taken in Chromium on this machine
+   with Noto Sans Thai metrics and the dev-bypass owner name `Development Owner`
+   (`.account-name` 122.5px of the 248.78px account block). `.account-name` is
+   capped at 130px but is otherwise driven by the signed-in user's name, and a
+   non-owner header carries three nav links rather than six, so a different name,
+   a shorter name, a different font stack, or fewer links all move the width the
+   inline nav needs and therefore this threshold. Re-measure before trusting it
+   elsewhere.
+
+   Reuse the 639px block's two declarations verbatim; `.account-actions` is
+   content-sized and nests `.mobile-nav`, so `margin-left: 0` on it strands the
+   hamburger mid-header. */
+@media (max-width: 1171px) {
   .primary-nav {
     display: none;
   }
