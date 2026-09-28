@@ -16,8 +16,9 @@ jobs:
   verify:
     name: Test / Check / Build (Node 24)
     runs-on: ubuntu-latest
-    # test + check + build + a Chromium build and 10 layout tests. The layout
-    # step has its own, tighter budget; this is the backstop for a hung build.
+    # test + check + build, plus installing Chromium and running the layout
+    # suite. The layout step has its own, tighter budget; this is the backstop
+    # for a hung build.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +55,8 @@ jobs:
 
       # `webServer` in playwright.config.ts runs `pnpm build && vite preview`
       # and allows 180s for it, so 10 minutes for the whole step leaves room for
-      # the browser download-free run, 6 workers and 1 CI retry.
+      # the browser run, 6 workers and the 1 retry the config enables when CI
+      # is set.
       #
       # FONT WARNING, read before "fixing" a red run here. The suite asserts the
       # topbar is exactly 72px at 1172px, and the owner header's intrinsic width
