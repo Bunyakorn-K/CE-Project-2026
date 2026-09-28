@@ -266,7 +266,6 @@ describe("LaundryTwin API", () => {
         {
           branch_id: "branch-01",
           branch_name: "Branch 01",
-          branch_code: "01",
           timezone: "Asia/Bangkok",
           active: "1"
         }

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ClickHouseExecutor } from "../analytics/clickhouse";
-import { buildMachineStateSQL, queryBranches, queryDashboard, queryMachineStates } from "./clickhouse-report";
+import {
+  buildBranchSQL,
+  buildMachineStateSQL,
+  queryBranches,
+  queryDashboard,
+  queryMachineStates
+} from "./clickhouse-report";
 
 function fakeExecutor(rows: Record<string, unknown>[]): ClickHouseExecutor {
   return vi.fn().mockResolvedValue(rows) as unknown as ClickHouseExecutor;
@@ -26,7 +32,6 @@ describe("machine floor report", () => {
       {
         branch_id: "branch-01",
         branch_name: "Branch 01",
-        branch_code: "01",
         timezone: "Asia/Bangkok",
         active: "1"
       }
@@ -36,7 +41,6 @@ describe("machine floor report", () => {
       {
         branchId: "branch-01",
         branchName: "Branch 01",
-        branchCode: "01",
         timezone: "Asia/Bangkok",
         active: true
       }
@@ -147,5 +151,28 @@ describe("machine floor report", () => {
         cycleCountSource: "unavailable"
       }
     ]);
+  });
+});
+
+describe("branch report", () => {
+  it("selects only dim_branch columns and binds the branch scope", () => {
+    const sql = buildBranchSQL();
+    const selectList = sql.match(/SELECT ([\s\S]+?)\sFROM/)?.[1];
+
+    // dim_branch is IRIS-mirrored (apps/etl/src/schema.ts DIM_BRANCH_COLUMNS):
+    // tenant_id, branch_id, branch_name, timezone, active, source_updated_at,
+    // extracted_at. There is no branch_code, and a manual column there is
+    // overwritten on the next sync. Mock rows used to fabricate one, so this
+    // query was never exercised against a real table.
+    expect(selectList?.split(",").map((column) => column.trim())).toEqual([
+      "branch_id",
+      "branch_name",
+      "timezone",
+      "active"
+    ]);
+    expect(sql).not.toContain("branch_code");
+    expect(sql).toContain("FROM dim_branch FINAL");
+    expect(sql).toContain("WHERE active = 1");
+    expect(sql).toContain("({branchId:String} = '' OR toString(branch_id) = {branchId:String})");
   });
 });

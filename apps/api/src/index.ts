@@ -235,7 +235,6 @@ export function createApp(dependencies: AppDependencies = {}) {
           fetchedAt: new Date().toISOString(),
           branches: branches.map((branch) => ({
             id: branch.branchId,
-            code: branch.branchCode,
             name: branch.branchName,
             timezone: branch.timezone,
             status: branch.active ? "active" : "inactive"

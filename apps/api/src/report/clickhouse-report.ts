@@ -22,7 +22,6 @@ type MachineUsageRow = {
 type BranchRow = {
   branch_id: string;
   branch_name: string;
-  branch_code: string | null;
   timezone: string;
   active: string | number;
 };
@@ -41,11 +40,11 @@ type MachineStateRow = {
 
 export function buildBranchSQL(): string {
   return `
-SELECT branch_id, branch_name, branch_code, timezone, active
+SELECT branch_id, branch_name, timezone, active
 FROM dim_branch FINAL
 WHERE active = 1
   AND ({branchId:String} = '' OR toString(branch_id) = {branchId:String})
-GROUP BY tenant_id, branch_id, branch_name, branch_code, timezone, active
+GROUP BY tenant_id, branch_id, branch_name, timezone, active
 ORDER BY branch_name`;
 }
 
@@ -102,7 +101,6 @@ SETTINGS join_use_nulls = 1`;
 export type BranchInfo = {
   branchId: string;
   branchName: string;
-  branchCode: string | null;
   timezone: string;
   active: boolean;
 };
@@ -161,7 +159,6 @@ export async function queryBranches(ch: ClickHouseExecutor, branchId?: string): 
   return rows.map((r) => ({
     branchId: r.branch_id,
     branchName: r.branch_name,
-    branchCode: r.branch_code,
     timezone: r.timezone,
     active: r.active === "1" || r.active === 1
   }));
