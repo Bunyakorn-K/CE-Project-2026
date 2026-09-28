@@ -10,7 +10,7 @@
 
 LaundryTwin security, reporting, MCP authorization, active web workflows, deployment configuration, and documentation changes are implemented locally. The reviewed checkpoints `2b19a82`, `75c87b6`, `cc57a17`, and `fe118da` are pushed to `origin/main`. This change set performed no deployment, no production migration, and no live machine action, and left the existing VM 117 deployment documented in `README.md` and `docs/02_architecture/deploy-runbook.md` unchanged. The 2026-09-28 session likewise performed no deployment, no production migration, and no live machine action, and pushed nothing. That statement is about what this work did, not about the state of the world: a production deployment does exist.
 
-Working tree was clean at the reviewed checkpoint `fe118da` (current `origin/main` HEAD). It was not clean for most of the 2026-09-28 session and is clean again now. `origin/main` is still at `fe118da`, so **nine commits are unpushed**, not the four below: `eb5dd2a` (the dead-code deletion) plus the seven 2026-09-28 commits listed here.
+Working tree was clean at the reviewed checkpoint `fe118da` (current `origin/main` HEAD). It was not clean for most of the 2026-09-28 session and is clean again now. `origin/main` is still at `fe118da`, so **everything after `fe118da` is local and unpushed** — `eb5dd2a` (the dead-code deletion) plus the seven 2026-09-28 commits listed here plus this document's own closeout commits. Count them with `git log --oneline origin/main..HEAD` rather than trusting a number written here: this document is itself one of those commits, so any count it states is already stale by one.
 
 | Commit | Subject |
 | :--- | :--- |
@@ -142,7 +142,7 @@ the browser QA imply any of it.
 
 The 2026-09-28 change set is now committed. **Nothing after `fe118da` has been
 pushed**: `origin/main` is still at the reviewed checkpoint `fe118da`, and
-`git log --oneline origin/main..HEAD` lists nine commits from `eb5dd2a`
+`git log --oneline origin/main..HEAD` lists every commit from `eb5dd2a`
 onward. Pushing is a separate decision that was deliberately not taken, so the
 next session should not assume the remote has any of this work.
 
@@ -188,8 +188,8 @@ The gate does not authorize the apply. A production deployment, production migra
 - [x] Run browser visual QA at mobile and desktop widths (2026-09-28, Chromium)
 - [x] Commit the 2026-09-28 change set as seven commits (plus `eb5dd2a`, which
       was already local before this session)
-- [ ] **Push the nine local commits** — `eb5dd2a` through `afc3a6d`;
-      `origin/main` is still at `fe118da`
+- [ ] **Push everything after `fe118da`** — check with
+      `git log --oneline origin/main..HEAD`; `origin/main` is still at `fe118da`
 - [ ] Verify the LINE flow separately; `VITE_LIFF_ID` is empty, so it has never run
 - [ ] Add a CI workflow and wire in `pnpm test`, `pnpm check`, and `test:layout`
 - [ ] Extend the layout suite beyond Chromium (WebKit, Firefox)
