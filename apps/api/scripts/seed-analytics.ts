@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import "../src/config";
 import { createClickHouseClient, type ClickHouseExecutor } from "../src/analytics/clickhouse";
 
@@ -21,9 +22,41 @@ function synthId(rand: () => number) {
   return `synthetic:${Math.floor(rand() * 1e12).toString(16).padStart(11, "0")}${counter}`;
 }
 
+// Same generator with a `synthetic-session:` prefix, for machine_session_id.
+// The `synthetic-` marker stays readable so anyone inspecting the column in
+// the warehouse can tell the value came from this script.
+function synthSessionId(rand: () => number) {
+  return synthId(rand).replace("synthetic:", "synthetic-session:");
+}
+
+// `fact_machine_usage.usage_id` is declared UUID in apps/etl/src/schema.ts, so
+// the `synthetic:` key cannot be written into it verbatim — ClickHouse rejects
+// the whole insert with Code 27 CANNOT_PARSE_INPUT_ASSERTION_FAILED. We keep
+// the synthetic key as the source of truth for the row and derive a well-formed
+// 128-bit id from it with md5. The derivation is pure (no clock, no RNG), so the
+// committed PRNG seed still reproduces byte-identical ids. `source_event_id`
+// stays a String column and keeps its `synthetic:` prefix, which is what
+// shouldRefuseSeed and the demo-dataSource labelling both key off.
+function synthUuid(key: string): string {
+  const hex = createHash("md5").update(key).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 export function shouldRefuseSeed(existingRealRowCount: number, force: boolean) {
   return existingRealRowCount > 0 && !force;
 }
+
+// `machine_session_id` is Nullable(String) in the warehouse and the ETL copies
+// it straight through from IRIS `attribution_machine_session_id`
+// (apps/etl/src/postgres.ts), so it is NULL whenever the source could not
+// attribute a cycle to a session. The dashboard `cycles` KPI counts DISTINCT
+// non-null session ids on paid/finished rows
+// (apps/api/src/report/clickhouse-report.ts), so a seed that leaves the column
+// NULL everywhere reports 0 cycles however full the table is. We attribute a
+// minority of cycles to a session and let the rest stay standalone: a session
+// groups a short run of cycles on one machine, and sessions never cross a day.
+const SESSION_CYCLE_RATE = 0.4;
+const MAX_CYCLES_PER_SESSION = 3;
 
 export function buildSeedRows(seed: number, days: number) {
   counter = 0;
@@ -52,24 +85,43 @@ export function buildSeedRows(seed: number, days: number) {
   }));
 
   const usage: Record<string, unknown>[] = [];
+  const openSessions = new Map<string, { id: string; cycles: number }>();
   const end = Date.UTC(2026, 7, 26);
   for (let dayOffset = days; dayOffset > 0; dayOffset -= 1) {
     const dayStart = end - dayOffset * 86_400_000;
     const dow = new Date(dayStart).getUTCDay();
     const cyclesToday = 20 + Math.floor(rand() * (dow === 0 || dow === 6 ? 30 : 15));
+    openSessions.clear();
     for (let i = 0; i < cyclesToday; i += 1) {
       const hourSkew = rand() < 0.55 ? 9 + Math.floor(rand() * 6) : 15 + Math.floor(rand() * 7);
       const startedAt = new Date(dayStart + hourSkew * 3_600_000 + Math.floor(rand() * 3_600_000));
       const durationMin = 30 + Math.floor(rand() * 40);
       const machine = machines[Math.floor(rand() * machines.length)]!;
       const amountSatang = (machine.machine_kind === "dryer" ? 2000 : 4000) + Math.floor(rand() * 500);
+      const usageKey = synthId(rand);
+      const machineKey = String(machine.machine_id);
+      let machineSessionId: string | null = null;
+      if (rand() < SESSION_CYCLE_RATE) {
+        const open = openSessions.get(machineKey);
+        if (open && open.cycles < MAX_CYCLES_PER_SESSION) {
+          open.cycles += 1;
+          machineSessionId = open.id;
+        } else {
+          const id = synthSessionId(rand);
+          openSessions.set(machineKey, { id, cycles: 1 });
+          machineSessionId = id;
+        }
+      } else {
+        // a standalone cycle closes any run of cycles for this machine
+        openSessions.delete(machineKey);
+      }
       usage.push({
         tenant_id: String(machine.tenant_id),
         branch_id: String(machine.branch_id),
         machine_id: String(machine.machine_id),
-        usage_id: synthId(rand),
-        source_event_id: synthId(rand),
-        machine_session_id: null,
+        usage_id: synthUuid(usageKey),
+        source_event_id: usageKey,
+        machine_session_id: machineSessionId,
         started_at: startedAt.toISOString().replace("T", " ").slice(0, 23),
         finished_at: new Date(startedAt.getTime() + durationMin * 60_000).toISOString().replace("T", " ").slice(0, 23),
         duration_min: durationMin,
@@ -77,6 +129,9 @@ export function buildSeedRows(seed: number, days: number) {
         program_name: ["quick", "standard", "heavy"][Math.floor(rand() * 3)],
         temp_level: machine.machine_kind === "dryer" ? "high" : ["cold", "warm", "hot"][Math.floor(rand() * 3)],
         amount_satang: Math.round(amountSatang),
+        // `finished` (Enum8 value 4) and `cancelled` (5) mirror a completed
+        // cycle; the dashboard counts revenue and cycles on statuses 2 and 4,
+        // so `finished` rows are the ones QA should see populate.
         status: rand() < 0.92 ? "finished" : "cancelled",
         initiated_via: rand() < 0.5 ? "liff" : "staff_v3",
         attribution_state: "exact",

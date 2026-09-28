@@ -241,7 +241,7 @@ function DashboardPage() {
           {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}
           {dashQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดข้อมูลแดชบอร์ด</div>}
           {dashQuery.isError && (
-            <div className="error-message" role="alert">
+            <div className="error-message flex flex-wrap items-center gap-3" role="alert">
               <span>ไม่สามารถโหลดข้อมูลแดชบอร์ดได้: {dashQuery.error.message}</span>
               <button type="button" className="secondary-button" onClick={() => void dashQuery.refetch()}>ลองใหม่</button>
             </div>
@@ -290,7 +290,7 @@ function DashboardPage() {
             {!validRange && <div className="error-message">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
             {twinQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดผังเครื่อง</div>}
             {twinQuery.isError && (
-              <div className="error-message" role="alert">
+              <div className="error-message flex flex-wrap items-center gap-3" role="alert">
                 <span>ไม่สามารถโหลดผังเครื่องได้: {twinQuery.error.message}</span>
                 <button type="button" className="secondary-button" onClick={() => void twinQuery.refetch()}>ลองใหม่</button>
               </div>

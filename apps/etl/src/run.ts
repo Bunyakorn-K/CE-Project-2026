@@ -13,6 +13,7 @@
 // missing branch/machine name.
 
 import type { ClickHouseClient } from "./clickhouse.js";
+import { nowUtc } from "./datetime.js";
 import type { MachineUsageSource } from "./postgres.js";
 import { CREATE_TABLES } from "./schema.js";
 import {
@@ -44,6 +45,8 @@ export type RunOptions = {
   usageBatchSize?: number;
   temperatureBatchSize?: number;
   sinceFallbackDays?: number;
+  /** Clock injection point for tests; defaults to the UTC wall clock. */
+  now?: Date;
 };
 
 export async function runEtl(options: RunOptions): Promise<EtlResult> {
@@ -53,7 +56,7 @@ export async function runEtl(options: RunOptions): Promise<EtlResult> {
 
   for (const ddl of CREATE_TABLES) await warehouse.execute(ddl);
 
-  const now = new Date();
+  const now = options.now ?? nowUtc();
   const extractedAt = now;
 
   // 1. Dims (full resync each run).

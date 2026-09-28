@@ -25,7 +25,14 @@ function fakeWarehouse(log: Array<{ op: string; args?: unknown }>): ClickHouseCl
   } as unknown as ClickHouseClient;
 }
 
-function usageRow(id: string, createdMinute: number): UsageRow {
+// Pinned run clock, threaded into every runEtl() call. Fixture rows are built as
+// offsets from this same instant, so the relative `now - 30 days` fallback
+// window always contains them regardless of when the suite actually runs.
+const NOW = new Date("2026-08-29T08:00:00.000Z");
+// Fixture "hour N" of 2026-08-29, expressed as an offset from the pinned clock.
+const atHour = (hour: number) => new Date(NOW.getTime() - (8 - hour) * 60 * 60 * 1000);
+
+function usageRow(id: string, createdHour: number): UsageRow {
   return {
     tenant_id: "ten1",
     branch_id: "br1",
@@ -33,7 +40,7 @@ function usageRow(id: string, createdMinute: number): UsageRow {
     usage_id: `usage-${id}`,
     program_id: 2,
     program_name: "standard",
-    started_at: new Date(`2026-08-29T${String(createdMinute).padStart(2, "0")}:00:00.000Z`),
+    started_at: atHour(createdHour),
     finished_at: null,
     duration_min: 40,
     amount_satang: 40000,
@@ -45,12 +52,12 @@ function usageRow(id: string, createdMinute: number): UsageRow {
     attribution_source: null,
     machine_session_id: null,
     source_event_id: id,
-    created_at: new Date(`2026-08-29T${String(createdMinute).padStart(2, "0")}:00:00.000Z`),
-    updated_at: new Date(`2026-08-29T${String(createdMinute).padStart(2, "0")}:05:00.000Z`),
+    created_at: atHour(createdHour),
+    updated_at: new Date(atHour(createdHour).getTime() + 5 * 60 * 1000),
   };
 }
 
-function tempRow(id: string, minute: number): TemperatureSampleRow {
+function tempRow(id: string, hour: number): TemperatureSampleRow {
   return {
     tenant_id: "ten1",
     branch_id: "br1",
@@ -58,8 +65,8 @@ function tempRow(id: string, minute: number): TemperatureSampleRow {
     event_id: id,
     seq: "1",
     frame_seq: null,
-    occurred_at: new Date(`2026-08-29T${String(minute).padStart(2, "0")}:00:00.000Z`),
-    ingested_at: new Date(`2026-08-29T${String(minute).padStart(2, "0")}:00:00.000Z`),
+    occurred_at: atHour(hour),
+    ingested_at: atHour(hour),
     temperature_f: 92,
     phase: "wash",
   };
@@ -135,7 +142,7 @@ describe("runEtl", () => {
     const source = fakeSource({ usages: [], temps: [] });
     const watermarks = fakeWatermarks();
 
-    const result = await runEtl({ source, warehouse, watermarks, sinceFallbackDays: 30 });
+    const result = await runEtl({ source, warehouse, watermarks, sinceFallbackDays: 30, now: NOW });
 
     expect(result).toEqual({ branchesLoaded: 1, machinesLoaded: 1, usagesLoaded: 0, temperaturesLoaded: 0 });
     const inserts = log.filter((l) => l.op === "insert");
@@ -160,7 +167,7 @@ describe("runEtl", () => {
     const source = fakeSource({ usages, temps });
     const watermarks = fakeWatermarks();
 
-    const result = await runEtl({ source, warehouse, watermarks, usageBatchSize: 5, temperatureBatchSize: 5, sinceFallbackDays: 30 });
+    const result = await runEtl({ source, warehouse, watermarks, usageBatchSize: 5, temperatureBatchSize: 5, sinceFallbackDays: 30, now: NOW });
 
     expect(result.usagesLoaded).toBe(2);
     expect(result.temperaturesLoaded).toBe(2);
@@ -187,6 +194,7 @@ describe("runEtl", () => {
       usageBatchSize: 5,
       temperatureBatchSize: 5,
       sinceFallbackDays: 30,
+      now: NOW,
     });
 
     // Second run: source returns nothing new because the fake filters by watermark.
@@ -199,6 +207,7 @@ describe("runEtl", () => {
       usageBatchSize: 5,
       temperatureBatchSize: 5,
       sinceFallbackDays: 30,
+      now: NOW,
     });
 
     expect(result.usagesLoaded).toBe(0);
@@ -224,6 +233,7 @@ describe("runEtl", () => {
       usageBatchSize: 2,
       temperatureBatchSize: 5,
       sinceFallbackDays: 30,
+      now: NOW,
     });
     expect(result.usagesLoaded).toBe(4);
     const usageInserts = log.filter(

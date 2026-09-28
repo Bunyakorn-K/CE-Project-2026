@@ -4,6 +4,7 @@ import { useAtom } from "jotai";
 import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
+import { branchScopeState, branchScopeView } from "../../lib/branch-scope";
 
 export const Route = createFileRoute("/_authenticated/playground")({
   component: PlaygroundPage
@@ -63,6 +64,13 @@ function PlaygroundPage() {
     enabled: isOwner
   });
 
+  const branchScope = branchScopeState({
+    isError: branchesQuery.isError,
+    isLoading: branchesQuery.isLoading,
+    branchCount: branchesQuery.data?.branches.length
+  });
+  const branchScopeCard = branchScopeView(branchScope);
+
   const selectedCheck = CHECKS.find((item) => item.key === check) ?? CHECKS[1];
   const checkQuery = useQuery({
     queryKey: ["playground", "analytics", check, branchId, range.from, range.to],
@@ -91,8 +99,12 @@ function PlaygroundPage() {
   return (
     <div className="page-content">
       <section className="surface-card surface-card--dark">
-        <h1>Playground ระบบ</h1>
-        <p>ตรวจสอบ health และ allow-listed analytics เท่านั้น · ไม่มี API explorer และไม่มีการรัน SQL อิสระ</p>
+        <div className="page-header">
+          <div>
+            <h1>Playground ระบบ</h1>
+            <p>ตรวจสอบ health และ allow-listed analytics เท่านั้น · ไม่มี API explorer และไม่มีการรัน SQL อิสระ</p>
+          </div>
+        </div>
       </section>
 
       <div className="view-switcher playground-tabs" role="tablist" aria-label="Playground sections">
@@ -108,7 +120,7 @@ function PlaygroundPage() {
             <HealthCard label="API" value={healthQuery.data.ok ? "ทำงาน" : "ไม่ทำงาน"} status={healthQuery.data.ok ? "พร้อมใช้งาน" : "ไม่พร้อมใช้งาน"} tone={healthQuery.data.ok ? "success" : "danger"} />
             <HealthCard label="ระบบรายงาน" value={healthQuery.data.reportingConfigured ? "ตั้งค่าแล้ว" : "ยังไม่ตั้งค่า"} status={healthQuery.data.reportingConfigured ? "พร้อมใช้งาน" : "ไม่พร้อมใช้งาน"} tone={healthQuery.data.reportingConfigured ? "success" : "warning"} />
             <HealthCard label="โหมด Demo" value={healthQuery.data.demoMode ? "เปิดอยู่" : "ปิดอยู่"} status={healthQuery.data.demoMode ? "ข้อมูลจำลอง" : "ข้อมูลจริงตามการตั้งค่า"} tone={healthQuery.data.demoMode ? "warning" : "neutral"} />
-            <HealthCard label="สาขาที่เข้าถึงได้" value={String(branchesQuery.data?.branches.length ?? "กำลังโหลด")} status="ขอบเขตจาก grant" tone="neutral" />
+            <HealthCard label="สาขาที่เข้าถึงได้" value={branchScopeCard.value} status={branchScopeCard.status} tone={branchScopeCard.tone} />
             <HealthCard label="บทบาท" value={roles || "ไม่มี grant"} status="จาก /api/me" tone="neutral" />
           </div>}
           {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}

@@ -124,7 +124,7 @@ function MachinesPage() {
 
       {branchesQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดสาขา</div>}
       {branchesQuery.isError && (
-        <div className="error-message" role="alert">
+        <div className="error-message flex flex-wrap items-center gap-3" role="alert">
           <span>ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</span>
           <button type="button" className="secondary-button" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
         </div>
@@ -132,7 +132,7 @@ function MachinesPage() {
       {branchesQuery.data && branches.length === 0 && <div className="state-message">ไม่มีสาขาที่บัญชีนี้ได้รับสิทธิ์</div>}
       {liveQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลด snapshot เครื่อง</div>}
       {liveQuery.isError && (
-        <div className="error-message" role="alert">
+        <div className="error-message flex flex-wrap items-center gap-3" role="alert">
           <span>ไม่สามารถโหลดข้อมูลเครื่องได้: {liveQuery.error.message}</span>
           <button type="button" className="secondary-button" onClick={() => void liveQuery.refetch()}>ลองใหม่</button>
         </div>

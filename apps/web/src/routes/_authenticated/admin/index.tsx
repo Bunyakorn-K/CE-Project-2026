@@ -106,8 +106,12 @@ export function AdminHome() {
   return (
     <div className="page-content">
       <section className="surface-card surface-card--dark">
-        <h1>การจัดการสิทธิ์</h1>
-        <p>อนุมัติคำขอเข้าใช้งาน ตรวจสอบสิทธิ์ที่ใช้งานอยู่ และจัดการการตั้งค่า AI</p>
+        <div className="page-header">
+          <div>
+            <h1>การจัดการสิทธิ์</h1>
+            <p>อนุมัติคำขอเข้าใช้งาน ตรวจสอบสิทธิ์ที่ใช้งานอยู่ และจัดการการตั้งค่า AI</p>
+          </div>
+        </div>
       </section>
 
       {approveMutation.isError && <div className="error-message" role="alert">อนุมัติคำขอไม่สำเร็จ: {approveMutation.error.message}</div>}
@@ -142,7 +146,22 @@ export function AdminHome() {
           {grantsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดสิทธิ์</div>}
           {grantsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดสิทธิ์ได้: {grantsQuery.error.message}</div>}
           {grantsQuery.data && grantsQuery.data.grants.length === 0 && <div className="state-message">ไม่มีสิทธิ์ที่ใช้งานอยู่</div>}
-          <div className="table-scroll">
+          <div className="md:hidden">
+            <ul className="admin-list" aria-label="สิทธิ์ที่ใช้งานอยู่">
+              {grantsQuery.data?.grants.map((grant) => (
+                <li key={grant.id} data-grant-card className="access-request-form">
+                  <div className="request-identity">
+                    <div><span>ผู้ใช้</span><strong>{grant.userName}</strong><small className="data-code">{grant.userEmail}</small></div>
+                    <div><span>บทบาท</span><strong>{roleLabel(grant.role)}</strong></div>
+                    <div><span>ขอบเขต</span><strong>{branchName(grant.branchId)}</strong></div>
+                    <div><span>ให้สิทธิ์เมื่อ</span><strong>{formatDate(grant.grantedAt)}</strong></div>
+                  </div>
+                  <button type="button" className="danger-button w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="table-scroll hidden md:block">
             <table className="data-table admin-table">
               <thead><tr><th scope="col">ผู้ใช้</th><th scope="col">บทบาท</th><th scope="col">ขอบเขต</th><th scope="col">ให้สิทธิ์เมื่อ</th><th scope="col">การจัดการ</th></tr></thead>
               <tbody>

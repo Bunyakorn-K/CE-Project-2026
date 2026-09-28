@@ -125,8 +125,12 @@ function AiConsolePage() {
   return (
     <div className="page-content">
       <section className="surface-card surface-card--dark">
-        <h1>AI Console</h1>
-        <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
+        <div className="page-header">
+          <div>
+            <h1>AI Console</h1>
+            <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
+          </div>
+        </div>
       </section>
 
       <Card variant="transparent" className="surface-card admin-section">

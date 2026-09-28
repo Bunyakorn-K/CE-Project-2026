@@ -181,8 +181,12 @@ function AnalyticsPage() {
   return (
     <div className="page-content">
       <section className="surface-card surface-card--dark">
-        <h1>พื้นที่วิเคราะห์ข้อมูล</h1>
-        <p>ตรวจสอบรายได้ รอบซัก การใช้งาน อุณหภูมิ และหลักฐานการแจ้งเตือนในขอบเขตที่เซิร์ฟเวอร์อนุญาต</p>
+        <div className="page-header">
+          <div>
+            <h1>พื้นที่วิเคราะห์ข้อมูล</h1>
+            <p>ตรวจสอบรายได้ รอบซัก การใช้งาน อุณหภูมิ และหลักฐานการแจ้งเตือนในขอบเขตที่เซิร์ฟเวอร์อนุญาต</p>
+          </div>
+        </div>
       </section>
 
       <section className="filter-panel" aria-label="ตัวกรองข้อมูลวิเคราะห์">
