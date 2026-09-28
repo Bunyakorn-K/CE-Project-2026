@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -13,6 +16,9 @@ jobs:
   verify:
     name: Test / Check / Build (Node 24)
     runs-on: ubuntu-latest
+    # test + check + build + a Chromium build and 10 layout tests. The layout
+    # step has its own, tighter budget; this is the backstop for a hung build.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +27,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          # Node 24.x, resolved from .nvmrc so the pin lives in one place.
+          # Must come after pnpm/action-setup: the cache input shells out to
+          # `pnpm store path`.
           node-version-file: .nvmrc
           cache: pnpm
 
@@ -35,3 +44,28 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # The layout suite is deliberately not in `pnpm test`, so nothing else
+      # runs it. `--with-deps` because this is a headless Linux container and
+      # the browser's shared libraries and base fonts are not the runner's
+      # defaults.
+      - name: Install Chromium for the layout suite
+        run: pnpm --filter @laundrytwin/web exec playwright install --with-deps chromium
+
+      # `webServer` in playwright.config.ts runs `pnpm build && vite preview`
+      # and allows 180s for it, so 10 minutes for the whole step leaves room for
+      # the browser download-free run, 6 workers and 1 CI retry.
+      #
+      # FONT WARNING, read before "fixing" a red run here. The suite asserts the
+      # topbar is exactly 72px at 1172px, and the owner header's intrinsic width
+      # sits within about 5px of that boundary. Measured in Chromium against the
+      # built bundle on 2026-09-28: 1171.31px with this machine's stack (0.69px
+      # of headroom), 1176.09px when Noto Sans Thai resolves (4.09px over, and
+      # the topbar becomes 83px). So installing a Thai font, or changing which
+      # font the runner picks, can fail this step. That is the measurement
+      # moving, not a regression: styles.css says the same about 1172 being a
+      # measurement rather than a constant. Re-measure before touching either
+      # the assertion or the breakpoint.
+      - name: Layout regression suite (Playwright, Chromium)
+        run: pnpm --filter @laundrytwin/web test:layout
+        timeout-minutes: 10
