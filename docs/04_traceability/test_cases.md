@@ -59,6 +59,7 @@ register is not available. The notification arm is tested; F-02 is partial.
 | TC-02.3 | Strict calendar range | Malformed, inverted, and overlong `from`/`to` return `400` before query | Automated |
 | TC-02.4 | Active machine has no usage rows | Machine remains in inventory with `cycleCount: null`, source `unavailable`, and state `unknown` where evidence is missing | Automated |
 | TC-02.5 | Unrecognized status or missing telemetry | Unknown/unavailable state is preserved; no value is fabricated | Automated |
+| TC-02.7 | Known `finished` / `cancelled` / `admitted` status | Each maps to its own API status value; `finished` stays distinct from `paid` so `paid_ratio` remains computable | Automated in `report/clickhouse-report.test.ts` |
 | TC-02.6 | Technician dashboard | Revenue is `null`/redacted while operational counts remain available | Automated |
 
 Current Twin state is usage-derived, not live `fact_machine_event` telemetry.

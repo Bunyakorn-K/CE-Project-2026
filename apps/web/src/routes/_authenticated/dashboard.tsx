@@ -3,6 +3,16 @@ import { Card, Tabs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
+import {
+  branchStatCells,
+  dashboardKpis,
+  emptyStateMessage,
+  usagePresence,
+  usageRowsLabel,
+  utilizationView,
+  type MetricCell
+} from "../../lib/dashboard-view";
+import { machineStatusMeta } from "../../lib/machine-status";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage
@@ -15,6 +25,7 @@ type DashboardData = {
   from: string;
   to: string;
   source: Source;
+  usageRowsInRange: number | null;
   totals: {
     revenueSatang: number | null;
     cycles: number;
@@ -98,6 +109,10 @@ function baht(satang: number): string {
   }).format(satang / 100);
 }
 
+function formatCount(value: number): string {
+  return value.toLocaleString("th-TH");
+}
+
 function formatDate(value: string): string {
   const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
   const date = new Date(normalized);
@@ -128,20 +143,6 @@ function availabilityLabel(availability: Availability | null): string {
   if (availability === "available") return "ข้อมูลพร้อมใช้งาน";
   if (availability) return `สถานะข้อมูล: ${availability}`;
   return "ยังไม่มีสถานะข้อมูล";
-}
-
-function statusMeta(status: string | null): { label: string; className: string } {
-  const statuses: Record<string, { label: string; className: string }> = {
-    running: { label: "กำลังใช้งาน", className: "status-pill--success" },
-    washing: { label: "กำลังซัก", className: "status-pill--success" },
-    drying: { label: "กำลังอบ", className: "status-pill--success" },
-    paid: { label: "ชำระแล้ว", className: "status-pill--warning" },
-    pending: { label: "รอชำระ", className: "status-pill--warning" },
-    idle: { label: "ว่าง", className: "status-pill--neutral" },
-    offline: { label: "ออฟไลน์", className: "status-pill--danger" },
-    unknown: { label: "ไม่ทราบสถานะ", className: "status-pill--neutral" }
-  };
-  return statuses[status ?? ""] ?? { label: "ไม่ทราบสถานะ", className: "status-pill--neutral" };
 }
 
 function machineKindLabel(kind: string): string {
@@ -180,6 +181,20 @@ function DashboardPage() {
   const activeAvailability = view === "twin" ? twinData?.availability ?? null : dashQuery.data?.availability ?? null;
   const activeRange = view === "twin" ? twinData?.range ?? null : dashQuery.data?.range ?? null;
   const activeFetchedAt = view === "twin" ? twinData?.fetchedAt ?? null : dashQuery.data?.fetchedAt ?? null;
+  // Presence comes from the API's usage-row count, never from cycles, revenue or
+  // the machine count: a window with sessions but no paid/finished rows is
+  // legitimately 0 cycles, and the machine count is inventory, not usage.
+  const presence = usagePresence(dashData?.usageRowsInRange);
+  const emptyWindowMessage = dashData ? emptyStateMessage(presence) : null;
+  const kpis = dashboardKpis({
+    totals: dashData?.totals ?? { revenueSatang: null, cycles: 0, machines: 0, running: 0 },
+    branchCount: dashData?.branches.length ?? 0,
+    firstBranchName: dashData?.branches[0]?.branchName ?? null,
+    range: dashData ? `${formatDate(dashData.from)} — ${formatDate(dashData.to)}` : "",
+    presence,
+    formatNumber: formatCount,
+    formatBaht: baht
+  });
 
   return (
     <div className="page-content">
@@ -248,16 +263,20 @@ function DashboardPage() {
           )}
           {dashData && (
             <>
+              <div className="data-context evidence-strip" aria-live="polite">
+                <span className="source-pill">{sourceLabel(dashQuery.data?.source ?? null)}</span>
+                <span>{availabilityLabel(dashQuery.data?.availability ?? null)}</span>
+                <strong>{formatDate(dashData.from)} — {formatDate(dashData.to)}</strong>
+                <span>{usageRowsLabel(dashData.usageRowsInRange)}</span>
+                <span>ดึงเมื่อ {formatDateTime(dashQuery.data?.fetchedAt ?? null)}</span>
+              </div>
+              {emptyWindowMessage && <div className="state-message">{emptyWindowMessage}</div>}
+
               <section className="kpi-grid" aria-label="ตัวชี้วัดหลัก">
-                <KpiCard
-                  label="รายได้รวม"
-                  value={dashData.totals.revenueSatang === null ? "ไม่พร้อมใช้งาน" : baht(dashData.totals.revenueSatang)}
-                  detail={dashData.totals.revenueSatang === null ? "ไม่มีสิทธิ์ดูรายได้" : `${dashData.totals.cycles.toLocaleString("th-TH")} รอบซัก`}
-                  textValue={dashData.totals.revenueSatang === null}
-                />
-                <KpiCard label="รอบซัก" value={dashData.totals.cycles.toLocaleString("th-TH")} detail={`ข้อมูล ${formatDate(dashData.from)} — ${formatDate(dashData.to)}`} />
-                <KpiCard label="เครื่องที่มีข้อมูล" value={dashData.totals.machines.toLocaleString("th-TH")} detail={`${dashData.totals.running.toLocaleString("th-TH")} รายการสถานะกำลังใช้งาน`} />
-                <KpiCard label="สาขา" value={dashData.branches.length.toLocaleString("th-TH")} detail={dashData.branches[0]?.branchName ?? "ไม่มีข้อมูลสาขา"} />
+                <KpiCard cell={kpis.revenue} />
+                <KpiCard cell={kpis.cycles} />
+                <KpiCard cell={kpis.inventory} />
+                <KpiCard cell={kpis.branches} />
               </section>
 
               <section>
@@ -269,7 +288,7 @@ function DashboardPage() {
                   <span>{dashData.branches.length.toLocaleString("th-TH")} สาขาในขอบเขตข้อมูล</span>
                 </div>
                 {dashData.branches.length > 0 ? (
-                  <div className="branch-grid">{dashData.branches.map((branch) => <BranchCard key={branch.branchId} branch={branch} />)}</div>
+                  <div className="branch-grid">{dashData.branches.map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
                 ) : (
                   <div className="state-message">ไม่มีข้อมูลผลประกอบการในช่วงเวลานี้</div>
                 )}
@@ -313,21 +332,21 @@ function DashboardPage() {
   );
 }
 
-function KpiCard({ label, value, detail, textValue = false }: { label: string; value: string; detail: string; textValue?: boolean }) {
+function KpiCard({ cell }: { cell: MetricCell }) {
   return (
     <Card variant="transparent" className="surface-card kpi-card">
       <Card.Content>
-        <span className="kpi-label">{label}</span>
-        <strong className={`kpi-value${textValue ? " kpi-value--text" : ""}`}>{value}</strong>
-        <span className="kpi-detail">{detail}</span>
+        <span className="kpi-label">{cell.label}</span>
+        <strong className={`kpi-value${cell.textValue ? " kpi-value--text" : ""}`}>{cell.value}</strong>
+        <span className="kpi-detail">{cell.detail}</span>
       </Card.Content>
     </Card>
   );
 }
 
-function BranchCard({ branch }: { branch: DashboardData["branches"][0] }) {
-  const utilization = branch.machines > 0 ? Math.min(branch.running / branch.machines, 1) : null;
-  const percentage = utilization === null ? null : Math.round(utilization * 100);
+function BranchCard({ branch, presence }: { branch: DashboardData["branches"][0]; presence: ReturnType<typeof usagePresence> }) {
+  const cells = branchStatCells(branch, presence, formatCount, baht);
+  const utilization = utilizationView(branch, presence);
   return (
     <Card variant="transparent" className="surface-card branch-card">
       <Card.Content>
@@ -336,26 +355,26 @@ function BranchCard({ branch }: { branch: DashboardData["branches"][0] }) {
             <span className="branch-code">{branch.branchId.slice(0, 8)}</span>
             <h3>{branch.branchName}</h3>
           </div>
-          <span className="status-pill status-pill--neutral">{branch.running}/{branch.machines} รายการสถานะ</span>
+          <span className="status-pill status-pill--neutral">{cells.statusPill}</span>
         </div>
         <div className="branch-stats">
-          <div><span>รายได้</span><strong>{branch.revenueSatang === null ? "ไม่พร้อมใช้งาน" : baht(branch.revenueSatang)}</strong></div>
-          <div><span>รอบซัก</span><strong>{branch.cycles.toLocaleString("th-TH")}</strong></div>
-          <div><span>เครื่องที่มีข้อมูล</span><strong>{branch.machines.toLocaleString("th-TH")}</strong></div>
-          <div><span>รายการสถานะกำลังใช้งาน</span><strong>{branch.running.toLocaleString("th-TH")}</strong></div>
+          <div><span>{cells.revenue.label}</span><strong>{cells.revenue.value}</strong></div>
+          <div><span>{cells.cycles.label}</span><strong>{cells.cycles.value}</strong></div>
+          <div><span>{cells.machines.label}</span><strong>{cells.machines.value}</strong></div>
+          <div><span>{cells.running.label}</span><strong>{cells.running.value}</strong></div>
         </div>
-        {percentage === null ? (
-          <div className="utilization-unavailable">ไม่มีข้อมูลการใช้งานในช่วงเวลานี้</div>
+        {utilization.kind === "unavailable" ? (
+          <div className="utilization-unavailable">{utilization.message}</div>
         ) : (
           <div
             className="utilization-track"
             role="progressbar"
-            aria-label={`${branch.branchName}: รายการสถานะกำลังใช้งาน ${branch.running} จาก ${branch.machines} เครื่องที่มีข้อมูล`}
+            aria-label={utilization.ariaLabel}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={percentage}
-            aria-valuetext={`${percentage}% ของเครื่องที่มีข้อมูล; ค่านี้มาจากรายการ usage ไม่ใช่สถานะทันที`}
-          ><span style={{ width: `${percentage}%` }} /></div>
+            aria-valuenow={utilization.percentage}
+            aria-valuetext={utilization.ariaValueText}
+          ><span style={{ width: `${utilization.percentage}%` }} /></div>
         )}
       </Card.Content>
     </Card>
@@ -411,7 +430,7 @@ function MachineGroup({ title, machines }: { title: string; machines: Machine[] 
 }
 
 function MachineCard({ machine }: { machine: Machine }) {
-  const status = statusMeta(machine.status);
+  const status = machineStatusMeta(machine.status);
   return (
     <Card variant="transparent" className="surface-card machine-card machine-floor-card">
       <Card.Content>

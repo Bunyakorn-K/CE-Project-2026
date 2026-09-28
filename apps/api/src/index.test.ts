@@ -52,6 +52,7 @@ describe("LaundryTwin API", () => {
         status: "paid",
         revenueSatang: "12500",
         cycles: "1",
+        usageRows: "3",
         started_at: "2026-09-20 08:00:00",
         last_active_at: "2026-09-20 08:00:00"
       }
@@ -422,6 +423,20 @@ describe("LaundryTwin API", () => {
     await expect(limited.json()).resolves.toEqual({
       error: { code: "RATE_LIMITED", message: "Too many requests; try again later" }
     });
+  });
+
+  it("surfaces the usage-row presence signal without overloading the provenance axis", async () => {
+    authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+    const { clickhouse } = dashboardExecutor();
+    const app = createApp({ analyticsDeps: { clickhouse } });
+
+    const response = await app.request("/api/report/dashboard?from=2026-09-18&to=2026-09-25");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.dashboard.usageRowsInRange).toBe(3);
+    // `availability` is "how do I know this?"; presence is "is there anything?".
+    expect(body.availability).toBe("usage-derived");
   });
 
   it.each([

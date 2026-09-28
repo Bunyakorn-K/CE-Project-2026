@@ -231,6 +231,22 @@ Notes:
   manual column there gets overwritten with NULL on the next sync. The weather
   collector joins `dim_branch_location` × `dim_branch active=1` for targets.
 - Nulls are preserved (`Nullable(...)`); the ETL never fabricates a value.
+- `paid` vs `finished` semantics are **unresolved upstream**. They are two
+  distinct `FACT_MACHINE_USAGE.status` enum members, and the API reports them
+  as two distinct `machines[].status` values on `/api/twin` and
+  `/api/report/live` (`"paid"` and `"finished"`; also `"cancelled"`,
+  `"admitted"`, `"pending"`, `"idle"`, `"offline"`, `"unknown"`, `"running"`).
+  They were previously collapsed into `"paid"`, which made the documented
+  `paid_ratio` feature meaningless. Revenue and cycle aggregation is unchanged
+  and still counts both (`status IN (2, 4)` in
+  `apps/api/src/report/clickhouse-report.ts`,
+  `status IN ('finished','paid')` in `apps/api/src/analytics/queries.ts`).
+  Nothing in the code claims what distinguishes the two upstream values.
+- `dashboard.usageRowsInRange` (`apps/api/src/report/clickhouse-report.ts`) is
+  the presence signal: the number of usage rows in range within the resolved
+  branch scope, `0` when there are none, `null` when the source cannot count
+  them (the IRIS/demo projection). It is deliberately **not** folded into
+  `availability`, which is a provenance axis ("how do I know this?").
 - Current direct Dashboard and Digital Twin reports use ClickHouse usage data;
   they retain active inventory, preserve unknown state, and expose usage-derived
   freshness. `fact_machine_event` is empty, so these routes are not live
@@ -245,7 +261,7 @@ them:
 | Envelope | Key fields (as typed) |
 | :------- | :--------------------- |
 | `branches` | id, code, name, timezone, status |
-| `dashboard` | per-branch kpi: `revenueSatang`, `cycles`, `machineCount`, `totalCycleMinutes`, `utilization` |
+| `dashboard` | per-branch kpi: `revenueSatang`, `cycles`, `machineCount`, `totalCycleMinutes`, `utilization` (`number \| null` — a count is present, the ratio may not be computable) |
 | `live snapshot` | per machine: state, `remainingSeconds`, temperatureC, doorStatus, coinbox, `paidSatang`, `errorCode`, freshness |
 | `alerts` | id, branchId, machineId, ruleId, `ruleVersion`, severity, title, detail, tags, evidence, `detectedAt`, `acknowledgedAt` |
 | `events` | eventId, branchId, machineId, machineCode, occurredAt, kind, phase, state |

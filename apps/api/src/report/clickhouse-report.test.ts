@@ -63,6 +63,67 @@ describe("machine floor report", () => {
     expect(sql).not.toContain("branch-01");
   });
 
+  // The dashboard aggregates usage into one row per (machine, status) group, so
+  // a zero-length result set only proves absence. Reporting `rows.length` as
+  // "usage rows" would report a group count for every non-empty window, which is
+  // the same kind of dishonest number this signal exists to replace.
+  it("reports zero usage rows in range when the aggregated usage query returns nothing", async () => {
+    const executor = vi.fn().mockResolvedValue([]);
+    const ch = executor as unknown as ClickHouseExecutor;
+
+    const result = await queryDashboard(ch, "2026-09-25", "2026-10-01");
+
+    expect(result.usageRowsInRange).toBe(0);
+  });
+
+  it("counts the usage rows behind the totals rather than the number of machine/status groups", async () => {
+    const usageRow = (machineId: string, status: string, usageRows: string) => ({
+      tenant_id: "tenant-01",
+      branch_id: "branch-01",
+      machine_id: machineId,
+      branch_name: "Branch A",
+      machine_code: machineId,
+      machine_kind: "washer",
+      status,
+      revenueSatang: "0",
+      cycles: "0",
+      usageRows,
+      started_at: "2026-09-24 08:00:00",
+      last_active_at: "2026-09-24 08:00:00"
+    });
+    const executor = vi
+      .fn()
+      .mockResolvedValueOnce([usageRow("W1", "paid", "1200"), usageRow("W1", "running", "12")])
+      .mockResolvedValueOnce([
+        {
+          tenant_id: "tenant-01",
+          machine_id: "W1",
+          branch_id: "branch-01",
+          machine_code: "W1",
+          machine_kind: "washer",
+          branch_name: "Branch A",
+          status: "paid",
+          last_active_at: "2026-09-24 08:00:00",
+          cycle_count: "900"
+        }
+      ]);
+    const ch = executor as unknown as ClickHouseExecutor;
+
+    const result = await queryDashboard(ch, "2026-07-01", "2026-08-25");
+
+    expect(result.usageRowsInRange).toBe(1212);
+  });
+
+  it("binds the per-group usage count into the existing dashboard query", async () => {
+    const executor = vi.fn().mockResolvedValue([]);
+    const ch = executor as unknown as ClickHouseExecutor;
+
+    await queryDashboard(ch, "2026-09-18", "2026-09-25", "branch-01");
+
+    const [sql] = executor.mock.calls[0] as [string, Record<string, string>];
+    expect(sql).toContain("count() AS usageRows");
+  });
+
   it("returns cycle count and source for a machine with session evidence", async () => {
     const ch = fakeExecutor([
       {
@@ -79,10 +140,66 @@ describe("machine floor report", () => {
 
     expect(result[0]).toMatchObject({
       machineCode: "W3",
-      status: "paid",
+      status: "finished",
       cycleCount: 4,
       cycleCountSource: "machine_session_id"
     });
+  });
+
+  // `paid_ratio` in docs/06_ml/ml-training-data-guide.md is
+  // countIf(status='paid') / countIf(status IN ('finished','paid')). That ratio
+  // is meaningless if the API reports both enums as the single value "paid", so
+  // a finished session must stay distinguishable from a paid one.
+  it("keeps a finished session distinct from a paid session", async () => {
+    const ch = fakeExecutor([
+      {
+        machine_id: "machine-01",
+        branch_id: "branch-01",
+        machine_code: "W1",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status: "paid",
+        last_active_at: "2026-09-24 08:00:00",
+        cycle_count: "2"
+      },
+      {
+        machine_id: "machine-02",
+        branch_id: "branch-01",
+        machine_code: "W2",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status: "finished",
+        last_active_at: "2026-09-24 09:00:00",
+        cycle_count: "3"
+      }
+    ]);
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    expect(result.map((machine) => machine.status)).toEqual(["paid", "finished"]);
+  });
+
+  // docs/03_data_contracts/data_contracts.md requires known enums to stay
+  // known. cancelled (Enum8=5) and admitted (Enum8=6) are documented members of
+  // fact_machine_usage.status (apps/etl/src/schema.ts) and used to fall through
+  // to "unknown".
+  it("maps the known cancelled and admitted enums instead of degrading them to unknown", async () => {
+    const ch = fakeExecutor(
+      ["cancelled", "admitted"].map((status, index) => ({
+        machine_id: `machine-0${index + 1}`,
+        branch_id: "branch-01",
+        machine_code: `W${index + 1}`,
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status,
+        last_active_at: "2026-09-24 08:00:00",
+        cycle_count: "1"
+      }))
+    );
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    expect(result.map((machine) => machine.status)).toEqual(["cancelled", "admitted"]);
   });
 
   it("does not invent a cycle count without session evidence", async () => {

@@ -3,6 +3,7 @@ import { Card } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
+import { machineStatusMeta } from "../../lib/machine-status";
 
 export const Route = createFileRoute("/_authenticated/machines")({
   component: MachinesPage
@@ -58,13 +59,7 @@ function fmtTime(iso: string | null): string {
 }
 
 function stateMeta(state: string | null): { label: string; className: string } {
-  if (state === "running" || state === "washing" || state === "drying") return { label: "กำลังใช้งาน", className: "status-pill--success" };
-  if (state === "paid") return { label: "ชำระแล้ว", className: "status-pill--warning" };
-  if (state === "offline") return { label: "ออฟไลน์", className: "status-pill--danger" };
-  if (state === "idle") return { label: "ว่าง", className: "status-pill--neutral" };
-  if (state === "unknown") return { label: "ไม่ทราบสถานะ", className: "status-pill--neutral" };
-  if (state) return { label: state, className: "status-pill--neutral" };
-  return { label: "ไม่ทราบสถานะ", className: "status-pill--neutral" };
+  return machineStatusMeta(state);
 }
 
 function freshnessMeta(freshness: string): { label: string; className: string } {

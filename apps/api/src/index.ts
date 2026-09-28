@@ -548,6 +548,10 @@ async function queryDemoDashboard(iris: IrisClient, from: string, to: string, br
     from,
     to,
     source: "demo",
+    // The IRIS/demo dashboard contract has no usage-row count, so presence is
+    // unknown rather than zero. Reporting 0 would claim the demo window is
+    // empty, which is exactly the fabrication this field exists to prevent.
+    usageRowsInRange: null,
     totals: {
       revenueSatang: response.totals.revenueSatang,
       cycles: response.totals.cycles,
@@ -671,7 +675,10 @@ function isRunningDemoMachine(machine: { state: string | null }) {
 
 function demoMachineStatus(state: string | null): MachineInfo["status"] {
   if (state === "washing" || state === "drying" || state === "running") return "running";
-  if (state === "paid" || state === "finished") return "paid";
+  if (state === "paid") return "paid";
+  if (state === "finished") return "finished";
+  if (state === "cancelled") return "cancelled";
+  if (state === "admitted") return "admitted";
   if (state === "pending_payment") return "pending";
   if (state === "offline") return "offline";
   if (state === "ready" || state === "idle") return "idle";

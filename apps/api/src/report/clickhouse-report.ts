@@ -15,6 +15,7 @@ type MachineUsageRow = {
   status: string;
   revenueSatang: string;
   cycles: string;
+  usageRows: string;
   started_at: string;
   last_active_at: string;
 };
@@ -60,6 +61,7 @@ SELECT
   u.status AS status,
   sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang,
   uniqExactIf(u.machine_session_id, u.status IN (2, 4)) AS cycles,
+  count() AS usageRows,
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u FINAL
 INNER JOIN dim_branch AS b FINAL ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
@@ -105,7 +107,20 @@ export type BranchInfo = {
   active: boolean;
 };
 
-export type MachineStatus = "running" | "paid" | "pending" | "idle" | "offline" | "unknown";
+// Mirrors fact_machine_usage.status (apps/etl/src/schema.ts) plus the
+// presentation-only `idle`/`offline` states. `finished` and `paid` stay
+// separate members: docs/06_ml/ml-training-data-guide.md defines a
+// paid_ratio over both, and collapsing them made that ratio meaningless.
+export type MachineStatus =
+  | "running"
+  | "paid"
+  | "finished"
+  | "cancelled"
+  | "admitted"
+  | "pending"
+  | "idle"
+  | "offline"
+  | "unknown";
 
 export type MachineInfo = {
   tenantId: string;
@@ -140,6 +155,13 @@ export type DashboardData = {
   from: string;
   to: string;
   source: "clickhouse" | "demo";
+  /** Presence signal: usage rows in range inside the resolved branch scope.
+   *  0 proves "no usage at all in this window"; a positive value is the number
+   *  of usage rows, not the number of machine/status groups they aggregate into.
+   *  `null` means the source cannot count usage rows (the IRIS/demo projection
+   *  has no such field), so presence is unknown and must not be presented as
+   *  either empty or populated. */
+  usageRowsInRange: number | null;
   totals: DashboardTotals;
   branches: DashboardBranch[];
 };
@@ -227,6 +249,7 @@ export async function queryDashboard(
     from,
     to,
     source: "clickhouse",
+    usageRowsInRange: rows.reduce((total, r) => total + (Number(r.usageRows) || 0), 0),
     totals: {
       revenueSatang: totalRevenue,
       cycles: totalCycles,
@@ -256,7 +279,12 @@ export async function queryMachineStates(
     running: "running",
     paid: "paid",
     pending_payment: "pending",
-    finished: "paid",
+    // `finished` and `paid` are separate fact_machine_usage enum members and
+    // stay separate here. The exact upstream difference is still unresolved —
+    // see docs/03_data_contracts/data_contracts.md.
+    finished: "finished",
+    cancelled: "cancelled",
+    admitted: "admitted",
     idle: "idle"
   };
 
