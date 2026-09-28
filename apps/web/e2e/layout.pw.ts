@@ -10,8 +10,8 @@ import { measureShell, setViewport, SIGNOUT_WIDTHS, VIEWPORTS } from "./support/
  *    could not fit, so `documentElement.scrollWidth` exceeded `clientWidth` and
  *    the sign-out button and "ตั้งค่า AI" were pushed off-screen.
  * 2. The topbar growing past 72px when the inline nav wrapped to two or three
- *    line boxes (the 1020-1040 and 1042-1171 bands), before the collapse
- *    threshold moved to 1171px.
+ *    line boxes (the 1020-1040 and 1042-1173 bands), before the collapse
+ *    threshold moved to 1173px.
  * 3. The grants table-to-card breakpoint at 768px, and the page-header
  *    typography (26px at <=639, 32px at >=640).
  *
@@ -64,24 +64,24 @@ test.describe("LaundryTwin operations shell", () => {
     expect(wrongHeight, `unexpected topbar height: ${wrongHeight.join(", ")}`).toEqual([]);
   });
 
-  test("collapses the inline nav into the hamburger at 1171px and restores it at 1172px", async ({ page }) => {
-    // The regression that produced three commits: 1019, then 1041, then 1171.
-    // Every one of those thresholds left a band where the inline nav was shown
-    // but could not fit. The boundary pair below is the actual contract, and it
-    // is asserted in both directions so neither a too-low nor a too-high
-    // threshold can pass.
+  test("collapses the inline nav into the hamburger at 1173px and restores it at 1174px", async ({ page }) => {
+    // The regression that produced four commits: 1019, then 1041, then 1171,
+    // then 1173. Every one of those thresholds left a band where the inline nav
+    // was shown but could not fit. The boundary pair below is the actual
+    // contract, and it is asserted in both directions so neither a too-low nor a
+    // too-high threshold can pass.
     await setViewport(page, 320);
     await gotoAuthenticated(page, "/dashboard");
 
-    await setViewport(page, 1171);
+    await setViewport(page, 1173);
     let shell = await measureShell(page);
-    expect(shell.primaryNavDisplay, "inline nav must be hidden at 1171px").toBe("none");
-    expect(shell.mobileNavDisplay, "hamburger must be shown at 1171px").toBe("block");
+    expect(shell.primaryNavDisplay, "inline nav must be hidden at 1173px").toBe("none");
+    expect(shell.mobileNavDisplay, "hamburger must be shown at 1173px").toBe("block");
 
-    await setViewport(page, 1172);
+    await setViewport(page, 1174);
     shell = await measureShell(page);
-    expect(shell.primaryNavDisplay, "inline nav must be shown at 1172px").not.toBe("none");
-    expect(shell.mobileNavDisplay, "hamburger must be hidden at 1172px").toBe("none");
+    expect(shell.primaryNavDisplay, "inline nav must be shown at 1174px").not.toBe("none");
+    expect(shell.mobileNavDisplay, "hamburger must be hidden at 1174px").toBe("none");
   });
 
   test("shows exactly one navigation control at every width", async ({ page }) => {
@@ -195,7 +195,7 @@ test.describe("admin grants layout", () => {
       await expect(table, `table must be hidden at ${width}px`).toBeHidden();
     }
 
-    for (const width of [768, 900, 1172, 1440]) {
+    for (const width of [768, 900, 1174, 1440]) {
       await setViewport(page, width);
       await gotoAuthenticated(page, "/admin");
       await expect(cardList.first(), `card list must be hidden at ${width}px`).toBeHidden();

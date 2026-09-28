@@ -1,6 +1,19 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+/* Self-hosted so the header measurements below stop depending on which
+   Thai-capable font the host machine has installed. The subset keeps all of
+   Basic Latin, Latin-1, General Punctuation, Currency and the whole Unicode
+   Thai block, so Thai is zero-tofu by construction; `public/fonts/README.md`
+   records the source, version, licence and the exact subset command. */
+@font-face {
+  font-family: "Noto Sans Thai";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/noto-sans-thai-subset.woff2") format("woff2");
+}
+
 :root {
   --canvas: #f4f7f6;
   --surface: #ffffff;
@@ -1098,28 +1111,35 @@ main {
   }
 }
 
-/* The owner header's intrinsic width is 1159.03px (brand 203.25 + 24 + nav 611 +
-   24 + account 248.78 + 2x24 padding), so the inline nav only sits on one 72px
-   line from a 1172px viewport up and the collapse has to run through 1171. The
+/* The owner header's intrinsic width is 1173.30px (brand 197.78 + 24 + nav 629.97
+   + 24 + account 249.55 + 2x24 padding), so the inline nav only sits on one 72px
+   line from a 1174px viewport up and the collapse has to run through 1173. The
    superseded 1041 threshold (before that 1019) came from treating 1040.78 as the
    header width, which is only where the bar stops needing to scroll: 1042-1091
-   rendered three nav line boxes and grew the bar to 102.5px, and 1092-1171 two
+   rendered three nav line boxes and grew the bar to 102.5px, and 1092-1173 two
    line boxes at 83px. Nothing in that row can shrink (`.brand-lockup` is
    min-width max-content, `.primary-nav` has no min-width 0).
 
-   1172 is a measurement, not a constant. It was taken in Chromium on this machine
-   with Noto Sans Thai metrics and the dev-bypass owner name `Development Owner`
-   (`.account-name` 122.5px of the 248.78px account block). `.account-name` is
-   capped at 130px but is otherwise driven by the signed-in user's name, and a
-   non-owner header carries three nav links rather than six, so a different name,
-   a shorter name, a different font stack, or fewer links all move the width the
-   inline nav needs and therefore this threshold. Re-measure before trusting it
-   elsewhere.
+   Re-measured on 2026-09-28 in Chromium against the production build after the
+   font was vendored, so the font half of this measurement is no longer a property
+   of the measuring machine. The previous 1172 came from the same arithmetic on a
+   machine whose stack fell through to Avenir Next, on the false premise that
+   Noto Sans Thai was installed locally; it was not. The threshold is only the
+   measurement while the font is self-hosted, so keep the `@font-face` above and the
+   vendored woff2 in `public/fonts/` together, or this number goes stale again.
+
+   Two things still move it. `.account-name` is capped at 130px but is otherwise
+   driven by the signed-in user's name (123.67px of the 249.55px account block here
+   for the dev-bypass owner `Development Owner`), and a non-owner header carries
+   three nav links rather than six, so a different or longer name, or fewer links,
+   move the width the inline nav needs. Only 0.70px separates 1173.30 from the 1174
+   that works, so re-measure before trusting it on another engine, platform or
+   Chromium version.
 
    Reuse the 639px block's two declarations verbatim; `.account-actions` is
    content-sized and nests `.mobile-nav`, so `margin-left: 0` on it strands the
    hamburger mid-header. */
-@media (max-width: 1171px) {
+@media (max-width: 1173px) {
   .primary-nav {
     display: none;
   }

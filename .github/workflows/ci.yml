@@ -58,16 +58,23 @@ jobs:
       # the browser run, 6 workers and the 1 retry the config enables when CI
       # is set.
       #
-      # FONT WARNING, read before "fixing" a red run here. The suite asserts the
-      # topbar is exactly 72px at 1172px, and the owner header's intrinsic width
-      # sits within about 5px of that boundary. Measured in Chromium against the
-      # built bundle on 2026-09-28: 1171.31px with this machine's stack (0.69px
-      # of headroom), 1176.09px when Noto Sans Thai resolves (4.09px over, and
-      # the topbar becomes 83px). So installing a Thai font, or changing which
-      # font the runner picks, can fail this step. That is the measurement
-      # moving, not a regression: styles.css says the same about 1172 being a
-      # measurement rather than a constant. Re-measure before touching either
-      # the assertion or the breakpoint.
+      # FONT WARNING, read before "fixing" a red run here. This step used to
+      # depend on the runner's installed fonts: the suite asserted the topbar was
+      # exactly 72px at 1172px, and the owner header's intrinsic width sat within
+      # about 5px of that boundary, so installing a Thai font (or changing which
+      # font the runner picked) could fail the step. Measured in Chromium against
+      # the built bundle on 2026-09-28: 1171.31px with a local macOS stack (0.69px
+      # of headroom), 1176.09px when Noto Sans Thai resolved (4.09px over, and the
+      # topbar became 83px).
+      #
+      # That is fixed as of 2026-09-28: `apps/web/public/fonts/` vendors a
+      # subsetted Noto Sans Thai woff2 and `styles.css` declares it with
+      # `@font-face`, so the runner resolves the same font the measurements were
+      # taken with. The suite now asserts 1173/1174 against a re-measured 1173.30px
+      # intrinsic width. Do NOT "fix" a red run here by `apt-get install
+      # fonts-noto-core`; the vendored font already wins the cascade, and a red run
+      # is a real regression. If the font is ever dropped from `public/fonts/`, the
+      # fragility comes straight back.
       - name: Layout regression suite (Playwright, Chromium)
         run: pnpm --filter @laundrytwin/web test:layout
         timeout-minutes: 10

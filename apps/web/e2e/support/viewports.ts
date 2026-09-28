@@ -12,20 +12,21 @@ import type { Page } from "@playwright/test";
  * - 1019/1020 and 1041/1042  the two superseded nav-collapse thresholds
  *            (1041 first, 1019 before it) and the exact bands where the inline
  *            nav wrapped to two and three line boxes and grew the topbar.
- * - 1171/1172  the current threshold. 1172 is the width at which the owner
- *            header's 1159.03px intrinsic content plus 2x24px padding fits one
- *            72px line, so 1171 must collapse and 1172 must not.
+ * - 1173/1174  the current threshold. 1174 is the narrowest viewport at which
+ *            the owner header's 1173.30px intrinsic width (brand 197.78 + 24 +
+ *            nav 629.97 + 24 + account 249.55 + 2x24 padding) fits one 72px
+ *            line, so 1173 must collapse and 1174 must not.
  *
- * The intermediate widths (768-1171) are included precisely because the
+ * The intermediate widths (768-1173) are included precisely because the
  * topbar-growth defect lived there and a boundary-only check would miss it.
  */
 export const VIEWPORTS = [
   320, 375, 414, 480, 540, 600, 639, 640, 700, 767, 768, 800, 900, 1000,
-  1019, 1020, 1040, 1041, 1042, 1100, 1171, 1172, 1280, 1440
+  1019, 1020, 1040, 1041, 1042, 1100, 1171, 1172, 1173, 1174, 1280, 1440
 ] as const;
 
 /** The widths the manual QA walked when the sign-out button was off-screen. */
-export const SIGNOUT_WIDTHS = [640, 768, 1020, 1100, 1171, 1172] as const;
+export const SIGNOUT_WIDTHS = [640, 768, 1020, 1100, 1173, 1174] as const;
 
 export type ShellMeasurement = {
   scrollWidth: number;

@@ -262,7 +262,13 @@ reachability, page-header typography, and the grants card/table breakpoint.
 Specs are named `*.pw.ts` so vitest's default glob cannot collect them. If a
 layout change is deliberate, re-measure and update the boundaries in
 `e2e/support/viewports.ts` and the comment above
-`@media (max-width: 1171px)` in `apps/web/src/styles.css` together.
+`@media (max-width: 1173px)` in `apps/web/src/styles.css` together. That
+breakpoint is a font-metric measurement, so it is only stable because the body
+font is vendored: `apps/web/public/fonts/` ships a subsetted Noto Sans Thai
+woff2 that `styles.css` declares with `@font-face`. Never derive the threshold
+from the host's installed fonts, and never install a system font to try to match
+it — provenance, subset command and coverage notes are in
+`apps/web/public/fonts/README.md`.
 
 ### Secret scanning (git hooks)
 
