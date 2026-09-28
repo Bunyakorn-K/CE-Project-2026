@@ -239,6 +239,29 @@ pnpm check
 pnpm build
 ```
 
+### Browser layout regression suite
+
+`pnpm test` is vitest only. Responsive layout has a separate Playwright suite,
+because booting a dev server is not fast or hermetic enough to sit in that
+chain:
+
+```bash
+pnpm --filter @laundrytwin/web exec playwright install chromium  # once
+pnpm --filter @laundrytwin/web test:layout
+```
+
+It builds `apps/web`, serves the real production bundle with
+`vite preview` (default port 4319, override with `LAYOUT_TEST_PORT`), and
+answers `/api/*` from fixtures via Playwright request interception. It needs
+**no API process, no ClickHouse, and no SQLite**. It protects the topbar
+collapse breakpoint, horizontal overflow, topbar height, sign-out
+reachability, page-header typography, and the grants card/table breakpoint.
+
+Specs are named `*.pw.ts` so vitest's default glob cannot collect them. If a
+layout change is deliberate, re-measure and update the boundaries in
+`e2e/support/viewports.ts` and the comment above
+`@media (max-width: 1171px)` in `apps/web/src/styles.css` together.
+
 ### Secret scanning (git hooks)
 
 `core.hooksPath` is set to `.githooks/` (enable on a fresh clone with

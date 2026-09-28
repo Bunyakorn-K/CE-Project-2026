@@ -27,3 +27,8 @@ apps/etl/.tmp/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Playwright runtime output (traces, screenshots, HTML report)
+test-results/
+playwright-report/
+blob-report/

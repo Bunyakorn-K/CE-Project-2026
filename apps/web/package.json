@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "check": "tsc -b --pretty false",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:layout": "playwright test"
   },
   "dependencies": {
     "@casl/ability": "^7.0.1",
@@ -22,6 +23,7 @@
     "remeda": "^2.48.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/router-plugin": "^1.168.37",
     "@types/react": "^19.2.2",
