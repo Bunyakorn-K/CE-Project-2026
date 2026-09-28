@@ -1098,6 +1098,22 @@ main {
   }
 }
 
+/* The owner header needs 1017px before it can scroll: brand 203 + nav 533 +
+   account 208 + 2x24 gaps, with 24px of the right padding absorbed. Nothing in
+   that row can shrink (`.brand-lockup` is min-width max-content, `.primary-nav`
+   has no min-width 0), so every viewport below 1017px overflows. Collapse the
+   nav into the existing hamburger below 1017 + 2. */
+@media (max-width: 1019px) {
+  .primary-nav {
+    display: none;
+  }
+
+  .mobile-nav {
+    display: block;
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 639px) {
   .app-topbar-inner {
     min-height: 64px;
