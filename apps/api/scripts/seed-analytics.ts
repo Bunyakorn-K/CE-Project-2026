@@ -46,6 +46,15 @@ export function shouldRefuseSeed(existingRealRowCount: number, force: boolean) {
   return existingRealRowCount > 0 && !force;
 }
 
+// Mirrors fahrenheitToCelsius in apps/etl/src/transform.ts:103. The ETL derives
+// temperature_c from the raw Fahrenheit integer, so the seed must use the same
+// formula or the two columns disagree. apps/api does not depend on
+// @laundrytwin/etl, so the formula is restated here rather than imported; keep
+// the two in step.
+function fahrenheitToCelsius(f: number): number {
+  return Math.round(((f - 32) * 5) / 9 * 100) / 100;
+}
+
 // `machine_session_id` is Nullable(String) in the warehouse and the ETL copies
 // it straight through from IRIS `attribution_machine_session_id`
 // (apps/etl/src/postgres.ts), so it is NULL whenever the source could not
@@ -143,7 +152,238 @@ export function buildSeedRows(seed: number, days: number) {
     }
   }
 
-  return { branches, machines, usage };
+  return {
+    branches,
+    machines,
+    usage,
+    temperature: buildTemperatureRows(rand, usage, machines),
+    weather: buildWeatherRows(rand, days)
+  };
+}
+
+// ---- fact_temperature_sample: dryer-shaped rise/fall curves ----
+//
+// Shape authority is the design spec
+// (docs/superpowers/specs/2026-08-26-analytics-dev-platform-design.md:104 —
+// "fact_temperature_sample: dryer-shaped rise/fall curves") and the columns are
+// the ones apps/etl/src/schema.ts:92-105 declares for the live warehouse.
+//
+// There is no `source_event_id` column on this table. The synthetic marker lives
+// in `event_id` (String), which is what the curve query actually keys off:
+// apps/api/src/analytics/queries.ts:170 counts
+// `event_id LIKE 'synthetic:%'` into synthCount, and
+// dataSourceFromCounts (apps/api/src/analytics/envelope.ts:12) turns that into
+// meta.dataSource. Temperature rows are therefore detectable in exactly the way
+// usage rows are, just under a different column name.
+//
+// Only DRYERS get a curve. A dryer heats air on purpose; a washer's drum
+// temperature depends on a fill register whose meaning and scaling are still
+// unverified (see the strict physical/safety boundaries in the repo guide), so
+// inventing washer curves would be a claim about a register map we do not have
+// evidence for. Only `finished` cycles get a curve: a `cancelled` cycle never
+// ran to completion, and fabricating its full heat/plateau/cool profile would be
+// the "do not fabricate a value" violation.
+const TEMPERATURE_SAMPLE_INTERVAL_MIN = 3;
+
+type DryerProfile = {
+  ambientF: number;
+  setpointF: number;
+  /** Share of the cycle spent ramping up. */
+  heatShare: number;
+  /** Share of the cycle spent on the plateau. */
+  plateauShare: number;
+};
+
+function buildDryerProfiles(rand: () => number, dryers: Array<Record<string, unknown>>) {
+  return new Map(
+    dryers.map((machine) => [
+      String(machine.machine_id),
+      {
+        // 82-90F is 28-32C, a Bangkok ambient for late June through late August.
+        ambientF: 82 + rand() * 8,
+        // 118-150F is 48-66C: the high-heat band a commercial dryer runs at.
+        setpointF: 118 + rand() * 32,
+        heatShare: 0.22 + rand() * 0.14,
+        plateauShare: 0.38 + rand() * 0.2
+      } satisfies DryerProfile
+    ])
+  );
+}
+
+/** Ramp -> plateau -> cool-down, in whole degrees Fahrenheit. */
+function dryerTemperatureF(
+  profile: DryerProfile,
+  durationMin: number,
+  elapsedMin: number,
+  setpointF: number,
+  coolFloorF: number
+): number {
+  const heatEnd = durationMin * profile.heatShare;
+  const plateauEnd = heatEnd + durationMin * profile.plateauShare;
+  if (elapsedMin <= heatEnd) {
+    // The heating element pulls hard at first and the drum mass catches up, so
+    // the ramp is concave rather than linear.
+    const progress = heatEnd > 0 ? elapsedMin / heatEnd : 1;
+    return profile.ambientF + (setpointF - profile.ambientF) * Math.sin((progress * Math.PI) / 2);
+  }
+  if (elapsedMin <= plateauEnd) return setpointF;
+  const coolMin = Math.max(1, durationMin - plateauEnd);
+  const progress = (elapsedMin - plateauEnd) / coolMin;
+  return setpointF - (setpointF - coolFloorF) * (1 - Math.cos((progress * Math.PI) / 2));
+}
+
+function buildTemperatureRows(
+  rand: () => number,
+  usage: Record<string, unknown>[],
+  machines: Record<string, unknown>[]
+) {
+  const dryers = machines.filter((machine) => machine.machine_kind === "dryer");
+  const profiles = buildDryerProfiles(rand, dryers);
+  // A real edge device counts its own samples, so seq is per machine and
+  // monotonic across the whole window, not per cycle.
+  const seqByMachine = new Map(dryers.map((machine) => [String(machine.machine_id), 100_000]));
+
+  const rows: Record<string, unknown>[] = [];
+  // The usage rows are generated in PRNG order, not in clock order (each cycle
+  // picks a random hour inside its day), so walking them as-is would hand out
+  // seq numbers that go backwards in time. A real device counts up with time,
+  // so the cycles are ordered by start before any seq is handed out.
+  const cycles = usage
+    .filter((cycle) => cycle.status === "finished" && profiles.has(String(cycle.machine_id)))
+    .map((cycle) => ({ cycle, startedMs: Date.parse(`${String(cycle.started_at).replace(" ", "T")}Z`) }))
+    .sort((a, b) => a.startedMs - b.startedMs);
+
+  for (const { cycle, startedMs } of cycles) {
+    const machineId = String(cycle.machine_id);
+    const profile = profiles.get(machineId)!;
+    const durationMin = Number(cycle.duration_min);
+    // Per-cycle jitter keeps two cycles on the same machine from being the same
+    // curve, without changing the machine's overall character.
+    const setpointF = profile.setpointF + (rand() - 0.5) * 6;
+    const coolFloorF = profile.ambientF + 6 + rand() * 12;
+
+    for (let elapsedMin = 0; elapsedMin <= durationMin; elapsedMin += TEMPERATURE_SAMPLE_INTERVAL_MIN) {
+      const occurredMs = startedMs + elapsedMin * 60_000;
+      const jittered = dryerTemperatureF(profile, durationMin, elapsedMin, setpointF, coolFloorF) + (rand() - 0.5) * 1.6;
+      const temperatureF = Math.round(jittered);
+      const heatEnd = durationMin * profile.heatShare;
+      const plateauEnd = heatEnd + durationMin * profile.plateauShare;
+      // `phase` is a free-form String copied verbatim from the source
+      // (apps/etl/src/schema.ts:103) with no documented enumeration, so these
+      // three labels are chosen to be legible in the UI and are NOT a claim
+      // about a verified register mapping.
+      const phase = elapsedMin <= heatEnd ? "heat" : elapsedMin <= plateauEnd ? "dry" : "cool";
+      const nextSeq = (seqByMachine.get(machineId) ?? 0) + 1;
+      seqByMachine.set(machineId, nextSeq);
+      rows.push({
+        tenant_id: String(cycle.tenant_id),
+        branch_id: String(cycle.branch_id),
+        machine_id: machineId,
+        // The synthetic marker. See the block comment above on why this table
+        // carries it in `event_id` rather than `source_event_id`.
+        event_id: synthId(rand),
+        seq: nextSeq,
+        // frame_seq is Nullable(UInt64) because the source does not always carry
+        // a frame counter and the ETL preserves the gap (schema.ts:98).
+        frame_seq: rand() < 0.67 ? 1 + Math.floor(rand() * 60) : null,
+        occurred_at: chTimestamp(occurredMs),
+        ingested_at: chTimestamp(occurredMs + 2_000 + Math.floor(rand() * 4_000)),
+        temperature_f: temperatureF,
+        temperature_c: fahrenheitToCelsius(temperatureF),
+        phase,
+        extracted_at: "2026-08-26 00:00:00.000"
+      });
+    }
+  }
+  return rows;
+}
+
+// ---- fact_weather_sample: hourly branch-tagged observations ----
+//
+// Shape authority is apps/etl/src/weather.ts:109-134 (`normalizeForecast`):
+// timestamp is a UTC instant, sub_district and district are always null (there
+// is no per-position source), and every reading is nullable because a missing
+// TMD field stays null and is never invented. Units are Celsius, percent, and
+// mm per docs/03_data_contracts/data_contracts.md:22-27.
+//
+// `weather_cond` is deliberately left NULL. The same contract line calls the
+// TMD condition code "opaque until TMD's code table is pinned in docs", so any
+// integer we wrote would be a fabricated code-to-meaning mapping.
+//
+// There is NO synthetic marker column on this table: the nine columns in
+// apps/etl/src/schema.ts:113-124 leave no free-text field that is not a
+// location label or a reading. See the report — this is why the F-12
+// correlation query hardcodes `countIf(0) AS synthCount`
+// (apps/api/src/analytics/weather.ts:34) and cannot label these rows.
+const WEATHER_PROVINCE = "กรุงเทพมหานคร";
+
+// Both seeded branches are Bangkok districts, so both report the same province —
+// that is what the TMD endpoint returns for a province query. Their SERIES
+// differ because real TMD returns one identical series for every province (a
+// known limitation, docs/01_requirements/system_requirement.md:41) and seeding
+// that would make the per-branch join look correct while proving nothing. The
+// divergence is a deliberate QA property of the seed, not a claim about TMD.
+const WEATHER_BRANCH_PROFILES = [
+  { meanC: 30.2, driftPerDayC: 0.004, amplitudeC: 3.4, humidityBase: 78, wetDayRate: 0.35 },
+  { meanC: 30.7, driftPerDayC: 0.002, amplitudeC: 3.9, humidityBase: 80, wetDayRate: 0.42 }
+];
+
+function buildWeatherRows(rand: () => number, days: number) {
+  const rows: Record<string, unknown>[] = [];
+  const end = Date.UTC(2026, 7, 26);
+  for (let dayOffset = days; dayOffset > 0; dayOffset -= 1) {
+    const dayStart = end - dayOffset * 86_400_000;
+    for (const [bi, branch] of SEED_BRANCHES.entries()) {
+      const profile = WEATHER_BRANCH_PROFILES[bi]!;
+      const dailyMeanC = profile.meanC + dayOffset * profile.driftPerDayC + (rand() - 0.5) * 1.2;
+      // Bangkok is in its rainy season across this window, so most days are
+      // dry-ish and a minority carry a short rain burst.
+      const wetDay = rand() < profile.wetDayRate;
+      const rainStartHour = wetDay ? Math.floor(rand() * 18) : -1;
+      const rainHours = wetDay ? 1 + Math.floor(rand() * 3) : 0;
+      for (let hourUtc = 0; hourUtc < 24; hourUtc += 1) {
+        // Bangkok is a fixed UTC+7 with no DST, so local hour is a constant
+        // offset and the daily peak sits at 14:00 local.
+        const localHour = (hourUtc + 7) % 24;
+        const diurnalC = Math.cos(((localHour - 14) * 2 * Math.PI) / 24) * profile.amplitudeC;
+        const tempC = round1(dailyMeanC + diurnalC + (rand() - 0.5) * 0.8);
+        const raining = hourUtc >= rainStartHour && hourUtc < rainStartHour + rainHours;
+        const rainMm = raining ? round1(0.4 + rand() * 7.6) : 0;
+        const humidityPct = round1(
+          clamp(profile.humidityBase - 2.2 * (tempC - dailyMeanC) + (raining ? 9 : 0) + (rand() - 0.5) * 3, 45, 99)
+        );
+        rows.push({
+          timestamp: chTimestamp(dayStart + hourUtc * 3_600_000),
+          tenant_id: branch.tenantId,
+          branch_id: branch.branchId,
+          province: WEATHER_PROVINCE,
+          sub_district: null,
+          district: null,
+          // TMD omits a field rather than sending a placeholder, and the ETL
+          // keeps the gap. A small share of synthetic rows do the same so the
+          // documented NULL path is exercised instead of assumed.
+          weather_temp_c: rand() < 0.015 ? null : tempC,
+          weather_humidity_pct: humidityPct,
+          weather_rain_mm: rainMm,
+          weather_cond: null
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function round1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** DateTime64(3) UTC literal — the same form apps/etl/src/transform.ts:92 emits. */
+function chTimestamp(epochMs: number) {
+  return new Date(epochMs).toISOString().replace("T", " ").slice(0, 23);
 }
 
 export async function runSeed(executor: ClickHouseExecutor, options: { force?: boolean; days?: number } = {}) {
@@ -153,11 +393,25 @@ export async function runSeed(executor: ClickHouseExecutor, options: { force?: b
   if (shouldRefuseSeed(countRows[0]?.real_count ?? 0, Boolean(options.force))) {
     throw new Error("Refusing to seed: fact_machine_usage contains non-synthetic rows. Re-run with --force to allow.");
   }
-  const { branches, machines, usage } = buildSeedRows(20260826, options.days ?? 60);
+  // Same guard for the temperature table, whose synthetic marker is `event_id`.
+  // fact_weather_sample cannot be guarded at all — it has no marker column, so
+  // a real TMD row landing there would be invisible to this script.
+  const tempCountRows = await executor<{ real_count: number }>(
+    "SELECT countIf(NOT startsWith(event_id, 'synthetic:')) AS real_count FROM fact_temperature_sample"
+  );
+  if (shouldRefuseSeed(tempCountRows[0]?.real_count ?? 0, Boolean(options.force))) {
+    throw new Error("Refusing to seed: fact_temperature_sample contains non-synthetic rows. Re-run with --force to allow.");
+  }
+  const { branches, machines, usage, temperature, weather } = buildSeedRows(20260826, options.days ?? 60);
   await insertRows(executor, "dim_branch", branches);
   await insertRows(executor, "dim_machine", machines);
   await insertRows(executor, "fact_machine_usage", usage);
-  console.log(`Seeded ${branches.length} branches, ${machines.length} machines, ${usage.length} synthetic usage rows.`);
+  await insertRows(executor, "fact_temperature_sample", temperature);
+  await insertRows(executor, "fact_weather_sample", weather);
+  console.log(
+    `Seeded ${branches.length} branches, ${machines.length} machines, ${usage.length} synthetic usage rows, ` +
+      `${temperature.length} synthetic temperature samples, ${weather.length} synthetic weather observations.`
+  );
 }
 
 // insertRows sends the INSERT statement including the inline JSON payload as one POST body —
