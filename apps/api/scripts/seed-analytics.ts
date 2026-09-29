@@ -311,10 +311,12 @@ function buildTemperatureRows(
 // integer we wrote would be a fabricated code-to-meaning mapping.
 //
 // There is NO synthetic marker column on this table: the nine columns in
-// apps/etl/src/schema.ts:113-124 leave no free-text field that is not a
-// location label or a reading. See the report — this is why the F-12
-// correlation query hardcodes `countIf(0) AS synthCount`
-// (apps/api/src/analytics/weather.ts:34) and cannot label these rows.
+// apps/etl/src/schema.ts FACT_WEATHER_COLUMNS leave no free-text field that is
+// not a location label or a reading. Because of that, the F-12 correlation
+// cannot distinguish these rows from real TMD observations, so
+// `weatherDataSource` (apps/api/src/analytics/weather.ts) reports a non-empty
+// weather window as `dataSource: "unverifiable"` instead of asserting `real`.
+// Fixing it properly needs an ADD COLUMN migration on the live warehouse.
 const WEATHER_PROVINCE = "กรุงเทพมหานคร";
 
 // Both seeded branches are Bangkok districts, so both report the same province —

@@ -1,5 +1,5 @@
 import type { ClickHouseExecutor } from "./clickhouse";
-import { dataSourceFromCounts, type AnalyticsMeta } from "./envelope";
+import { dataSourceFromCounts, type AnalyticsMeta, type AnalyticsTruncation } from "./envelope";
 
 // Fixed SQL templates — all user input flows through {from:String}{to:String}{branchId:String}
 // (and {machineId:String}) bind parameters; nothing is ever concatenated into the query text.
@@ -159,23 +159,75 @@ export async function queryUtilizationHeatmap(
 
 export type CurveParams = QueryParams & { machineId: string };
 
+/** Hard cap on temperature samples per response. */
+export const CURVE_ROW_LIMIT = 5000;
+
+/**
+ * Raw temperature samples for the requested range, capped at CURVE_ROW_LIMIT.
+ *
+ * ORDERING: the cap is applied while ordering `DESC`, so the rows that survive
+ * are the NEWEST 5,000 in range. An ascending ORDER BY above the LIMIT kept the
+ * OLDEST 5,000 and dropped everything after them — for 2026-07-01..2026-08-25
+ * that returned 5,000 rows ending 2026-08-04 13:06, 21 days before the range
+ * end, with no indication that anything was missing. The outermost query
+ * re-sorts ascending so the response stays oldest-first for consumers that
+ * take the tail.
+ *
+ * TRUNCATION, and why the query is nested three deep: `totalCount` and
+ * `synthCount` are `OVER ()` window functions, and ClickHouse is documented
+ * (github.com/ClickHouse/ClickHouse/issues/23125) to be capable of pushing a
+ * `LIMIT` *under* window-function evaluation when the two sit in the same
+ * query block — which would silently redefine `count() OVER ()` as the count
+ * of the capped result, reporting "0 rows dropped" for a window that dropped
+ * thousands. This is not hypothetical: that issue shipped a wrong answer.
+ *
+ * So the window functions are computed in an inner block that contains NO
+ * `ORDER BY` and NO `LIMIT`, leaving nothing for a limit pushdown to move
+ * beneath them; a middle block does the `DESC` ordering and the cap; the outer
+ * block restores ascending order. `totalCount` is then the honest pre-cap
+ * denominator (measured: 8,208 in range, 5,000 returned) and is what lets the
+ * endpoint say how much it dropped.
+ */
 export const CURVE_SQL = `
 SELECT
-  occurred_at AS occurredAt,
-  s.machine_id AS machineId,
-  m.machine_code AS machineCode,
-  temperature_f AS temperatureF,
-  temperature_c AS temperatureC,
+  occurredAt,
+  machineId,
+  machineCode,
+  temperatureF,
+  temperatureC,
   phase,
-  countIf(event_id LIKE 'synthetic:%') OVER () AS synthCount,
-  count() OVER () AS totalCount
-FROM fact_temperature_sample AS s
-INNER JOIN dim_machine AS m FINAL ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
-WHERE occurred_at >= {from:String} AND occurred_at < plus(toDate({to:String}), 1)
-  AND ({branchId:String} = '' OR toString(s.branch_id) = {branchId:String})
-  AND ({machineId:String} = '' OR s.machine_id = {machineId:String})
-ORDER BY occurred_at ASC
-LIMIT 5000`;
+  synthCount,
+  totalCount
+FROM (
+  SELECT
+    occurredAt,
+    machineId,
+    machineCode,
+    temperatureF,
+    temperatureC,
+    phase,
+    synthCount,
+    totalCount
+  FROM (
+    SELECT
+      occurred_at AS occurredAt,
+      s.machine_id AS machineId,
+      m.machine_code AS machineCode,
+      temperature_f AS temperatureF,
+      temperature_c AS temperatureC,
+      phase,
+      countIf(event_id LIKE 'synthetic:%') OVER () AS synthCount,
+      count() OVER () AS totalCount
+    FROM fact_temperature_sample AS s
+    INNER JOIN dim_machine AS m FINAL ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
+    WHERE occurred_at >= {from:String} AND occurred_at < plus(toDate({to:String}), 1)
+      AND ({branchId:String} = '' OR toString(s.branch_id) = {branchId:String})
+      AND ({machineId:String} = '' OR s.machine_id = {machineId:String})
+  )
+  ORDER BY occurredAt DESC
+  LIMIT ${CURVE_ROW_LIMIT}
+)
+ORDER BY occurredAt ASC`;
 
 export type CurveRow = {
   occurredAt: string;
@@ -201,11 +253,19 @@ function toNumberOrNull(value: string | null): number | null {
   return value === null ? null : Number(value);
 }
 
+export type TemperatureCurveResult = { rows: CurveResultRow[]; truncation?: AnalyticsTruncation } & SourceCount;
+
 export async function queryTemperatureCurve(
   clickhouse: ClickHouseExecutor,
   params: CurveParams
-): Promise<{ rows: CurveResultRow[] } & SourceCount> {
+): Promise<TemperatureCurveResult> {
   const rows = await clickhouse<CurveRow>(CURVE_SQL, params);
+  // `totalCount` is a window value, identical on every row and evaluated
+  // before the cap, so it is read from the first row rather than summed —
+  // summing it would multiply the range total by the number of returned rows.
+  // The absence of rows means nothing matched, which is not truncation.
+  const totalRowsInRange = rows.length > 0 ? Number(rows[0].totalCount) : 0;
+  const synthCountInRange = rows.length > 0 ? Number(rows[0].synthCount) : 0;
   return {
     // Null temperatures pass through untouched — a missing reading is not zero.
     rows: rows.map((row) => ({
@@ -216,7 +276,18 @@ export async function queryTemperatureCurve(
       temperatureC: toNumberOrNull(row.temperatureC),
       phase: row.phase
     })),
-    ...countSource(rows)
+    ...(rows.length > 0 && totalRowsInRange > rows.length
+      ? {
+          truncation: {
+            returnedRows: rows.length,
+            totalRowsInRange,
+            limit: CURVE_ROW_LIMIT,
+            kept: "newest" as const
+          }
+        }
+      : {}),
+    totalRows: totalRowsInRange,
+    syntheticRows: synthCountInRange
   };
 }
 

@@ -5,17 +5,19 @@ import { useAtom } from "jotai";
 import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
+import { temperatureSummary, type TemperatureTruncation } from "../../lib/temperature-view";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
   component: AnalyticsPage
 });
 
-type SourceTag = "synthetic" | "real" | "mixed" | "empty";
+type SourceTag = "synthetic" | "real" | "mixed" | "empty" | "unverifiable";
 type AnalyticsMeta = {
   range: { from: string; to: string };
   branchId: string | null;
   dataSource: SourceTag;
   caveats?: string[];
+  truncation?: TemperatureTruncation;
 };
 type AnalyticsEnvelope<T> = { meta: AnalyticsMeta; data: T[] };
 type RevenueRow = { date: string; branchId: string; branchName: string; revenueSatang: number; cycles: number };
@@ -95,6 +97,9 @@ function sourceLabel(source: SourceTag | string | null): string {
   if (source === "synthetic") return "ข้อมูลสังเคราะห์";
   if (source === "mixed") return "ข้อมูลจริงและสังเคราะห์ผสมกัน";
   if (source === "empty") return "ไม่มีแถวข้อมูล";
+  // The weather table has no provenance marker, so real-vs-generated cannot be
+  // determined. Labelling it "ข้อมูลจริง" would assert something unprovable.
+  if (source === "unverifiable") return "ตรวจสอบแหล่งที่มาไม่ได้";
   if (source === "demo") return "โหมด Demo";
   if (source === "clickhouse") return "แหล่งข้อมูล: ClickHouse";
   return source ? `แหล่งข้อมูล: ${source}` : "ยังไม่มีข้อมูลแหล่งที่มา";
@@ -172,8 +177,10 @@ function AnalyticsPage() {
   const revenueMax = Math.max(0, ...(revenueQuery.data?.data ?? []).map((row) => row.revenueSatang));
   const utilizationMax = Math.max(0, ...(utilizationQuery.data?.data ?? []).map((row) => row.totalDurationMin));
   const temperatureRows = temperatureQuery.data?.data ?? [];
-  const validTemperatures = temperatureRows.flatMap((row) => row.temperatureC === null ? [] : [row.temperatureC]);
-  const averageTemperature = validTemperatures.length > 0 ? validTemperatures.reduce((sum, value) => sum + value, 0) / validTemperatures.length : null;
+  // The API caps the curve at the newest 5,000 samples. avg/min/max therefore
+  // describe the returned rows, not necessarily the whole selected range, and
+  // the summary carries that distinction so the panel cannot imply completeness.
+  const temperature = temperatureSummary(temperatureRows, temperatureQuery.data?.meta.truncation);
   const utilizationRows = utilizationQuery.data?.data ?? [];
   const totalDuration = utilizationRows.reduce((sum, row) => sum + row.totalDurationMin, 0);
   const totalCycles = utilizationRows.reduce((sum, row) => sum + row.cycles, 0);
@@ -305,12 +312,14 @@ function AnalyticsPage() {
             <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลอุณหภูมิได้: {temperatureQuery.error.message}</div>
           ) : temperatureQuery.data && (
             <AnalyticsResult query={temperatureQuery} empty="ไม่มีข้อมูลอุณหภูมิในช่วงเวลานี้">
+              {temperature.coverage && <div className="state-message" role="status">{temperature.coverage}</div>}
+              {temperature.scopeNote && <p className="section-description">{temperature.scopeNote}</p>}
               <fieldset className="metric-strip">
                 <legend className="sr-only">สรุปอุณหภูมิ</legend>
-                <div><span>ค่าเฉลี่ย</span><strong>{averageTemperature === null ? "ไม่พร้อมใช้งาน" : `${averageTemperature.toFixed(1)}°C`}</strong></div>
-                <div><span>ต่ำสุด</span><strong>{validTemperatures.length > 0 ? `${Math.min(...validTemperatures).toFixed(1)}°C` : "ไม่พร้อมใช้งาน"}</strong></div>
-                <div><span>สูงสุด</span><strong>{validTemperatures.length > 0 ? `${Math.max(...validTemperatures).toFixed(1)}°C` : "ไม่พร้อมใช้งาน"}</strong></div>
-                <div><span>ค่าที่ไม่ทราบ</span><strong>{temperatureRows.length - validTemperatures.length}</strong></div>
+                <div><span>ค่าเฉลี่ย{temperature.coversFullRange ? "" : " (บางส่วน)"}</span><strong>{temperature.average === null ? "ไม่พร้อมใช้งาน" : `${temperature.average.toFixed(1)}°C`}</strong></div>
+                <div><span>ต่ำสุด{temperature.coversFullRange ? "" : " (บางส่วน)"}</span><strong>{temperature.min === null ? "ไม่พร้อมใช้งาน" : `${temperature.min.toFixed(1)}°C`}</strong></div>
+                <div><span>สูงสุด{temperature.coversFullRange ? "" : " (บางส่วน)"}</span><strong>{temperature.max === null ? "ไม่พร้อมใช้งาน" : `${temperature.max.toFixed(1)}°C`}</strong></div>
+                <div><span>ค่าที่ไม่ทราบ</span><strong>{temperature.unknown}</strong></div>
               </fieldset>
               <DataTable headers={["เวลา", "เครื่อง", "อุณหภูมิ", "Phase"]}>
                 {temperatureRows.slice(-8).reverse().map((row) => (
@@ -359,11 +368,20 @@ function AnalyticsPage() {
 }
 
 function AnalyticsResult<T>({ query, empty, children }: { query: { data?: AnalyticsEnvelope<T>; dataUpdatedAt: number }; empty: string; children: React.ReactNode }) {
+  const truncated = query.data?.meta.truncation;
   return (
     <>
       <div className="data-context analytics-meta" aria-live="polite">
         <span className="source-pill">{sourceLabel(query.data?.meta.dataSource ?? null)}</span>
-        {query.data && <strong>{formatDate(query.data.meta.range.from)} — {formatDate(query.data.meta.range.to)}</strong>}
+        {query.data && (
+          // A capped response must not be labelled with the full requested
+          // range: that is exactly the claim the truncation notice retracts.
+          <strong>
+            {truncated ? "ช่วงที่ร้องขอ (ข้อมูลไม่ครบ)" : null}
+            {truncated ? " " : null}
+            {formatDate(query.data.meta.range.from)} — {formatDate(query.data.meta.range.to)}
+          </strong>
+        )}
         <span>โหลดข้อมูลเมื่อ {formatDateTime(query.dataUpdatedAt || null)}</span>
         {query.data?.meta.caveats?.map((caveat) => <span key={caveat}>{caveat}</span>)}
       </div>

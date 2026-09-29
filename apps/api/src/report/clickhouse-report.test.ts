@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClickHouseExecutor } from "../analytics/clickhouse";
 import {
   buildBranchSQL,
+  buildDashboardSQL,
   buildMachineStateSQL,
   queryBranches,
   queryDashboard,
@@ -112,6 +113,45 @@ describe("machine floor report", () => {
     const result = await queryDashboard(ch, "2026-07-01", "2026-08-25");
 
     expect(result.usageRowsInRange).toBe(1212);
+  });
+
+  // A machine_session_id can appear on more than one usage row with more than
+  // one status — 33 such sessions exist in the local warehouse right now (a
+  // `finished` row and a `cancelled` row for the same session). docs/03_data_
+  // contracts/data_contracts.md allows `status IN (2, 4)` for cycle counts, so
+  // once real IRIS data carries a session with BOTH a `paid` and a `finished`
+  // row, grouping by status splits that session into two groups and summing the
+  // per-group distinct counts counts it twice.
+  //
+  // The distinct count must therefore be evaluated at machine grain, and the
+  // status must stop being a grouping key. The status FILTER stays exactly as
+  // it is — this is about the grain, not about narrowing what counts.
+  it("counts each machine_session_id once even when it appears under two statuses", () => {
+    const sql = buildDashboardSQL();
+
+    // `u.status` must not be a grouping key, or the same session lands in one
+    // group per status and the per-group uniqExactIf values double-count it.
+    expect(sql).not.toMatch(/GROUP BY[^;]*\bu\.status\b/);
+    expect(sql).toContain("uniqExactIf(u.machine_session_id, u.status IN (2, 4)) AS cycles");
+    // Machine grain is preserved.
+    expect(sql).toContain("GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind");
+  });
+
+  it("keeps the status filter and the revenue sum untouched while dropping the status grouping key", () => {
+    const sql = buildDashboardSQL();
+
+    // docs/03_data_contracts/data_contracts.md: revenue and cycle counts
+    // legitimately include both `paid` and `finished`. The filter must survive.
+    expect(sql).toContain("sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang");
+    // Revenue is separately correct and separately verified against Superset;
+    // this fix must not move it.
+    expect(sql).not.toContain("u.status AS status,");
+  });
+
+  it("still counts usage rows for presence, not machine groups", () => {
+    // Dropping the status grouping key must not collapse count() into a
+    // per-machine existence flag: presence is a row count.
+    expect(buildDashboardSQL()).toContain("count() AS usageRows");
   });
 
   it("binds the per-group usage count into the existing dashboard query", async () => {

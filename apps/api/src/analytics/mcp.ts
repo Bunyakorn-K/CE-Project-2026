@@ -12,7 +12,7 @@ import {
   queryUtilizationHeatmap,
   queryOffPeakWindows
 } from "./queries";
-import { queryWeatherUsageCorrelation, WEATHER_CAVEAT } from "./weather";
+import { queryWeatherUsageCorrelation, WEATHER_CAVEAT, WEATHER_PROVENANCE_CAVEAT } from "./weather";
 import { rankOffPeakBuckets } from "./offpeak";
 import { parseAnalyticsRange } from "./scope";
 
@@ -193,7 +193,7 @@ function registerTools(server: McpServer, deps: McpDeps, scope: McpScope): void 
     "get_temperature_curve",
     {
       title: "Temperature curve",
-      description: "Raw wash-phase temperature samples per machine over a date range, capped at 5000 points.",
+      description: "Raw wash-phase temperature samples per machine over a date range. Returns the NEWEST 5000 points; when meta.truncation is set, meta.range is only partially covered.",
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
@@ -213,7 +213,14 @@ function registerTools(server: McpServer, deps: McpDeps, scope: McpScope): void 
           branchId: args.branchId,
           machineId: args.machineId ?? ""
         });
-        return textResult(analyticsEnvelope(dataSourceEnvelope(rangeMeta(range.value.from, range.value.to, args.branchId), result), result.rows));
+        // A truncated curve must not be summarised as if it covered the whole
+        // range, so the cap travels with the payload.
+        return textResult(
+          analyticsEnvelope(
+            { ...dataSourceEnvelope(rangeMeta(range.value.from, range.value.to, args.branchId), result), truncation: result.truncation },
+            result.rows
+          )
+        );
       } catch (error) {
         return analyticsErrorResult(error);
       }
@@ -226,7 +233,9 @@ function registerTools(server: McpServer, deps: McpDeps, scope: McpScope): void 
       title: "Weather × usage correlation",
       description:
         "Daily weather observations (TMD) alongside cycle counts per branch over a date range. " +
-        "Correlation only — never causation, not a forecast (F-12 / R12).",
+        "Correlation only — never causation, not a forecast (F-12 / R12). " +
+        "meta.dataSource is 'unverifiable' for any non-empty window: the weather table carries no " +
+        "synthetic/provenance marker, so real-vs-generated cannot be determined.",
       inputSchema: {
         from: z.string().describe("YYYY-MM-DD, inclusive start"),
         to: z.string().describe("YYYY-MM-DD, exclusive end (next day)"),
@@ -244,11 +253,14 @@ function registerTools(server: McpServer, deps: McpDeps, scope: McpScope): void 
           to: range.value.to,
           branchId: args.branchId
         });
+        // The weather table has no provenance marker, so the tag comes from the
+        // query itself rather than from row counts. Overwriting it with
+        // dataSourceEnvelope() here would re-assert "real".
         const envelope = analyticsEnvelope(
-          dataSourceEnvelope(rangeMeta(range.value.from, range.value.to, args.branchId), result),
+          { ...rangeMeta(range.value.from, range.value.to, args.branchId), dataSource: result.dataSource },
           result.rows
         );
-        return textResult({ ...envelope, caveats: WEATHER_CAVEAT });
+        return textResult({ ...envelope, caveats: [WEATHER_CAVEAT, WEATHER_PROVENANCE_CAVEAT] });
       } catch (error) {
         return analyticsErrorResult(error);
       }

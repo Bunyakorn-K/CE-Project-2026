@@ -12,7 +12,6 @@ type MachineUsageRow = {
   branch_name: string;
   machine_code: string;
   machine_kind: string;
-  status: string;
   revenueSatang: string;
   cycles: string;
   usageRows: string;
@@ -49,6 +48,19 @@ GROUP BY tenant_id, branch_id, branch_name, timezone, active
 ORDER BY branch_name`;
 }
 
+/**
+ * Dashboard aggregation, one row per (tenant, branch, machine).
+ *
+ * `cycles` is a per-machine distinct `machine_session_id`, and
+ * `queryDashboard` sums those per-machine values. That sum is only correct if
+ * the grouping key is no finer than the machine: a `machine_session_id` that
+ * appears on both a `paid` and a `finished` row — both of which
+ * docs/03_data_contracts/data_contracts.md allows in `status IN (2, 4)` —
+ * would otherwise land in two groups and be counted twice. `status` is
+ * therefore deliberately NOT a grouping key. The `status IN (2, 4)` FILTER is
+ * untouched: which statuses count is a data-contract decision, distinct-from
+ * what grain the count is taken at is a correctness one.
+ */
 export function buildDashboardSQL(): string {
   return `
 SELECT
@@ -58,7 +70,6 @@ SELECT
   b.branch_name AS branch_name,
   m.machine_code AS machine_code,
   m.machine_kind AS machine_kind,
-  u.status AS status,
   sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang,
   uniqExactIf(u.machine_session_id, u.status IN (2, 4)) AS cycles,
   count() AS usageRows,
@@ -69,7 +80,7 @@ INNER JOIN dim_machine AS m FINAL ON u.tenant_id = m.tenant_id AND u.branch_id =
 WHERE u.started_at >= {from:String}
   AND u.started_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
-GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind, u.status`;
+GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind`;
 }
 
 export function buildMachineStateSQL(): string {
