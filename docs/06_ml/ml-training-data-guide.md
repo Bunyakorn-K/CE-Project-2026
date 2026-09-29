@@ -95,10 +95,15 @@ key or a filter in any of them.
    appears on 257 rows, and only **6** of those carry a `machine_session_id`. A
    branch-day with a handful of `paid` rows therefore has both a small
    numerator and no session evidence at all.
-3. **`paid` vs `finished` is still semantically unresolved** upstream
-   (`docs/03_data_contracts/data_contracts.md`). The ratio is computable, but
-   what a high or low value *means* is not established. Do not present it as a
-   payment-completion rate.
+3. **`paid` vs `finished` are provably distinct, and `paid` is a stall state**
+   (resolved 2026-09-29; `docs/03_data_contracts/data_contracts.md`).
+   `active-machine-usage.ts:22` counts `paid` as in-progress, `finished`
+   requires `last_phase = 'IDLE'`, and nothing sweeps a `paid` row that never
+   receives a session-end event. So a high `paid_ratio` is evidence of sessions
+   missing their end event — a data-quality signal — not a payment-completion
+   rate. Do not present it as one. (Note the `paid` counts above were measured
+   against the pre-migration enum numbering; the status *names* are unchanged,
+   so the figures stand.)
 
 ### 3.2 Weather features (from `fact_weather_sample`)
 

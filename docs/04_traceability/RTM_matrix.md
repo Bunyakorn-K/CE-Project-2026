@@ -37,14 +37,23 @@ future per-position data. The current `fact_weather_sample` key is
 
 ### Canonical cycle definition (decided 2026-09-29)
 
-**The canonical definition of a cycle is the count of usage ROWS with
-`status IN (2, 4)`.** It is used by every surface that labels a number
-"รอบ" (cycle). Owner-approved; decided on real data, not on inference.
+**The canonical definition of a cycle is the count of usage ROWS whose status
+is `paid` or `finished`** — written `status IN ('paid', 'finished')`. It is used
+by every surface that labels a number "รอบ" (cycle). Owner-approved; decided on
+real data, not on inference.
+
+**Filter by name, not by enum number.** The dashboard previously wrote
+`status IN (2, 4)`, which was only correct under the old enum numbering.
+`status` is now numbered by the IRIS lifecycle order
+(`docs/03_data_contracts/data_contracts.md`, "status enum numbering"), under
+which those integers name `paid` and `running`. The set of rows is unchanged;
+only the spelling is now stable. Verified on ClickHouse 26.3 that a string
+literal resolves against an `Enum8` by name.
 
 | Surface | Query | Status |
 | :------ | :----- | :----- |
-| `/api/report/dashboard` KPI `cycles` | `countIf(u.status IN (2, 4))` | **Canonical** |
-| dashboard twin tab `cycleCount` | `countIf(u.status IN (2, 4))` | **Canonical** (was `countDistinct(machine_session_id)`, no status filter) |
+| `/api/report/dashboard` KPI `cycles` | `countIf(u.status IN ('paid', 'finished'))` | **Canonical** |
+| dashboard twin tab `cycleCount` | `countIf(u.status IN ('paid', 'finished'))` | **Canonical** (was `countDistinct(machine_session_id)`, no status filter) |
 | `/api/v1/analytics/cycles/daily` `cycles` | `countIf(status IN ('finished','paid'))` | Already canonical; unchanged |
 | `/api/v1/analytics/utilization` `cycles` | `count()`, no status filter | Deliberately **unfiltered**: it is a utilisation denominator, not a cycle count, and must include every row a machine was busy. Not a cycle KPI and not held to this definition. |
 
@@ -92,9 +101,11 @@ non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
   used `countIf(status IN ('finished','paid'))`. This removes a divergence
   rather than creating one.
 - **The status filter is a data-contract decision and is untouched.**
-  `docs/03_data_contracts/data_contracts.md` authorises `status IN (2, 4)` for
-  revenue and cycle counts. Revenue aggregation is **unchanged** — it is
-  separately correct, separately tested, and separately verified.
+  `docs/03_data_contracts/data_contracts.md` authorises the `paid` + `finished`
+  pair for revenue and cycle counts. Revenue aggregation is **unchanged** — it is
+  separately correct, separately tested, and separately verified. Only the
+  spelling moved, from `IN (2, 4)` to `IN ('paid', 'finished')`, because the
+  enum was renumbered to the IRIS lifecycle order.
 
 #### The attribution gap stays visible
 

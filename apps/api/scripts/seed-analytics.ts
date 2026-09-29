@@ -138,9 +138,12 @@ export function buildSeedRows(seed: number, days: number) {
         program_name: ["quick", "standard", "heavy"][Math.floor(rand() * 3)],
         temp_level: machine.machine_kind === "dryer" ? "high" : ["cold", "warm", "hot"][Math.floor(rand() * 3)],
         amount_satang: Math.round(amountSatang),
-        // `finished` (Enum8 value 4) and `cancelled` (5) mirror a completed
-        // cycle; the dashboard counts revenue and cycles on statuses 2 and 4,
-        // so `finished` rows are the ones QA should see populate.
+        // `finished` and `cancelled` mirror a completed cycle; the dashboard
+        // counts revenue and cycles on the 'paid' and 'finished' statuses, so
+        // `finished` rows are the ones QA should see populate. Referenced by
+        // NAME on purpose — the enum is numbered by the IRIS lifecycle order
+        // (admitted=3, running=4, finished=5, cancelled=6), so a numeric
+        // reference here would drift the moment the enum is renumbered.
         status: rand() < 0.92 ? "finished" : "cancelled",
         initiated_via: rand() < 0.5 ? "liff" : "staff_v3",
         attribution_state: "exact",

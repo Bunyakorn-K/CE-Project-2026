@@ -66,8 +66,17 @@ ORDER BY branch_name`;
  * (`apps/api/scripts/cycle-cardinality-diagnostic.ts`) measured that one real
  * session id spans exactly one row and exactly one status, so for attributed
  * rows the two definitions are identical; the divergence was entirely the
- * missing attribution. `status IN (2, 4)` is a data-contract decision
- * (docs/03_data_contracts/data_contracts.md) and is unchanged.
+ * missing attribution. `status IN ('paid', 'finished')` is a data-contract
+ * decision (docs/03_data_contracts/data_contracts.md) and is unchanged.
+ *
+ * BY NAME, not by number. This was `status IN (2, 4)`, which was only correct
+ * while the Enum8 read 'running'=3, 'finished'=4. `status` is now numbered by
+ * the IRIS lifecycle order (admitted=3, running=4, finished=5) so that
+ * `status >= 3` means "past the queue"; under that numbering the same numbers
+ * would have silently become `paid` + `running` and moved the revenue line.
+ * ClickHouse resolves a string literal against an Enum8 by name, so the names
+ * are immune to the renumbering (verified on ClickHouse 26.3). Nothing else in
+ * this file may reintroduce a numeric status literal.
  *
  * The gap is still measured rather than assumed away: `attributedCycles`
  * counts how many of the counted rows carry a non-null `machine_session_id`,
@@ -83,9 +92,9 @@ SELECT
   b.branch_name AS branch_name,
   m.machine_code AS machine_code,
   m.machine_kind AS machine_kind,
-  sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang,
-  countIf(u.status IN (2, 4)) AS cycles,
-  countIf(u.status IN (2, 4) AND u.machine_session_id IS NOT NULL) AS attributedCycles,
+  sumIf(u.amount_satang, u.status IN ('paid', 'finished')) AS revenueSatang,
+  countIf(u.status IN ('paid', 'finished')) AS cycles,
+  countIf(u.status IN ('paid', 'finished') AND u.machine_session_id IS NOT NULL) AS attributedCycles,
   count() AS usageRows,
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u FINAL
@@ -108,7 +117,7 @@ SELECT
   m.machine_kind AS machine_kind,
   argMax(u.status, u.started_at) AS status,
   max(u.started_at) AS last_active_at,
-  countIf(u.status IN (2, 4)) AS cycle_count
+  countIf(u.status IN ('paid', 'finished')) AS cycle_count
 FROM dim_machine AS m FINAL
 INNER JOIN dim_branch AS b FINAL ON m.tenant_id = b.tenant_id AND m.branch_id = b.branch_id
 LEFT JOIN fact_machine_usage AS u FINAL ON
@@ -158,8 +167,9 @@ export type MachineInfo = {
   lastActiveAt: string | null;
   cycleCount: number | null;
   /** Which definition `cycleCount` was taken from. It is NOT `machine_session_id`:
-   *  the count is `countIf(status IN (2, 4))` over usage rows, the canonical
-   *  definition, so labelling it by that nullable field would misdescribe it. */
+   *  the count is `countIf(status IN ('paid', 'finished'))` over usage rows, the
+   *  canonical definition, so labelling it by that nullable field would
+   *  misdescribe it. */
   cycleCountSource: "usage_row" | "unavailable";
 };
 

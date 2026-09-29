@@ -171,7 +171,7 @@ erDiagram
         String program_name
         Enum8 temp_level "cold|warm|hot|low|medium|high"
         Int64 amount_satang "integer satang"
-        Enum8 status "pending_payment|paid|running|finished|cancelled|admitted"
+        Enum8 status "pending_payment|paid|admitted|running|finished|cancelled"
         Enum8 initiated_via "staff_v3|liff|kiosk_k2|coin"
         Enum8 attribution_state "exact|legacy|heuristic|pending_attribution"
         Enum8 attribution_source "staff_v3|liff|handheld_dispatch|unknown"
@@ -239,22 +239,27 @@ Notes:
   **one row per session and one status per session**, with the id **absent on
   63.91% of rows**, exactly the `attribution_state = 'pending_attribution'`
   set. No counter uses it to count cycles — the canonical cycle count is the row
-  count `countIf(status IN (2, 4))` — and it is used only to report how much of
+  count `countIf(status IN ('paid', 'finished'))` — and it is used only to report how much of
   that count carries session-level evidence (`dashboard.cycleAttribution`). Its
   upstream meaning remains **unresolved**; no meaning is asserted here. See
   "Canonical cycle definition" in `docs/04_traceability/RTM_matrix.md` and
   "Session Attribution" in `docs/03_data_contracts/data_contracts.md`.
-- `paid` vs `finished` semantics are **unresolved upstream**. They are two
-  distinct `FACT_MACHINE_USAGE.status` enum members, and the API reports them
-  as two distinct `machines[].status` values on `/api/twin` and
-  `/api/report/live` (`"paid"` and `"finished"`; also `"cancelled"`,
-  `"admitted"`, `"pending"`, `"idle"`, `"offline"`, `"unknown"`, `"running"`).
-  They were previously collapsed into `"paid"`, which made the documented
-  `paid_ratio` feature meaningless. Revenue and cycle aggregation is unchanged
-  and still counts both (`status IN (2, 4)` in
-  `apps/api/src/report/clickhouse-report.ts`,
-  `status IN ('finished','paid')` in `apps/api/src/analytics/queries.ts`).
-  Nothing in the code claims what distinguishes the two upstream values.
+- `paid` vs `finished` are **provably distinct** (resolved 2026-09-29 from
+  `Meepain-group/iris-project` @ `813ffa7`; see `docs/03_data_contracts/data_contracts.md`,
+  "`status` enum numbering"). They are two distinct `FACT_MACHINE_USAGE.status`
+  enum members, and the API reports them as two distinct `machines[].status`
+  values on `/api/twin` and `/api/report/live` (`"paid"` and `"finished"`; also
+  `"cancelled"`, `"admitted"`, `"pending"`, `"idle"`, `"offline"`, `"unknown"`,
+  `"running"`). They were previously collapsed into `"paid"`, which made the
+  documented `paid_ratio` feature meaningless. `active-machine-usage.ts:22`
+  counts `paid` as in-progress; `finished` requires `last_phase = 'IDLE'`
+  (migration `0053:41-44`); and nothing sweeps a `paid` row that never receives
+  a session-end event, so a `paid` row can persist indefinitely. Revenue and
+  cycle aggregation is unchanged and still counts both, now written by name —
+  `status IN ('paid', 'finished')` in `apps/api/src/report/clickhouse-report.ts`,
+  `status IN ('finished','paid')` in `apps/api/src/analytics/queries.ts`. A KPI
+  may not equate the two, and `amount_satang` is a pre-set program price, not
+  proof of settlement.
 - `dashboard.usageRowsInRange` (`apps/api/src/report/clickhouse-report.ts`) is
   the presence signal: the number of usage rows in range within the resolved
   branch scope, `0` when there are none, `null` when the source cannot count

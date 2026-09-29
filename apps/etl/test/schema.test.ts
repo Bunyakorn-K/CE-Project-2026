@@ -110,6 +110,62 @@ describe("schema alignment", () => {
   });
 });
 
+/**
+ * `status` is numbered by the IRIS lifecycle order, not alphabetically and not
+ * by "how often it happens". The order is read off the upstream source
+ * (Meepain-group/iris-project @ 813ffa7), not invented here:
+ *
+ *   pending_payment -> paid -> admitted -> running -> finished
+ *                                           + cancelled
+ *
+ * Evidence: migration 0053:28-30 constrains the lifecycle projector to
+ * `desired_status IN ('running','finished')`; active-machine-usage.ts:22-33
+ * counts `paid`/`running` as in-progress and `admitted`/`pending_payment` as
+ * occupancy-only; cron.ts:2202 sweeps `pending_payment -> cancelled`; and
+ * 0053:41-44 makes `last_phase = 'IDLE'` a hard CHECK for `finished`.
+ *
+ * `cancelled` is a terminal branch off the same point as `finished`, not a step
+ * after it, so it takes the last value.
+ *
+ * The numbering is load-bearing: `status >= 3` is a meaningful comparison only
+ * under this order, and the previous declaration had `admitted = 6`, which put
+ * the first step of a running cycle after `cancelled`.
+ */
+describe("fact_machine_usage.status enum numbering", () => {
+  const enumMembers = (() => {
+    const usageDdl = CREATE_TABLES.find((d) => d.startsWith("CREATE TABLE IF NOT EXISTS fact_machine_usage"));
+    const type = /status Enum8\(([^)]*)\)/.exec(usageDdl ?? "")?.[1] ?? "";
+    return [...type.matchAll(/'([a-z_]+)'\s*=\s*(\d+)/g)].map(([, name, value]) => ({
+      name,
+      value: Number(value)
+    }));
+  })();
+
+  it("declares the six known IRIS statuses", () => {
+    expect(enumMembers.map((m) => m.name)).toEqual([
+      "pending_payment",
+      "paid",
+      "admitted",
+      "running",
+      "finished",
+      "cancelled"
+    ]);
+  });
+
+  it("numbers them in IRIS lifecycle order, admitted between paid and running", () => {
+    expect(enumMembers.map((m) => m.value)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("keeps every value unique and inside the Enum8 range", () => {
+    const values = enumMembers.map((m) => m.value);
+    expect(new Set(values).size).toBe(values.length);
+    for (const value of values) {
+      expect(value).toBeGreaterThanOrEqual(-128);
+      expect(value).toBeLessThanOrEqual(127);
+    }
+  });
+});
+
 // ReplacingMergeTree rejects a String version column with Code 169
 // BAD_TYPE_OF_FIELD. That error aborts runEtl at CREATE time, before any fact
 // table exists — the whole warehouse stays empty, not just one table.

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildBranchSessionNullRateSQL,
   buildCycleDefinitionSQL,
@@ -12,9 +12,14 @@ import {
   buildSessionSpanHistogramSQL,
   buildSessionSpanSummarySQL,
   buildStatusDistributionSQL,
+  buildEnumTypeSQL,
   CYCLE_DEFINITIONS,
+  ENUM_VERSION_REFUSAL_REASON,
+  enumVersionOf,
   formatDiagnostic,
   parseArgs,
+  POST_MIGRATION_STATUS_TYPE,
+  PRE_MIGRATION_STATUS_TYPE,
   REFUSAL_REASON,
   runCycleCardinalityDiagnostic,
   satangPerCycle,
@@ -154,8 +159,8 @@ describe("cycle-cardinality-diagnostic SQL", () => {
     // The two surfaces the decision moved, now on the canonical definition.
     const dashboardSql = buildDashboardSQL();
     const machineStateSql = buildMachineStateSQL();
-    expect(dashboardSql).toContain("countIf(u.status IN (2, 4)) AS cycles");
-    expect(machineStateSql).toContain("countIf(u.status IN (2, 4)) AS cycle_count");
+    expect(dashboardSql).toContain("countIf(u.status IN ('paid', 'finished')) AS cycles");
+    expect(machineStateSql).toContain("countIf(u.status IN ('paid', 'finished')) AS cycle_count");
     expect(dashboardSql).not.toMatch(/uniqExactIf|countDistinct\(u\.machine_session_id\)/);
     expect(machineStateSql).not.toContain("countDistinct(u.machine_session_id)");
 
@@ -163,6 +168,76 @@ describe("cycle-cardinality-diagnostic SQL", () => {
     // definition nobody has scoped.
     expect(CYCLE_DEFINITIONS).toHaveLength(4);
     expect(new Set(CYCLE_DEFINITIONS.map((definition) => definition.key)).size).toBe(4);
+  });
+});
+
+describe("cycle-cardinality-diagnostic enum-version guard", () => {
+  // The enum probe is the one query the guard may add. It must be a plain read
+  // of the catalog, and it must not name a fact table, or the guard would be
+  // the first thing in this script that can touch data.
+  it("probes system.columns and writes nothing", () => {
+    const sql = buildEnumTypeSQL();
+    expect(sql).toMatch(/FROM\s+system\.columns/i);
+    expect(sql).not.toMatch(/\b(INSERT|ALTER|DELETE|CREATE|DROP|TRUNCATE|RENAME|ATTACH|DETACH|OPTIMIZE|GRANT|REVOKE|KILL)\b/i);
+    expect(sql).not.toMatch(/fact_machine_usage\s*FINAL/i);
+    expect(sql).toContain("'status'");
+  });
+  // Every candidate expression in this script is quoted against the PRE-
+  // migration numbering, where `status IN (2, 4)` meant paid + finished. That
+  // is deliberate — those expressions are the evidence the 2026-09-29 decision
+  // rests on, and rewriting them would delete the finding. But a quoted
+  // expression is only evidence while the enum still has the numbering it was
+  // quoted against: after the lifecycle renumbering, `IN (2, 4)` silently means
+  // `paid` + `running`. The guard makes the script refuse rather than report a
+  // number computed from an expression it can no longer read the same way.
+  it("accepts the pre-migration numbering and rejects the post-migration one", () => {
+    expect(enumVersionOf(PRE_MIGRATION_STATUS_TYPE)).toBe("pre-migration");
+    expect(enumVersionOf(POST_MIGRATION_STATUS_TYPE)).toBe("post-migration");
+    expect(enumVersionOf("Enum8('paid' = 1)")).toBe("unknown");
+    expect(enumVersionOf("")).toBe("unknown");
+  });
+
+  it("states what would have been measured wrongly", () => {
+    expect(ENUM_VERSION_REFUSAL_REASON).toContain("status IN (2, 4)");
+    expect(ENUM_VERSION_REFUSAL_REASON).toContain("paid");
+    expect(ENUM_VERSION_REFUSAL_REASON).toContain("running");
+  });
+
+  it("refuses to run against a warehouse already carrying the new numbering", async () => {
+    // No statusType: this drives the real probe path, which is what production
+    // takes. The catalog answers with the post-migration type.
+    const executor = vi.fn().mockResolvedValue([{ type: POST_MIGRATION_STATUS_TYPE }]);
+    const result = await runCycleCardinalityDiagnostic(executor as unknown as ClickHouseExecutor);
+
+    expect(result.refused).toBe(true);
+    // The refusal must cost nothing: only the enum probe may have been issued,
+    // so no countIf(status IN (2, 4)) can have run against the new numbering.
+    expect(executor).toHaveBeenCalledTimes(1);
+    if (result.refused) expect(result.reason).toBe(ENUM_VERSION_REFUSAL_REASON);
+    const rendered = formatDiagnostic(result);
+    expect(rendered).toContain("REFUSED");
+    // It must not present "not measured" as "measured zero".
+    expect(rendered).toContain("NOT measured");
+    expect(rendered).not.toContain("total_rows=0");
+  });
+
+  it("refuses when the status column is not one of the two known numberings at all", async () => {
+    const executor = vi.fn().mockResolvedValue([{ type: "Enum16('pending_payment' = 1)" }]);
+    const result = await runCycleCardinalityDiagnostic(executor as unknown as ClickHouseExecutor);
+
+    expect(result.refused).toBe(true);
+    expect(executor).toHaveBeenCalledTimes(1);
+    if (result.refused) expect(result.reason).toBe(ENUM_VERSION_REFUSAL_REASON);
+  });
+
+  it("still runs against a warehouse on the numbering its quotes assume", async () => {
+    const executor = vi.fn().mockResolvedValueOnce([{ type: PRE_MIGRATION_STATUS_TYPE }]).mockResolvedValueOnce([]);
+    const result = await runCycleCardinalityDiagnostic(executor as unknown as ClickHouseExecutor);
+
+    // The enum gate passes; the synthetic-row gate is the next one to fire.
+    expect(executor).toHaveBeenCalledTimes(2);
+    expect(result.refused).toBe(true);
+    if (result.refused) expect(result.reason).toBe(REFUSAL_REASON);
   });
 });
 
@@ -182,7 +257,7 @@ describe("cycle-cardinality-diagnostic synthetic guard", () => {
     const { executor, queries } = fakeExecutor(() => [
       { total_rows: "1755", synthetic_rows: "1755", real_rows: "0", first_real_row: null, last_real_row: null }
     ]);
-    const result = await runCycleCardinalityDiagnostic(executor);
+    const result = await runCycleCardinalityDiagnostic(executor, { statusType: PRE_MIGRATION_STATUS_TYPE });
 
     expect(result.refused).toBe(true);
     if (!result.refused) throw new Error("expected a refusal");
@@ -198,7 +273,9 @@ describe("cycle-cardinality-diagnostic synthetic guard", () => {
     const { executor } = fakeExecutor(() => [
       { total_rows: "1755", synthetic_rows: "1755", real_rows: "0", first_real_row: null, last_real_row: null }
     ]);
-    const output = formatDiagnostic(await runCycleCardinalityDiagnostic(executor));
+    const output = formatDiagnostic(
+      await runCycleCardinalityDiagnostic(executor, { statusType: PRE_MIGRATION_STATUS_TYPE })
+    );
 
     expect(output).toContain("REFUSED");
     expect(output).toContain("total_rows=1755");
@@ -287,7 +364,11 @@ describe("cycle-cardinality-diagnostic synthetic guard", () => {
       return [];
     });
 
-    const result = await runCycleCardinalityDiagnostic(executor, { from: "2026-09-01", to: "2026-09-28" });
+    const result = await runCycleCardinalityDiagnostic(executor, {
+      from: "2026-09-01",
+      to: "2026-09-28",
+      statusType: PRE_MIGRATION_STATUS_TYPE
+    });
     expect(result.refused).toBe(false);
     if (result.refused) throw new Error("expected measurements");
     const m = result.measurements;
@@ -352,7 +433,7 @@ describe("cycle-cardinality-diagnostic synthetic guard", () => {
       }
       return [];
     });
-    const result = await runCycleCardinalityDiagnostic(executor);
+    const result = await runCycleCardinalityDiagnostic(executor, { statusType: PRE_MIGRATION_STATUS_TYPE });
     if (result.refused) throw new Error("expected measurements");
 
     expect(result.measurements.sessionSpan.minRowsPerSession).toBeNull();

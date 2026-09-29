@@ -84,9 +84,12 @@ local automated evidence for server-side branch scope, zero-grant denial,
 strict calendar date validation, bind-parameter queries, nullable revenue
 redaction, active-inventory retention, usage-derived freshness, and unknown
 state preservation. The cycle KPI is the paid/finished **row** count
-(`countIf(status IN (2, 4))`) — the canonical definition decided 2026-09-29
-from a real-warehouse cardinality measurement, recorded in
-`docs/04_traceability/RTM_matrix.md`. Because 63.91% of real usage rows carry
+(`countIf(status IN ('paid', 'finished'))`) — the canonical definition decided
+2026-09-29 from a real-warehouse cardinality measurement, recorded in
+`docs/04_traceability/RTM_matrix.md`. `status` is now numbered by the IRIS
+lifecycle order (decided 2026-09-29); filter it by name, never by number, and
+note `apps/api/scripts/migrate-usage-status-enum.ts` — the production
+migration has NOT been run. Because 63.91% of real usage rows carry
 no `machine_session_id`, the dashboard response carries
 `cycleAttribution` and the web dashboard states the unattributed share in
 Thai; a cycle count must never be presented as fully attributed. This is

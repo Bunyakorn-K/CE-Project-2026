@@ -53,6 +53,59 @@ import "../src/config";
 import { createClickHouseClient, type ClickHouseExecutor } from "../src/analytics/clickhouse";
 
 // ---------------------------------------------------------------------------
+// Enum-version guard
+// ---------------------------------------------------------------------------
+
+/**
+ * The numbering every candidate expression in this file is quoted against, and
+ * the one `apps/api/scripts/migrate-usage-status-enum.ts` replaces.
+ *
+ * `status` is numbered by the IRIS lifecycle order. It was not, before that
+ * migration: `admitted` sat at 6, after `cancelled`. This script's expressions
+ * are frozen on purpose — they are the evidence the 2026-09-29 decision rests
+ * on, and rewriting them to match today's code would delete the
+ * ฿125.42-per-"cycle" versus ฿42.20-per-row result — but a frozen expression is
+ * only readable while the enum still has the numbering it was frozen against.
+ * After the migration, `status IN (2, 4)` names `paid` and `running`, not
+ * `paid` and `finished`, and would report a confidently wrong number. So the
+ * script probes the live enum and refuses rather than describe a warehouse it
+ * is no longer reading correctly.
+ */
+export const PRE_MIGRATION_STATUS_TYPE =
+  "Enum8('pending_payment' = 1, 'paid' = 2, 'running' = 3, 'finished' = 4, 'cancelled' = 5, 'admitted' = 6)";
+export const POST_MIGRATION_STATUS_TYPE =
+  "Enum8('pending_payment' = 1, 'paid' = 2, 'admitted' = 3, 'running' = 4, 'finished' = 5, 'cancelled' = 6)";
+
+export type EnumVersion = "pre-migration" | "post-migration" | "unknown";
+
+/** Compares the live column type against both known numberings, by name set AND
+ *  by value — a type with the right names in the wrong order is the exact bug
+ *  this guard exists to catch, so matching the name list alone would be useless. */
+export function enumVersionOf(liveType: string): EnumVersion {
+  if (liveType === PRE_MIGRATION_STATUS_TYPE) return "pre-migration";
+  if (liveType === POST_MIGRATION_STATUS_TYPE) return "post-migration";
+  return "unknown";
+}
+
+export const ENUM_VERSION_REFUSAL_REASON =
+  "fact_machine_usage.status is not the pre-migration Enum8, so the candidate expressions quoted in this script " +
+  "can no longer be read the way they were written. `status IN (2, 4)` meant paid + finished under the old " +
+  "numbering; after the IRIS-lifecycle renumbering (admitted=3, running=4, finished=5, cancelled=6) the same " +
+  "numbers name paid + running, and this script would report that as if it were revenue. The expressions are " +
+  "deliberately not rewritten — they are the evidence the cycle decision rests on — so the script refuses instead. " +
+  "On a migrated warehouse use the renumbered queries in apps/api/src/report/clickhouse-report.ts, which filter " +
+  "by name. Refusing to measure.";
+
+export function buildEnumTypeSQL(): string {
+  return `
+SELECT type
+FROM system.columns
+WHERE database = currentDatabase()
+  AND table = 'fact_machine_usage'
+  AND name = 'status'`;
+}
+
+// ---------------------------------------------------------------------------
 // Shared SQL fragments
 // ---------------------------------------------------------------------------
 
@@ -424,7 +477,6 @@ export type DiagnosticRange = { from: string; to: string; branchId: string };
 export type DiagnosticResult =
   | { refused: true; rowCounts: RowCounts; range: DiagnosticRange; reason: string }
   | { refused: false; rowCounts: RowCounts; range: DiagnosticRange; measurements: Measurements };
-
 /**
  * The guard. Zero non-synthetic rows means every number this script could print
  * would describe seed data, so the script refuses instead of reporting.
@@ -460,22 +512,49 @@ export function satangPerCycle(revenueSatang: number, cycles: number): number | 
   return Math.round((revenueSatang / cycles) * 100) / 100;
 }
 
-export type DiagnosticOptions = { from?: string; to?: string; branchId?: string };
+export type DiagnosticOptions = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  /** Live `status` column type. Injected by tests; when omitted the enum guard
+   *  probes system.columns itself, which is the only extra query it may issue. */
+  statusType?: string;
+};
 
 function params(options: DiagnosticOptions) {
   return { from: options.from ?? "", to: options.to ?? "", branchId: options.branchId ?? "" };
 }
 
 /**
- * Runs the ten SELECTs in order. The first one gates everything else: when
- * there is no real data, no further query is issued at all, so there is no
- * chance of a seed-derived number reaching the report.
+ * Runs the ten SELECTs in order. Two gates come first.
+ *
+ * The enum gate: every candidate expression below is quoted against the
+ * pre-migration numbering, so on a warehouse that has been renumbered the
+ * script would report `paid` + `running` where it means `paid` + `finished`.
+ * It refuses, and the refusal costs a single probe — nothing is measured.
+ *
+ * The row-count gate: when there is no real data, no further query is issued at
+ * all, so there is no chance of a seed-derived number reaching the report.
  */
 export async function runCycleCardinalityDiagnostic(
   executor: ClickHouseExecutor,
   options: DiagnosticOptions = {}
 ): Promise<DiagnosticResult> {
   const range = params(options);
+  const unmeasured: RowCounts = {
+    totalRows: 0,
+    syntheticRows: 0,
+    realRows: 0,
+    firstRealRow: null,
+    lastRealRow: null
+  };
+
+  const statusType =
+    options.statusType ?? str((await executor<Record<string, unknown>>(buildEnumTypeSQL()))[0]?.type);
+  if (enumVersionOf(statusType) !== "pre-migration") {
+    return { refused: true, rowCounts: unmeasured, range, reason: ENUM_VERSION_REFUSAL_REASON };
+  }
+
   const counts = await executor<Record<string, unknown>>(buildRowCountSQL());
   const rowCounts: RowCounts = {
     totalRows: int(counts[0]?.total_rows),
@@ -607,14 +686,22 @@ export function formatDiagnostic(result: DiagnosticResult): string {
   lines.push("LaundryTwin cycle-cardinality diagnostic — READ ONLY, no data written");
   lines.push(`Range: from=${result.range.from || "(all)"} to=${result.range.to || "(all)"} branch=${result.range.branchId || "(all)"}`);
   lines.push("");
-  lines.push("Row counts in fact_machine_usage (FINAL):");
-  lines.push(`  total_rows=${result.rowCounts.totalRows}  synthetic_rows=${result.rowCounts.syntheticRows}  real_rows=${result.rowCounts.realRows}`);
-  lines.push(
-    `  real data window: ${result.rowCounts.firstRealRow ?? "n/a"} .. ${result.rowCounts.lastRealRow ?? "n/a"}`
-  );
-  lines.push("");
 
   if (result.refused) {
+    // The enum gate refuses before measuring anything, so printing zeros as
+    // "row counts" would claim an empty table rather than an unmeasured one.
+    if (result.rowCounts.totalRows === 0 && result.rowCounts.syntheticRows === 0 && result.rowCounts.realRows === 0) {
+      lines.push("VERDICT: REFUSED — no verdict produced.");
+      lines.push(result.reason);
+      lines.push("Row counts were NOT measured: the guard above fired before any counting query was issued.");
+      return lines.join("\n");
+    }
+    lines.push("Row counts in fact_machine_usage (FINAL):");
+    lines.push(`  total_rows=${result.rowCounts.totalRows}  synthetic_rows=${result.rowCounts.syntheticRows}  real_rows=${result.rowCounts.realRows}`);
+    lines.push(
+      `  real data window: ${result.rowCounts.firstRealRow ?? "n/a"} .. ${result.rowCounts.lastRealRow ?? "n/a"}`
+    );
+    lines.push("");
     lines.push("VERDICT: REFUSED — no verdict produced.");
     lines.push(result.reason);
     return lines.join("\n");

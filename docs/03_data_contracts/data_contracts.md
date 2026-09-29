@@ -10,8 +10,8 @@
 | **Schema Version** | `register_map_version` | Device mapping registry | Version tag specifying register address, unit, type, bits, and valid value ranges for a machine model. Reject events referencing unknown map versions. | All register-based features | **Required before MVP** |
 | **Event Timestamp** | `event_timestamp` | Device gateway / ingestion | UTC timestamp when telemetry was generated. Store `received_at` separately. Reject invalid timestamps and flag excessive clock skew. | Time series, KPI, Alerts | **Required before MVP** |
 | **Machine State** | `state` | Mapped register (e.g., Reg 4) | Enum value for machine state defined explicitly in `register_map_version`. Do not guess state in the UI. Reject unknown enums and flag data quality status. | Digital Twin, Anomaly rules | **Required before MVP** |
-| **Session Status** | `status` | IRIS session record, mirrored to `fact_machine_usage.status` | `Enum8('pending_payment' = 1, 'paid' = 2, 'running' = 3, 'finished' = 4, 'cancelled' = 5, 'admitted' = 6)`. All six members are known and each must surface as its own value. **The difference between `paid` and `finished` is unresolved upstream** — do not collapse them into one value, and do not label either as a payment receipt without evidence. Revenue and cycle counts legitimately include both (`status IN (2, 4)`); a KPI may not equate the two. | Dashboard, Digital Twin, `paid_ratio` (F-13) | **Semantics unresolved** |
-| **Session Attribution** | `machine_session_id` | IRIS session record, mirrored to `fact_machine_usage.machine_session_id` | `Nullable(String)`, a pass-through copy of IRIS `attribution_machine_session_id` (`apps/etl/src/postgres.ts:141` → `apps/etl/src/transform.ts:194`). **Present on only ~36% of real rows** and absent on the other ~64%, where it is exactly the `attribution_state = 'pending_attribution'` set. Where present it is **one row per session, and one status per session** (measured on 4,458 non-synthetic rows, 2026-07-22 → 2026-09-25: 1,609 session ids, 0 spanning more than one row, 0 carrying more than one `status`). **Its upstream meaning and its attribution semantics are UNRESOLVED** — do not infer a session boundary, a payment link, or a "verified" flag from it, and do not fabricate one where it is NULL. It is **not** used to count cycles: the canonical cycle count is the row count `countIf(status IN (2, 4))`. It is used only to report how much of that count carries session-level evidence (`dashboard.cycleAttribution`), which stays `null` where the source cannot measure it. | Attribution reporting, `cycleAttribution` | **Cardinality measured 2026-09-29; semantics unresolved** |
+| **Session Status** | `status` | IRIS session record, mirrored to `fact_machine_usage.status` | `Enum8('pending_payment' = 1, 'paid' = 2, 'admitted' = 3, 'running' = 4, 'finished' = 5, 'cancelled' = 6)` — numbered by the **IRIS lifecycle order**, decided 2026-09-29. All six members are known and each must surface as its own value. **Filter by NAME, never by number** (`status IN ('paid', 'finished')`): the numbers are a storage encoding that has already been renumbered once, and ClickHouse resolves a string literal against the enum by name, so names cannot drift. **`paid` and `finished` are provably distinct** (see below) and must not be collapsed, and neither may be labelled a payment receipt without evidence. Revenue and cycle counts legitimately include both; a KPI may not equate the two. | Dashboard, Digital Twin, `paid_ratio` (F-13) | **Numbering resolved 2026-09-29; `paid` vs `finished` proven distinct** |
+| **Session Attribution** | `machine_session_id` | IRIS session record, mirrored to `fact_machine_usage.machine_session_id` | `Nullable(String)`, a pass-through copy of IRIS `attribution_machine_session_id` (`apps/etl/src/postgres.ts:141` → `apps/etl/src/transform.ts:194`). **Present on only ~36% of real rows** and absent on the other ~64%, where it is exactly the `attribution_state = 'pending_attribution'` set. Where present it is **one row per session, and one status per session** (measured on 4,458 non-synthetic rows, 2026-07-22 → 2026-09-25: 1,609 session ids, 0 spanning more than one row, 0 carrying more than one `status`). **Its upstream meaning and its attribution semantics are UNRESOLVED** — do not infer a session boundary, a payment link, or a "verified" flag from it, and do not fabricate one where it is NULL. It is **not** used to count cycles: the canonical cycle count is the row count `countIf(status IN ('paid', 'finished'))`. It is used only to report how much of that count carries session-level evidence (`dashboard.cycleAttribution`), which stays `null` where the source cannot measure it. | Attribution reporting, `cycleAttribution` | **Cardinality measured 2026-09-29; semantics unresolved** |
 | **Remaining Time** | `remaining_seconds` | Mapped registers (e.g., Reg 6, 7) | Normalized remaining time as a non-negative integer in seconds. Must define source units and handle counter rollovers properly. | Digital Twin, Public status | **Required before MVP** |
 | **Temperature** | `temperature_c` | Mapped register (e.g., Reg 13) | Normalized Celsius value. Must handle unit conversion (from Fahrenheit) and validate against reasonable sensor boundaries. | Digital Twin, Gas estimate, Anomaly rules | **Required before MVP** |
 | **Payment / Revenue** | `paid_counter` or transaction event | Mapped register / payment source | Explicitly define whether value is lifetime accumulated, per-session, cash-only, or all payment methods. Record reset semantics and cross-check against transaction events. | KPI, Coin box estimate | **Required before MVP** |
@@ -28,3 +28,87 @@
 | **Weather Condition** | `weather_cond` | TMD NWP API | TMD condition code (integer). Nullable; treat as opaque until TMD's code table is pinned in docs. | F-12 correlation | **Phase 2** |
 | **Weather Source Auth** | `TMD_API_KEY` | TMD account | Bearer token from **env only** — never committed, never sent to the browser. Collector: `apps/etl/src/weather.ts` via `TMD_API_KEY`. | F-12 collector | **Phase 2** |
 | **Weather Correlation Semantics** | — | F-12 output | Correlation only: output must state source range and explicitly deny causation/forecast claims (R12). | Weather analysis | **Phase 2** |
+## `status` enum numbering — decision 2026-09-29
+
+`fact_machine_usage.status` is renumbered to the real IRIS lifecycle order:
+
+```text
+pending_payment(1) -> paid(2) -> admitted(3) -> running(4) -> finished(5)
+                                                     \-> cancelled(6)
+```
+
+The previous declaration was `pending_payment=1, paid=2, running=3, finished=4,
+cancelled=5, admitted=6`, which put `admitted` — the first step of a running
+cycle — *after* `cancelled`. Any range or ordering comparison over the column
+was therefore wrong: `status >= 3` read "past the payment queue" while actually
+selecting `running, finished, cancelled, admitted`.
+
+### Evidence for the order
+
+Read from the upstream repository (`Meepain-group/iris-project` @ `813ffa7`),
+not inferred from the LaundryTwin data:
+
+| Source | What it fixes |
+|---|---|
+| migration `0053:28-30` | constrains the lifecycle projector to `desired_status IN ('running','finished')` — `running` is reached *after* admission and payment |
+| `active-machine-usage.ts:22-33` | counts `paid`/`running` as in-progress; `admitted`/`pending_payment` as occupancy-only — so `admitted` is between `paid` and `running` |
+| `cron.ts:2202` | sweeps `pending_payment -> cancelled`, making `cancelled` reachable from the very first state |
+| `0053:41-44` | `last_phase = 'IDLE'` is a hard CHECK for `finished` — `finished` is terminal |
+
+`cancelled` is therefore a terminal branch off the same point as `finished`, not
+a step after it, and takes the last value.
+
+**IRIS's own written enums are stale in the opposite direction.**
+`packages/contracts/src/sync.ts:55,64` and `docs/05-database-schema.md:246` list
+only five values and omit `admitted`, while `ingest.ts:4577,4647,4668,4700,4723`
+actively handles it. There is also **no DB CHECK** on `machine_usage.status`
+upstream — it is plain `text NOT NULL` — so there is no upstream constraint to
+appeal to. LaundryTwin is ahead of the IRIS docs here, and this table is where
+the six values are actually pinned down.
+
+### `paid` and `finished` are provably distinct
+
+Previously recorded as "semantics unresolved". The upstream read resolves it:
+
+- `active-machine-usage.ts:22` counts `paid` as **in-progress**, alongside
+  `running` — so at that point in the source, `paid` has not reached `finished`.
+- `finished` requires `last_phase = 'IDLE'` (migration `0053:41-44`), a state a
+  running cycle only reaches at session end.
+- **Nothing sweeps a `paid` row.** The only sweeper upstream is
+  `pending_payment -> cancelled` (`cron.ts:2202`). A session that is paid and
+  then never receives an edge session-end event stays `paid` forever.
+
+So the two are genuinely different states, and `paid` is a *stall* state, not a
+synonym for finished. Consequences:
+
+- Counting revenue and cycles as `IN ('paid', 'finished')` is **sound** — it is
+  the canonical cycle definition (see `docs/04_traceability/RTM_matrix.md`).
+- `paid_ratio` **must not** equate them. A non-trivial `paid` share is evidence
+  of sessions that never emitted a session-end event, i.e. a data-quality gap,
+  not a revenue figure. `docs/06_ml/ml-training-data-guide.md` already defines
+  it as `countIf(status='paid') / nullIf(countIf(status IN ('finished','paid')), 0)`.
+
+### Caveat: `amount_satang` is not proof of settlement
+
+`amount_satang` is the **pre-set program price** copied from the IRIS usage
+row, not evidence that money was collected. Settlement truth lives in the
+`payment` table, which this warehouse does not mirror. Revenue figures derived
+from `amount_satang` are a program-price aggregate, and must be described that
+way. This caveat is independent of the numbering change and is unchanged by it.
+
+### Migration status
+
+`apps/etl/src/schema.ts` declares the corrected numbering, but
+`CREATE TABLE IF NOT EXISTS` never alters an existing table — that line governs
+**new** tables only. Existing deployments are handled by
+`apps/api/scripts/migrate-usage-status-enum.ts`.
+
+`ALTER TABLE ... MODIFY COLUMN status Enum8(...)` is **not** usable: it
+reinterprets stored bytes rather than converting them, and on ClickHouse 26.3 it
+is outright refused with `Code: 70 ... Enum conversion changes value for element
+'running' from 3 to 4 (CANNOT_CONVERT_TYPE)`. The migration therefore rebuilds
+the column: add the corrected column, backfill it by mapping every value by
+name, verify the distribution, swap the names, drop the old column.
+
+**The production migration has not been run.** The script has only been executed
+against local scratch tables. The deployment gate is still blocked.

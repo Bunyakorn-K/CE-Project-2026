@@ -127,11 +127,25 @@ describe("machine floor report", () => {
   it("counts cycles as usage rows in the paid/finished statuses, not distinct session ids", () => {
     const sql = buildDashboardSQL();
 
-    expect(sql).toContain("countIf(u.status IN (2, 4)) AS cycles");
+    expect(sql).toContain("countIf(u.status IN ('paid', 'finished')) AS cycles");
     expect(sql).not.toMatch(/uniqExactIf|countDistinct\(u\.machine_session_id\)/);
     // Machine grain is preserved — per-machine counts still sum to the total.
     expect(sql).not.toMatch(/GROUP BY[^;]*\bu\.status\b/);
     expect(sql).toContain("GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind");
+  });
+
+  // The paid/finished filter is written with string literals, not the enum
+  // numbers. `status IN (2, 4)` was correct only while the enum was declared
+  // 'running'=3, 'finished'=4; the enum is now numbered by the IRIS lifecycle
+  // order (admitted=3, running=4, finished=5), which would have silently
+  // turned that filter into `paid` + `running`. ClickHouse resolves a string
+  // literal against the Enum8 by name, so the names cannot drift.
+  it("filters the cycle statuses by name, never by enum number", () => {
+    for (const sql of [buildDashboardSQL(), buildMachineStateSQL()]) {
+      expect(sql).not.toMatch(/status\s+(?:NOT\s+)?IN\s*\(\s*\d/);
+      expect(sql).not.toMatch(/status\s*(?:=|==|!=|<|>)\s*\d/);
+      expect(sql).toContain("status IN ('paid', 'finished')");
+    }
   });
 
   // A row count is only right if the evidence gap is visible. The gap is
@@ -142,7 +156,7 @@ describe("machine floor report", () => {
     const sql = buildDashboardSQL();
 
     expect(sql).toContain(
-      "countIf(u.status IN (2, 4) AND u.machine_session_id IS NOT NULL) AS attributedCycles"
+      "countIf(u.status IN ('paid', 'finished') AND u.machine_session_id IS NOT NULL) AS attributedCycles"
     );
   });
 
@@ -183,7 +197,7 @@ describe("machine floor report", () => {
   it("counts machine cycles at the same grain and with the same status filter as the dashboard", () => {
     const sql = buildMachineStateSQL();
 
-    expect(sql).toContain("countIf(u.status IN (2, 4)) AS cycle_count");
+    expect(sql).toContain("countIf(u.status IN ('paid', 'finished')) AS cycle_count");
     expect(sql).not.toContain("countDistinct(u.machine_session_id)");
   });
 
@@ -210,7 +224,7 @@ describe("machine floor report", () => {
 
     // docs/03_data_contracts/data_contracts.md: revenue and cycle counts
     // legitimately include both `paid` and `finished`. The filter must survive.
-    expect(sql).toContain("sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang");
+    expect(sql).toContain("sumIf(u.amount_satang, u.status IN ('paid', 'finished')) AS revenueSatang");
     // Revenue is separately correct and separately verified against Superset;
     // this fix must not move it.
     expect(sql).not.toContain("u.status AS status,");
@@ -288,7 +302,7 @@ describe("machine floor report", () => {
   });
 
   // docs/03_data_contracts/data_contracts.md requires known enums to stay
-  // known. cancelled (Enum8=5) and admitted (Enum8=6) are documented members of
+  // known. cancelled (Enum8=6) and admitted (Enum8=3) are documented members of
   // fact_machine_usage.status (apps/etl/src/schema.ts) and used to fall through
   // to "unknown".
   it("maps the known cancelled and admitted enums instead of degrading them to unknown", async () => {

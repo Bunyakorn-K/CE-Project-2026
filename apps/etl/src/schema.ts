@@ -14,11 +14,43 @@
 // stays NULL — we never fabricate a value.
 //
 // Enum members (validated live / aligned with IRIS source):
-//   status         pending_payment, paid, running, finished, cancelled, admitted
+//   status         pending_payment, paid, admitted, running, finished, cancelled
 //   initiated_via  staff_v3, liff, kiosk_k2, coin
 //   temp_level     cold, warm, hot, low, medium, high
 //   machine_kind   washer, dryer
 //   attribution_source  staff_v3, liff, handheld_dispatch, unknown
+//
+// `status` above is NUMBERED BY THE IRIS LIFECYCLE ORDER, deliberately, and
+// that is the one enum in this file whose integers are not incidental:
+//
+//   pending_payment -> paid -> admitted -> running -> finished
+//                                           + cancelled
+//
+// The order is read off the upstream source (Meepain-group/iris-project @
+// 813ffa7), not inferred: migration 0053:28-30 constrains the lifecycle
+// projector to desired_status IN ('running','finished'); active-machine-usage.ts
+// :22-33 counts paid/running as in-progress and admitted/pending_payment as
+// occupancy-only; cron.ts:2202 sweeps pending_payment -> cancelled; and
+// 0053:41-44 makes last_phase = 'IDLE' a hard CHECK for finished. `cancelled`
+// is a terminal branch off the same point as `finished`, not a step after it.
+//
+// This declaration previously had `admitted = 6`, which put the first step of a
+// running cycle after `cancelled` and made `status >= 3` wrong. It is corrected
+// here, but note what this file can and cannot do about it: `CREATE TABLE IF
+// NOT EXISTS` never alters an existing table, so this line governs NEW tables
+// only. An existing deployment keeps the old numbering until
+// `apps/api/scripts/migrate-usage-status-enum.ts` is run against it — which is
+// a production migration and is not authorized yet. `ALTER TABLE ... MODIFY
+// COLUMN` is NOT the way to do it: ClickHouse either refuses the renumbering
+// (Code 70, CANNOT_CONVERT_TYPE, verified on 26.3) or, on older builds, leaves
+// parts under inconsistent enums. The migration rebuilds the column instead.
+//
+// Note also that IRIS's own written enums are stale in the OTHER direction:
+// packages/contracts/src/sync.ts:55,64 and docs/05-database-schema.md:246 list
+// only five values and omit `admitted`, while ingest.ts actively handles it
+// (4577, 4647, 4668, 4700, 4723). Upstream `machine_usage.status` is plain
+// `text NOT NULL` with no DB CHECK, so there is no upstream constraint to
+// appeal to — this table is where the six values are actually pinned down.
 //
 // attribution_state below is NOT IRIS's taxonomy. IRIS constrains
 // machine_usage.attribution_state to ('pending','resolved','unknown','conflict')
@@ -89,7 +121,7 @@ const FACT_USAGE_COLUMNS: Column[] = [
   { name: "program_name", ch: "String" },
   { name: "temp_level", ch: "Nullable(Enum8('cold' = 1, 'warm' = 2, 'hot' = 3, 'low' = 4, 'medium' = 5, 'high' = 6))" },
   { name: "amount_satang", ch: "Int64" },
-  { name: "status", ch: "Enum8('pending_payment' = 1, 'paid' = 2, 'running' = 3, 'finished' = 4, 'cancelled' = 5, 'admitted' = 6)" },
+  { name: "status", ch: "Enum8('pending_payment' = 1, 'paid' = 2, 'admitted' = 3, 'running' = 4, 'finished' = 5, 'cancelled' = 6)" },
   { name: "initiated_via", ch: "Enum8('staff_v3' = 1, 'liff' = 2, 'kiosk_k2' = 3, 'coin' = 4)" },
   { name: "attribution_state", ch: "Nullable(Enum8('exact' = 1, 'legacy' = 2, 'heuristic' = 3, 'pending_attribution' = 4))" },
   { name: "attribution_source", ch: "Nullable(Enum8('staff_v3' = 1, 'liff' = 2, 'handheld_dispatch' = 3, 'unknown' = 4))" },
