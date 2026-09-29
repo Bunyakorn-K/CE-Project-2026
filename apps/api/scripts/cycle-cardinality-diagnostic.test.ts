@@ -21,6 +21,7 @@ import {
   shouldRefuseVerdict
 } from "./cycle-cardinality-diagnostic";
 import type { ClickHouseExecutor } from "../src/analytics/clickhouse";
+import { buildDashboardSQL, buildMachineStateSQL } from "../src/report/clickhouse-report";
 
 const SQL_BUILDERS = [
   buildRowCountSQL,
@@ -134,19 +135,30 @@ describe("cycle-cardinality-diagnostic SQL", () => {
     }
   });
 
-  it("quotes the four candidate definitions from the code that renders them", () => {
+  // `CYCLE_DEFINITIONS` is now a frozen record of the four candidate
+  // expressions that were compared against the real warehouse on 2026-09-29,
+  // not a live mirror of the code. Two of the four surfaces have since adopted
+  // the row-count definition, so "the script quotes the current code" stopped
+  // being true for them — and it must stay false, because rewriting them to
+  // match today's code would delete the ฿125.42-vs-฿42.20 finding that
+  // decided the question. The two surfaces that were not part of the decision
+  // are still quoted live, and the two that were are asserted to have moved.
+  it("records the four candidates compared on 2026-09-29 and keeps the two unchanged ones live", () => {
     const report = readRepoFile("apps/api/src/report/clickhouse-report.ts");
     const queries = readRepoFile("apps/api/src/analytics/queries.ts");
-    const needles: Record<string, string> = {
-      dashboardKpi: "uniqExactIf(u.machine_session_id, u.status IN (2, 4))",
-      twinTab: "countDistinct(u.machine_session_id)",
-      cyclesDaily: "countIf(status IN ('finished','paid')) AS cycles",
-      utilizationRows: "count() AS cycles"
-    };
-    for (const definition of CYCLE_DEFINITIONS) {
-      const haystack = definition.key === "cyclesDaily" || definition.key === "utilizationRows" ? queries : report;
-      expect(haystack).toContain(needles[definition.key]!);
-    }
+
+    // Still quoted from the code that renders them.
+    expect(queries).toContain("countIf(status IN ('finished','paid')) AS cycles");
+    expect(queries).toContain("count() AS cycles");
+
+    // The two surfaces the decision moved, now on the canonical definition.
+    const dashboardSql = buildDashboardSQL();
+    const machineStateSql = buildMachineStateSQL();
+    expect(dashboardSql).toContain("countIf(u.status IN (2, 4)) AS cycles");
+    expect(machineStateSql).toContain("countIf(u.status IN (2, 4)) AS cycle_count");
+    expect(dashboardSql).not.toMatch(/uniqExactIf|countDistinct\(u\.machine_session_id\)/);
+    expect(machineStateSql).not.toContain("countDistinct(u.machine_session_id)");
+
     // The four surfaces are the whole disagreement; a fifth would be a new
     // definition nobody has scoped.
     expect(CYCLE_DEFINITIONS).toHaveLength(4);

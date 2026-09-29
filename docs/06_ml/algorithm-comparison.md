@@ -74,9 +74,10 @@ decisions, not just accuracy scores.
 
 ## 5. Risks / honest notes
 
-- 4.3k rows ≈ 1 week of a single busy branch: any model fitted today would
-  overfit. State data volume in every output (the envelope already carries
-  `totalRows`).
+- 4,458 non-synthetic usage rows over 9 weeks (2026-07-22 → 2026-09-25; measured
+  2026-09-29 — this supersedes the earlier "4.3k rows ≈ 1 week" in this file):
+  any model fitted today would overfit. State data volume in every output (the
+  envelope already carries `totalRows`).
 - Weather correlation (F-12/#34) is descriptive; do not chain it into a
   demand forecast without validation.
 - No customer PII is used; bucket aggregates only.

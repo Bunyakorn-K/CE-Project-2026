@@ -92,7 +92,11 @@ export function dashboardKpis(input: {
   const cycles: MetricCell = {
     label: "รอบซัก",
     value: hasUsage ? formatNumber(totals.cycles) : NO_USAGE_VALUE,
-    detail: hasUsage ? `ข้อมูล ${input.range}` : NO_USAGE_DETAIL,
+    // Naming the basis on the card is not decoration: `cycles` is a count of
+    // usage ROWS (the canonical definition, 2026-09-29), not a count of
+    // identified wash sessions, and the two differ wherever a row carries no
+    // machine_session_id. See cycleAttributionView for the size of that gap.
+    detail: hasUsage ? `นับจากแถว usage · ข้อมูล ${input.range}` : NO_USAGE_DETAIL,
     textValue: !hasUsage
   };
 
@@ -172,6 +176,81 @@ export function usageRowsLabel(usageRowsInRange: number | null | undefined): str
     return "แถว usage: ไม่ทราบจำนวน";
   }
   return `แถว usage ที่ได้: ${usageRowsInRange.toLocaleString("th-TH")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Cycle attribution
+// ---------------------------------------------------------------------------
+
+/** The `cycleAttribution` block of the dashboard envelope. `null` on the
+ *  demo/IRIS path, which cannot measure attribution at all. */
+export type CycleAttributionInput = {
+  countedRows: number;
+  attributedRows: number;
+  unattributedRows: number;
+} | null | undefined;
+
+export const CYCLE_BASIS = "นับจากแถว usage";
+
+export type CycleAttributionView =
+  | { kind: "none" }
+  | { kind: "unknown"; message: string }
+  | { kind: "complete"; message: string }
+  | { kind: "partial"; message: string; percentage: number };
+
+/**
+ * Renders how much of the cycle count rests on a `machine_session_id`.
+ *
+ * The cycle KPI counts usage rows. On the real warehouse 63.91% of usage rows
+ * carry no session id at all, so the total is a correct count of work done and
+ * an incomplete count of *identified* sessions. Saying so next to the number is
+ * the difference between a measurement and a claim.
+ *
+ * `unknown` is a real state, not a failure case: the demo/IRIS projection has no
+ * such field, so the gap is unmeasurable there and must not be rendered as
+ * either complete or empty. `none` is the measured-empty window — nothing was
+ * counted, so there is no attribution to describe, and the empty-window message
+ * already covers it.
+ */
+export function cycleAttributionView(
+  attribution: CycleAttributionInput,
+  formatNumber: (value: number) => string = (value) => value.toLocaleString("th-TH")
+): CycleAttributionView {
+  if (
+    !attribution ||
+    !Number.isFinite(attribution.countedRows) ||
+    !Number.isFinite(attribution.attributedRows) ||
+    !Number.isFinite(attribution.unattributedRows) ||
+    attribution.countedRows < 0 ||
+    attribution.attributedRows < 0 ||
+    attribution.unattributedRows < 0 ||
+    attribution.attributedRows + attribution.unattributedRows !== attribution.countedRows
+  ) {
+    return {
+      kind: "unknown",
+      message: `${CYCLE_BASIS} · ไม่ทราบว่าแถวใดมีรหัสเซสชัน (machine_session_id) — แหล่งข้อมูลนี้ไม่ได้รายงาน`
+    };
+  }
+
+  if (attribution.countedRows === 0) return { kind: "none" };
+
+  if (attribution.unattributedRows === 0) {
+    return {
+      kind: "complete",
+      message: `${CYCLE_BASIS} · ทุกแถวที่นับเป็นรอบมีรหัสเซสชัน (machine_session_id)`
+    };
+  }
+
+  const percentage = Math.round((attribution.unattributedRows / attribution.countedRows) * 100);
+  return {
+    kind: "partial",
+    percentage,
+    message: [
+      `${CYCLE_BASIS}`,
+      `${formatNumber(attribution.unattributedRows)} จาก ${formatNumber(attribution.countedRows)} แถว (${percentage}%) ไม่มีรหัสเซสชัน (machine_session_id)`,
+      "ตัวเลขรอบจึงยังไม่ครบถ้วน"
+    ].join(" · ")
+  };
 }
 
 export { usageDerived };

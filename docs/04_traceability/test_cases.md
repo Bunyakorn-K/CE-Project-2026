@@ -73,6 +73,7 @@ register is not available. The notification arm is tested; F-02 is partial.
 | TC-02.5 | Unrecognized status or missing telemetry | Unknown/unavailable state is preserved; no value is fabricated | Automated |
 | TC-02.7 | Known `finished` / `cancelled` / `admitted` status | Each maps to its own API status value; `finished` stays distinct from `paid` so `paid_ratio` remains computable | Automated in `report/clickhouse-report.test.ts` |
 | TC-02.6 | Technician dashboard | Revenue is `null`/redacted while operational counts remain available | Automated |
+| TC-02.8 | Most usage rows carry no `machine_session_id` | `dashboard.cycleAttribution` reports the unattributed share and the web dashboard states it in Thai, so the cycle count is not readable as fully attributed | Automated in `report/clickhouse-report.test.ts` and `dashboard-view.test.ts`; rendered in a built-bundle browser run |
 
 Current Twin state is usage-derived, not live `fact_machine_event` telemetry.
 IRIS-backed live reporting and LINE browser flows still require E2E verification.

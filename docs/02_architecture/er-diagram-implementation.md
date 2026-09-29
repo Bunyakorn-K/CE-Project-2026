@@ -231,6 +231,19 @@ Notes:
   manual column there gets overwritten with NULL on the next sync. The weather
   collector joins `dim_branch_location` × `dim_branch active=1` for targets.
 - Nulls are preserved (`Nullable(...)`); the ETL never fabricates a value.
+- `FACT_MACHINE_USAGE.machine_session_id` is `Nullable(String)` in the
+  warehouse and the ETL copies it straight through from IRIS
+  `attribution_machine_session_id` (`apps/etl/src/postgres.ts:141`,
+  `apps/etl/src/transform.ts:194`). Its cardinality was measured on 2026-09-29
+  against the real warehouse (4,458 non-synthetic rows, 2026-07-22 → 2026-09-25):
+  **one row per session and one status per session**, with the id **absent on
+  63.91% of rows**, exactly the `attribution_state = 'pending_attribution'`
+  set. No counter uses it to count cycles — the canonical cycle count is the row
+  count `countIf(status IN (2, 4))` — and it is used only to report how much of
+  that count carries session-level evidence (`dashboard.cycleAttribution`). Its
+  upstream meaning remains **unresolved**; no meaning is asserted here. See
+  "Canonical cycle definition" in `docs/04_traceability/RTM_matrix.md` and
+  "Session Attribution" in `docs/03_data_contracts/data_contracts.md`.
 - `paid` vs `finished` semantics are **unresolved upstream**. They are two
   distinct `FACT_MACHINE_USAGE.status` enum members, and the API reports them
   as two distinct `machines[].status` values on `/api/twin` and

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   branchStatCells,
+  cycleAttributionView,
   dashboardKpis,
   emptyStateMessage,
   usagePresence,
@@ -73,7 +74,7 @@ describe("dashboardKpis", () => {
 
     expect(rendered.revenue.value).toBe("฿53,749");
     expect(rendered.cycles.value).toBe("420");
-    expect(rendered.cycles.detail).toBe("ข้อมูล 1 ก.ย. 2026 — 25 ส.ค. 2026");
+    expect(rendered.cycles.detail).toBe("นับจากแถว usage · ข้อมูล 1 ก.ย. 2026 — 25 ส.ค. 2026");
     expect(rendered.inventory.value).toBe("6");
     expect(rendered.inventory.detail).toBe("2 รายการสถานะกำลังใช้งาน");
     expect(rendered.branches.value).toBe("2");
@@ -121,6 +122,69 @@ describe("dashboardKpis", () => {
     const rendered = Object.values(kpis({ presence: "present" })).flatMap((cell) => [cell.label, cell.value, cell.detail]);
 
     expect(rendered.some((text) => text.includes("เครื่องที่มีข้อมูล"))).toBe(false);
+  });
+
+  // The KPI is a row count, not a session count. Naming the basis on the card
+  // itself is what stops a reader from taking 3,905 for a count of fully
+  // identified wash sessions.
+  it("names the definition behind the cycle number on the card itself", () => {
+    const rendered = kpis({ presence: "present" });
+
+    expect(rendered.cycles.detail).toBe("นับจากแถว usage · ข้อมูล 1 ก.ย. 2026 — 25 ส.ค. 2026");
+  });
+});
+
+describe("cycleAttributionView", () => {
+  // The real warehouse shape: 2,591 of 3,905 counted rows carry no
+  // machine_session_id. Presenting the total without this is presenting an
+  // incomplete count as a complete one.
+  it("states the measured gap when most counted rows carry no session id", () => {
+    const view = cycleAttributionView({ countedRows: 3905, attributedRows: 1314, unattributedRows: 2591 }, format);
+
+    expect(view.kind).toBe("partial");
+    if (view.kind !== "partial") return;
+    expect(view.message).toContain("2,591");
+    expect(view.message).toContain("3,905");
+    expect(view.message).toContain("66%");
+    expect(view.percentage).toBe(66);
+  });
+
+  it("never lets the message read as a complete count while a gap exists", () => {
+    const view = cycleAttributionView({ countedRows: 3905, attributedRows: 1314, unattributedRows: 2591 }, format);
+
+    if (view.kind !== "partial") throw new Error("expected a partial gap");
+    expect(view.message).toContain("ไม่ครบถ้วน");
+    expect(view.message).not.toContain("ครบถ้วนทั้งหมด");
+  });
+
+  it("says the basis when every counted row carries a session id", () => {
+    const view = cycleAttributionView({ countedRows: 40, attributedRows: 40, unattributedRows: 0 }, format);
+
+    expect(view.kind).toBe("complete");
+    if (view.kind !== "complete") return;
+    expect(view.message).toContain("ทุกแถว");
+  });
+
+  // The demo/IRIS projection carries no machine_session_id. Reporting zero
+  // unattributed rows there would assert a measurement that source cannot make.
+  it("keeps the gap unknown when the source cannot measure attribution", () => {
+    expect(cycleAttributionView(null, format).kind).toBe("unknown");
+    expect(cycleAttributionView(undefined, format).kind).toBe("unknown");
+  });
+
+  it("has nothing to attribute in a window with no counted rows", () => {
+    const view = cycleAttributionView({ countedRows: 0, attributedRows: 0, unattributedRows: 0 }, format);
+
+    // Neither "complete" (a vacuous claim over zero rows) nor "unknown" (the
+    // warehouse did measure it — it measured nothing). The empty-window message
+    // already describes this window.
+    expect(view.kind).toBe("none");
+  });
+
+  it("refuses to divide by a window with no counted rows", () => {
+    const view = cycleAttributionView({ countedRows: 0, attributedRows: 5, unattributedRows: -5 }, format);
+
+    expect(view.kind).toBe("unknown");
   });
 });
 

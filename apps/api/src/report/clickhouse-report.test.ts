@@ -17,7 +17,6 @@ describe("machine floor report", () => {
   it("binds dates and branch scope while retaining inventory without usage", () => {
     const sql = buildMachineStateSQL();
 
-    expect(sql).toContain("countDistinct(u.machine_session_id) AS cycle_count");
     expect(sql).toContain("LEFT JOIN fact_machine_usage AS u FINAL");
     expect(sql).toContain("u.started_at >= {from:String}");
     expect(sql).toContain("u.started_at < plus(toDate({to:String}), 1)");
@@ -115,26 +114,95 @@ describe("machine floor report", () => {
     expect(result.usageRowsInRange).toBe(1212);
   });
 
-  // A machine_session_id can appear on more than one usage row with more than
-  // one status — 33 such sessions exist in the local warehouse right now (a
-  // `finished` row and a `cancelled` row for the same session). docs/03_data_
-  // contracts/data_contracts.md allows `status IN (2, 4)` for cycle counts, so
-  // once real IRIS data carries a session with BOTH a `paid` and a `finished`
-  // row, grouping by status splits that session into two groups and summing the
-  // per-group distinct counts counts it twice.
+  // CANONICAL CYCLE DEFINITION (decided 2026-09-29, see
+  // docs/04_traceability/RTM_matrix.md "Canonical cycle definition").
   //
-  // The distinct count must therefore be evaluated at machine grain, and the
-  // status must stop being a grouping key. The status FILTER stays exactly as
-  // it is — this is about the grain, not about narrowing what counts.
-  it("counts each machine_session_id once even when it appears under two statuses", () => {
+  // `machine_session_id` is nullable and NULL on 63.91% of real usage rows
+  // (2,849 of 4,458), so a distinct-session count silently drops two thirds of
+  // the work: the real warehouse's revenue divided by uniqExactIf gave
+  // ฿125.42/cycle, about three times a real Thai wash, while the row count
+  // gave ฿42.20. The measured cardinality makes them equivalent for attributed
+  // rows — one session id is exactly one row, always — so counting rows counts
+  // every session and loses nothing that had evidence.
+  it("counts cycles as usage rows in the paid/finished statuses, not distinct session ids", () => {
     const sql = buildDashboardSQL();
 
-    // `u.status` must not be a grouping key, or the same session lands in one
-    // group per status and the per-group uniqExactIf values double-count it.
+    expect(sql).toContain("countIf(u.status IN (2, 4)) AS cycles");
+    expect(sql).not.toMatch(/uniqExactIf|countDistinct\(u\.machine_session_id\)/);
+    // Machine grain is preserved — per-machine counts still sum to the total.
     expect(sql).not.toMatch(/GROUP BY[^;]*\bu\.status\b/);
-    expect(sql).toContain("uniqExactIf(u.machine_session_id, u.status IN (2, 4)) AS cycles");
-    // Machine grain is preserved.
     expect(sql).toContain("GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind");
+  });
+
+  // A row count is only right if the evidence gap is visible. The gap is
+  // measurable: the warehouse can count the counted rows that carry a
+  // non-null machine_session_id, so the API reports it rather than leaving a
+  // reader to assume the total is complete.
+  it("counts the subset of counted rows that carry a machine_session_id", () => {
+    const sql = buildDashboardSQL();
+
+    expect(sql).toContain(
+      "countIf(u.status IN (2, 4) AND u.machine_session_id IS NOT NULL) AS attributedCycles"
+    );
+  });
+
+  it("reports cycle attribution as the counted rows and how many carry a session id", async () => {
+    const executor = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          tenant_id: "tenant-01",
+          branch_id: "branch-01",
+          machine_id: "W1",
+          branch_name: "Branch A",
+          machine_code: "W1",
+          machine_kind: "washer",
+          revenueSatang: "0",
+          cycles: "900",
+          attributedCycles: "120",
+          usageRows: "1200",
+          started_at: "2026-09-24 08:00:00",
+          last_active_at: "2026-09-24 08:00:00"
+        }
+      ])
+      .mockResolvedValueOnce([]);
+    const ch = executor as unknown as ClickHouseExecutor;
+
+    const result = await queryDashboard(ch, "2026-07-22", "2026-09-25");
+
+    expect(result.cycleAttribution).toEqual({
+      countedRows: 900,
+      attributedRows: 120,
+      unattributedRows: 780
+    });
+  });
+
+  // The twin tab and the KPI are one screen. Two different definitions for one
+  // word was the defect, so the machine-state query takes the same grain and
+  // the same status filter as the dashboard.
+  it("counts machine cycles at the same grain and with the same status filter as the dashboard", () => {
+    const sql = buildMachineStateSQL();
+
+    expect(sql).toContain("countIf(u.status IN (2, 4)) AS cycle_count");
+    expect(sql).not.toContain("countDistinct(u.machine_session_id)");
+  });
+
+  it("labels a machine cycle count with the definition it was taken from", async () => {
+    const ch = fakeExecutor([
+      {
+        machine_code: "W3",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status: "finished",
+        last_active_at: "2026-09-24 08:00:00",
+        cycle_count: "4"
+      }
+    ]);
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    // Not "machine_session_id": the count is no longer taken from that field.
+    expect(result[0]).toMatchObject({ cycleCount: 4, cycleCountSource: "usage_row" });
   });
 
   it("keeps the status filter and the revenue sum untouched while dropping the status grouping key", () => {
@@ -164,7 +232,7 @@ describe("machine floor report", () => {
     expect(sql).toContain("count() AS usageRows");
   });
 
-  it("returns cycle count and source for a machine with session evidence", async () => {
+  it("returns cycle count and source for a machine with usage evidence", async () => {
     const ch = fakeExecutor([
       {
         machine_code: "W3",
@@ -182,7 +250,7 @@ describe("machine floor report", () => {
       machineCode: "W3",
       status: "finished",
       cycleCount: 4,
-      cycleCountSource: "machine_session_id"
+      cycleCountSource: "usage_row"
     });
   });
 

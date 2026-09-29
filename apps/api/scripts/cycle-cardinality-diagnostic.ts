@@ -1,36 +1,43 @@
 #!/usr/bin/env node
-// Read-only diagnostic for the unresolved LaundryTwin cycle definition.
+// Read-only diagnostic behind the canonical LaundryTwin cycle definition.
 //
-// Four surfaces render a number labelled "รอบ" (cycle) from
-// `fact_machine_usage` and none of them agree:
+// Four surfaces rendered a number labelled "รอบ" (cycle) from
+// `fact_machine_usage` and none of them agreed:
 //
-//   | Surface                    | Value shape                                            | Source |
-//   |----------------------------|--------------------------------------------------------|--------|
-//   | /api/report/dashboard KPI  | uniqExactIf(machine_session_id, status IN (2,4)) per machine+status | apps/api/src/report/clickhouse-report.ts:62-63,72 |
-//   | dashboard twin tab         | countDistinct(machine_session_id), no status filter    | apps/api/src/report/clickhouse-report.ts:84-86,98 |
-//   | /api/v1/analytics/cycles/daily | countIf(status IN ('finished','paid'))              | apps/api/src/analytics/queries.ts:31-33 |
-//   | /api/v1/analytics/utilization | count(), no status filter                            | apps/api/src/analytics/queries.ts:112 |
+//   | Surface                    | Candidate expression                                      | Source |
+//   |----------------------------|-----------------------------------------------------------|--------|
+//   | /api/report/dashboard KPI  | uniqExactIf(machine_session_id, status IN (2,4)) per machine | apps/api/src/report/clickhouse-report.ts |
+//   | dashboard twin tab         | countDistinct(machine_session_id), no status filter        | apps/api/src/report/clickhouse-report.ts |
+//   | /api/v1/analytics/cycles/daily | countIf(status IN ('finished','paid'))                   | apps/api/src/analytics/queries.ts:31-33 |
+//   | /api/v1/analytics/utilization | count(), no status filter                                | apps/api/src/analytics/queries.ts:112 |
 //
-// The disagreement reduces to one unmeasured fact: how many
-// `fact_machine_usage` rows does one real IRIS `machine_session_id` span, and
-// can one session id carry more than one `status`? `machine_session_id` has no
-// entry in docs/03_data_contracts/data_contracts.md, so the repo documents no
-// cardinality for it, and the seed script deliberately allows up to
+// `CYCLE_DEFINITIONS` below is a FROZEN record of those four candidates, not a
+// mirror of today's code. It was run against the real warehouse on 2026-09-29
+// and the finding decided the question: one real session id is exactly one row
+// with exactly one status, so the first two candidates were not a different
+// measurement of a cycle — they were the same measurement minus the 63.91% of
+// rows that carry no session id at all. The dashboard KPI and the twin tab now
+// use the row-count definition; see
+// docs/04_traceability/RTM_matrix.md ("Canonical cycle definition").
+//
+// The candidates are kept verbatim rather than updated, because the finding is
+// the evidence: rewriting them to match today's code would delete the
+// ฿125.42-per-"cycle" versus ฿42.20-per-row result that the decision rests on,
+// and would make the script stop being able to reproduce it.
+//
+// `machine_session_id` still has no entry in
+// docs/03_data_contracts/data_contracts.md, so the repo documents no meaning
+// for it, and the seed script deliberately allows up to
 // MAX_CYCLES_PER_SESSION = 3 rows per synthetic session
 // (apps/api/scripts/seed-analytics.ts:58-59). Anything measured on seed data
 // therefore answers a question about the seed, not about IRIS.
 //
-// This script answers it from the warehouse and changes nothing. It is
-// SELECT-only by construction: every statement is exported as a constant here
-// and `cycle-cardinality-diagnostic.test.ts` asserts that none of them can
-// write. It filters to non-synthetic rows
+// This script is SELECT-only by construction: every statement is exported as a
+// constant here and `cycle-cardinality-diagnostic.test.ts` asserts that none of
+// them can write. It filters to non-synthetic rows
 // (`NOT startsWith(source_event_id, 'synthetic:')`) and REFUSES to report a
 // verdict when there are none, because a number computed from seed data would
 // look like an answer and is not one.
-//
-// No cycle-counting query, type, label, or KPI in this repository is touched
-// by this file. It exists to give the owner a measurement; it does not pick a
-// definition.
 //
 // Run (config via env, see .env.example):
 //   CLICKHOUSE_URL / CLICKHOUSE_USER / CLICKHOUSE_PASSWORD / CLICKHOUSE_DATABASE
@@ -319,22 +326,25 @@ export type CycleDefinition = {
 };
 
 /**
- * A description of a disagreement, not a ranking. The correct value is unknown
- * until this diagnostic is run against the real warehouse; these entries exist
- * so the report can print all four side by side and leave the choice open.
+ * A description of the disagreement as it stood on 2026-09-29, kept so the
+ * finding stays reproducible. These entries are the candidate expressions that
+ * were compared on the real warehouse, NOT the current code: the dashboard KPI
+ * and the twin tab have since adopted the row-count definition, and this list
+ * is deliberately not updated to match, because the gap between the session
+ * count and the row count is the evidence the decision rests on.
  */
 export const CYCLE_DEFINITIONS: CycleDefinition[] = [
   {
     key: "dashboardKpi",
-    surface: "/api/report/dashboard KPI `cycles`",
-    sql: "uniqExactIf(machine_session_id, status IN (2, 4)), grouped by machine + status, summed",
-    source: "apps/api/src/report/clickhouse-report.ts:62-63,72"
+    surface: "/api/report/dashboard KPI `cycles` (before 2026-09-29)",
+    sql: "uniqExactIf(machine_session_id, status IN (2, 4)), grouped by machine, summed",
+    source: "apps/api/src/report/clickhouse-report.ts"
   },
   {
     key: "twinTab",
-    surface: "dashboard twin tab `cycleCount`",
+    surface: "dashboard twin tab `cycleCount` (before 2026-09-29)",
     sql: "countDistinct(machine_session_id), no status filter, grouped by machine",
-    source: "apps/api/src/report/clickhouse-report.ts:84-86,98"
+    source: "apps/api/src/report/clickhouse-report.ts"
   },
   {
     key: "cyclesDaily",

@@ -18,7 +18,7 @@ We train models to predict **off-peak usage windows** (hour-of-day × day-of-wee
 | **Phase C — Model candidate** | Prophet / SARIMA / Gradient Boosting | ≥ 3 months continuous data | ⏳ Future |
 | **Phase D — Promotion effect** | A/B measurement | Operations buy-in | ⏳ Future |
 
-**Current data reality:** ~4.8k usage rows (as of 2026-09-07), ~1 week of a single busy branch. **Far too little for robust time-series modeling.** Any model fitted today would overfit. State data volume in every output.
+**Current data reality:** 4,458 non-synthetic usage rows spanning 2026-07-22 → 2026-09-25 — **9 weeks**, not the "~4.8k rows / ~1 week" this document previously claimed (corrected 2026-09-29; the ~4.8k figure dated from 2026-09-07 and the ~1 week figure was never right). Nine weeks is still **far too little for robust time-series modeling**, and it is thinner than the raw row count suggests: 63.91% of those rows carry no `machine_session_id`, and `paid` appears on only 257 of them. Any model fitted today would overfit. State data volume in every output.
 
 ---
 
@@ -47,16 +47,58 @@ We train models to predict **off-peak usage windows** (hour-of-day × day-of-wee
 
 ### 3.1 Usage features (from `fact_machine_usage`)
 
-Every row in `fact_machine_usage` represents one machine session. For ML, aggregate per `(branch_id, hour_of_day, day_of_week, date)`.
+A `fact_machine_usage` row is **one machine usage event**, not a session. The
+earlier claim in this document — "Every row in `fact_machine_usage` represents
+one machine session" — was **wrong about the real data** and was corrected on
+2026-09-29. What is actually measured, on 4,458 non-synthetic rows spanning
+2026-07-22 → 2026-09-25:
+
+- One real `machine_session_id` spans **exactly one row** and carries exactly
+  one `status` (0 session ids over more than one row; max 1 distinct status).
+  So for a row that *has* a session id, counting rows and counting sessions are
+  the same measurement.
+- **63.91% of rows (2,849 of 4,458) have a NULL `machine_session_id`**, and
+  that null set is exactly `attribution_state = 'pending_attribution'`. There
+  are 1,609 session ids in total, so "sessions" and "rows" are not the same
+  population.
+- `machine_session_id` is a nullable pass-through from IRIS with **no documented
+  meaning** upstream. Do not treat a row without one as a different kind of
+  event, and do not treat a row with one as a "verified" session.
+
+For ML, aggregate per `(branch_id, hour_of_day, day_of_week, date)`. Every
+`count`/`sum` below is a **row** aggregate, which is the canonical cycle
+definition recorded in `docs/04_traceability/RTM_matrix.md` ("Canonical cycle
+definition", 2026-09-29). `machine_session_id` is deliberately not a grouping
+key or a filter in any of them.
 
 | Feature name | Type | SQL expression | Description |
 |---|---|---|---|
-| `cycle_count` | UInt64 | `countIf(status IN ('finished', 'paid'))` | Number of completed sessions |
+| `cycle_count` | UInt64 | `countIf(status IN ('finished', 'paid'))` | Number of paid/finished usage rows — the canonical cycle count |
 | `total_duration_min` | UInt64 | `sum(duration_min)` | Total minutes of usage |
 | `total_revenue_satang` | Int64 | `sum(amount_satang)` | Total revenue in satang |
-| `avg_duration_min` | Float64 | `avg(duration_min)` | Average session duration |
+| `avg_duration_min` | Float64 | `avg(duration_min)` | Average usage duration |
 | `unique_machines` | UInt64 | `count(DISTINCT machine_id)` | Number of machines used |
-| `paid_ratio` | Float64 | `countIf(status='paid') / countIf(status IN ('finished','paid'))` | Fraction of paid sessions |
+| `paid_ratio` | Nullable(Float64) | `countIf(status='paid') / nullIf(countIf(status IN ('finished','paid')), 0)` | Fraction of paid rows. **Undefined, not zero, when a branch has no `paid` or no `finished` row** — see below |
+
+### 3.1.1 `paid_ratio` is undefined, not zero, on real data
+
+`paid_ratio` is **not safe to emit as a bare `Float64`**.
+
+1. **The denominator can be zero.** A `(branch_id, date)` group with usage but
+   no `paid` and no `finished` row has `countIf(status IN ('finished','paid')) = 0`.
+   In ClickHouse that is integer division by zero, which for Float64 propagates
+   to `inf`/`nan` rather than raising — so a plain Float64 column silently
+   stores a non-finite value that a model will read as a real number. Use
+   `nullIf(..., 0)` and carry `Nullable(Float64)`, and let the training pipeline
+   decide the imputation explicitly.
+2. **`paid` is rare and thinly attributed.** On the real warehouse `paid` (2)
+   appears on 257 rows, and only **6** of those carry a `machine_session_id`. A
+   branch-day with a handful of `paid` rows therefore has both a small
+   numerator and no session evidence at all.
+3. **`paid` vs `finished` is still semantically unresolved** upstream
+   (`docs/03_data_contracts/data_contracts.md`). The ratio is computable, but
+   what a high or low value *means* is not established. Do not present it as a
+   payment-completion rate.
 
 ### 3.2 Weather features (from `fact_weather_sample`)
 
@@ -125,7 +167,7 @@ CREATE TABLE laundrytwin_analytics.fact_ml_features (
     total_revenue_satang Int64,
     avg_duration_min Float64,
     unique_machines UInt64,
-    paid_ratio Float64,
+    paid_ratio Nullable(Float64),
     -- Weather features
     avg_temp_c Float64,
     avg_humidity_pct Float64,
@@ -188,7 +230,7 @@ WITH usage_daily AS (
         sum(amount_satang) AS total_revenue_satang,
         avg(duration_min) AS avg_duration_min,
         count(DISTINCT machine_id) AS unique_machines,
-        countIf(status='paid') / countIf(status IN ('finished','paid')) AS paid_ratio
+        countIf(status='paid') / nullIf(countIf(status IN ('finished','paid')), 0) AS paid_ratio
     FROM fact_machine_usage FINAL
     WHERE started_at >= today() - INTERVAL 90 DAY
     GROUP BY branch_id, date
@@ -238,9 +280,9 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 | Model | Minimum data | Recommended data | Current status |
 |---|---|---|---|
 | Heuristic baseline | None | Any | ✅ Done |
-| ARIMA / SARIMA | 90 days daily | 180+ days | ⏳ ~1 week |
-| Prophet | 90 days daily | 365+ days | ⏳ ~1 week |
-| Gradient Boosting | 90 days + features | 365+ days | ⏳ ~1 week |
+| ARIMA / SARIMA | 90 days daily | 180+ days | ⏳ 9 weeks (2026-07-22 → 2026-09-25) |
+| Prophet | 90 days daily | 365+ days | ⏳ 9 weeks |
+| Gradient Boosting | 90 days + features | 365+ days | ⏳ 9 weeks |
 
 ---
 
@@ -335,7 +377,8 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 ### 9.1 Data limitations
 
 - **Province duplication:** TMD hourly returns byte-identical temp/rh/rain for all Thai provinces in the same collection window. Per-province weather curves need a location-specific source (lat/lon + station code).
-- **Sample size:** ~4.8k usage rows (as of 2026-09-07). Any model fitted today would overfit.
+- **Sample size:** 4,458 non-synthetic usage rows over 9 weeks (2026-07-22 → 2026-09-25). Any model fitted today would overfit. The figure supersedes the earlier "~4.8k rows as of 2026-09-07" in this document and in `AGENTS.md`, `README.md`, and `docs/06_ml/algorithm-comparison.md` (all corrected 2026-09-29).
+- **Attribution:** 63.91% of usage rows carry no `machine_session_id`. `cycle_count` is a row count by decision, but a row count is not a count of *identified* sessions, and no feature here may treat it as one.
 - **Weather-source limitation:** TMD NWP is a forecast, not observations. Correlation ≠ causation.
 
 ### 9.2 R12 compliance

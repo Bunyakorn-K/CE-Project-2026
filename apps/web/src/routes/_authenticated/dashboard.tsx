@@ -5,6 +5,7 @@ import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import {
   branchStatCells,
+  cycleAttributionView,
   dashboardKpis,
   emptyStateMessage,
   usagePresence,
@@ -26,6 +27,9 @@ type DashboardData = {
   to: string;
   source: Source;
   usageRowsInRange: number | null;
+  /** How much of `totals.cycles` carries a `machine_session_id`. `null` on the
+   *  demo/IRIS path, which cannot measure it. */
+  cycleAttribution: { countedRows: number; attributedRows: number; unattributedRows: number } | null;
   totals: {
     revenueSatang: number | null;
     cycles: number;
@@ -69,7 +73,7 @@ type Machine = {
   status: string | null;
   lastActiveAt: string | null;
   cycleCount: number | null;
-  cycleCountSource?: "machine_session_id" | "unavailable";
+  cycleCountSource?: "usage_row" | "unavailable";
 };
 
 type Branch = { id: string; name: string };
@@ -186,6 +190,10 @@ function DashboardPage() {
   // legitimately 0 cycles, and the machine count is inventory, not usage.
   const presence = usagePresence(dashData?.usageRowsInRange);
   const emptyWindowMessage = dashData ? emptyStateMessage(presence) : null;
+  // A right number that is silently incomplete is still misleading: the cycle
+  // KPI counts usage rows, and most real rows carry no machine_session_id. The
+  // gap is measured server-side and stated here, next to the number.
+  const attribution = cycleAttributionView(dashData?.cycleAttribution, formatCount);
   const kpis = dashboardKpis({
     totals: dashData?.totals ?? { revenueSatang: null, cycles: 0, machines: 0, running: 0 },
     branchCount: dashData?.branches.length ?? 0,
@@ -279,6 +287,10 @@ function DashboardPage() {
                 <KpiCard cell={kpis.branches} />
               </section>
 
+              {attribution.kind !== "none" && (
+                <div className="state-message" role="status">{attribution.message}</div>
+              )}
+
               <section>
                 <div className="section-heading">
                   <div>
@@ -302,7 +314,7 @@ function DashboardPage() {
             <div className="section-heading">
               <div>
                 <h2>ผังเครื่อง · Digital Twin</h2>
-                <p className="section-description">สถานะและรอบคำนวณจากข้อมูล usage ไม่ใช่ live telemetry</p>
+                <p className="section-description">สถานะและรอบคำนวณจากแถว usage ไม่ใช่ live telemetry</p>
               </div>
               <span>รีเฟรช snapshot ทุก 60 วินาที</span>
             </div>
@@ -400,7 +412,7 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
       <div className="machine-floor-summary">
         <div><span>เครื่องทั้งหมด</span><strong>{machines.length}</strong></div>
         <div><span>สถานะกำลังใช้งาน</span><strong>{running}</strong></div>
-        <div><span>รอบที่มีหลักฐาน</span><strong>{knownCycleMachines > 0 ? knownCycles.toLocaleString("th-TH") : "ไม่พร้อมใช้งาน"}</strong></div>
+        <div><span>รอบที่นับได้</span><strong>{knownCycleMachines > 0 ? knownCycles.toLocaleString("th-TH") : "ไม่พร้อมใช้งาน"}</strong></div>
         <div><span>สาขา</span><strong>{branches.length}</strong></div>
       </div>
       {branches.map(([branchKey, branchMachines]) => (
@@ -445,7 +457,7 @@ function MachineCard({ machine }: { machine: Machine }) {
         <p className="machine-card-branch">{machine.branchName}</p>
         <div className="machine-facts machine-floor-facts">
           <div><span>รอบในช่วง</span><strong>{machine.cycleCount === null ? "ไม่พร้อมใช้งาน" : machine.cycleCount.toLocaleString("th-TH")}</strong></div>
-          <div><span>หลักฐานรอบ</span><strong>{machine.cycleCountSource === "machine_session_id" ? "machine session" : "ไม่มีหลักฐาน"}</strong></div>
+          <div><span>ที่มาของจำนวนรอบ</span><strong>{machine.cycleCountSource === "usage_row" ? "นับจากแถว usage" : "ไม่มีแถว usage"}</strong></div>
         </div>
         <p className="kpi-detail">ใช้งานล่าสุด {machine.lastActiveAt ? formatDateTime(machine.lastActiveAt) : "ไม่มีข้อมูล"}</p>
       </Card.Content>

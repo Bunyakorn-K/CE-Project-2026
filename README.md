@@ -128,7 +128,8 @@ See `docs/06_ml/ml-training-data-guide.md` for the complete feature
 engineering schema, training data pipeline, and model training plan.
 The warehouse (`laundrytwin_analytics` on VM 117) holds `fact_machine_usage`,
 `fact_weather_sample`, `fact_temperature_sample`, `dim_branch`, and
-`dim_branch_location`. Current data volume (~4.8k rows, ~1 week) is
+`dim_branch_location`. Current data volume (4,458 non-synthetic usage rows over
+9 weeks, 2026-07-22 → 2026-09-25, measured 2026-09-29) is
 far too little for robust time-series modeling — the honest baseline
 is the percentile heuristic (`get_off_peak_windows` MCP tool).
 

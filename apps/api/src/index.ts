@@ -552,6 +552,9 @@ async function queryDemoDashboard(iris: IrisClient, from: string, to: string, br
     // unknown rather than zero. Reporting 0 would claim the demo window is
     // empty, which is exactly the fabrication this field exists to prevent.
     usageRowsInRange: null,
+    // Likewise the demo projection carries no `machine_session_id`, so the
+    // attribution gap cannot be measured and must not be reported as zero.
+    cycleAttribution: null,
     totals: {
       revenueSatang: response.totals.revenueSatang,
       cycles: response.totals.cycles,

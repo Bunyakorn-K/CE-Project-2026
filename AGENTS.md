@@ -70,7 +70,10 @@ current product authority.
 | Superset bootstrap (#42) | Done (2026-09-13) | `deploy/analytics/bootstrap-superset.sh` |
 | Airflow Postgres (#42) | Done (2026-09-13) | `docs/04_traceability/ops-verification-2026-09-13-airflow-superset.md` |
 
-Data volume is ~4.8k usage rows (~1 week). Sufficient for baseline only;
+Data volume is 4,458 non-synthetic usage rows over **9 weeks**
+(2026-07-22 → 2026-09-25, measured 2026-09-29 by
+`apps/api/scripts/cycle-cardinality-diagnostic.ts`; this supersedes the earlier
+"~4.8k rows (~1 week)" note). Sufficient for baseline only;
 ≥ 3 months needed for Prophet/SARIMA/GBM candidates. See
 `docs/06_ml/ml-training-data-guide.md` §5 for data requirements.
 
@@ -80,7 +83,14 @@ As of 2026-09-25, direct ClickHouse Dashboard and Digital Twin routes have
 local automated evidence for server-side branch scope, zero-grant denial,
 strict calendar date validation, bind-parameter queries, nullable revenue
 redaction, active-inventory retention, usage-derived freshness, and unknown
-state preservation. This is code/test evidence, not production E2E. The LINE
+state preservation. The cycle KPI is the paid/finished **row** count
+(`countIf(status IN (2, 4))`) — the canonical definition decided 2026-09-29
+from a real-warehouse cardinality measurement, recorded in
+`docs/04_traceability/RTM_matrix.md`. Because 63.91% of real usage rows carry
+no `machine_session_id`, the dashboard response carries
+`cycleAttribution` and the web dashboard states the unattributed share in
+Thai; a cycle count must never be presented as fully attributed. This is
+code/test evidence, not production E2E. The LINE
 authentication flow is not yet verified end to end. Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded
 rate limits. Development access requires both `NODE_ENV=development` and

@@ -14,6 +14,7 @@ type MachineUsageRow = {
   machine_kind: string;
   revenueSatang: string;
   cycles: string;
+  attributedCycles: string;
   usageRows: string;
   started_at: string;
   last_active_at: string;
@@ -51,15 +52,27 @@ ORDER BY branch_name`;
 /**
  * Dashboard aggregation, one row per (tenant, branch, machine).
  *
- * `cycles` is a per-machine distinct `machine_session_id`, and
- * `queryDashboard` sums those per-machine values. That sum is only correct if
- * the grouping key is no finer than the machine: a `machine_session_id` that
- * appears on both a `paid` and a `finished` row — both of which
- * docs/03_data_contracts/data_contracts.md allows in `status IN (2, 4)` —
- * would otherwise land in two groups and be counted twice. `status` is
- * therefore deliberately NOT a grouping key. The `status IN (2, 4)` FILTER is
- * untouched: which statuses count is a data-contract decision, distinct-from
- * what grain the count is taken at is a correctness one.
+ * `cycles` counts usage ROWS in the paid/finished statuses — the canonical
+ * definition decided 2026-09-29 and recorded in
+ * docs/04_traceability/RTM_matrix.md ("Canonical cycle definition"). It was
+ * `uniqExactIf(machine_session_id, status IN (2, 4))` before that.
+ *
+ * Why rows and not sessions: `machine_session_id` is `Nullable(String)` and is
+ * NULL on 63.91% of real usage rows (2,849 of 4,458, 2026-07-22 → 2026-09-25),
+ * so a distinct-session count silently dropped two thirds of the work — the
+ * real warehouse's ฿16,480,000 revenue over 1,314 such "cycles" is ฿125.42
+ * each, about three times a real Thai wash, while the same revenue over 3,905
+ * rows is ฿42.20. The cardinality diagnostic
+ * (`apps/api/scripts/cycle-cardinality-diagnostic.ts`) measured that one real
+ * session id spans exactly one row and exactly one status, so for attributed
+ * rows the two definitions are identical; the divergence was entirely the
+ * missing attribution. `status IN (2, 4)` is a data-contract decision
+ * (docs/03_data_contracts/data_contracts.md) and is unchanged.
+ *
+ * The gap is still measured rather than assumed away: `attributedCycles`
+ * counts how many of the counted rows carry a non-null `machine_session_id`,
+ * which is what `cycleAttribution` surfaces. Revenue is untouched — it is
+ * separately correct and separately verified.
  */
 export function buildDashboardSQL(): string {
   return `
@@ -71,7 +84,8 @@ SELECT
   m.machine_code AS machine_code,
   m.machine_kind AS machine_kind,
   sumIf(u.amount_satang, u.status IN (2, 4)) AS revenueSatang,
-  uniqExactIf(u.machine_session_id, u.status IN (2, 4)) AS cycles,
+  countIf(u.status IN (2, 4)) AS cycles,
+  countIf(u.status IN (2, 4) AND u.machine_session_id IS NOT NULL) AS attributedCycles,
   count() AS usageRows,
   max(u.started_at) AS last_active_at
 FROM fact_machine_usage AS u FINAL
@@ -94,7 +108,7 @@ SELECT
   m.machine_kind AS machine_kind,
   argMax(u.status, u.started_at) AS status,
   max(u.started_at) AS last_active_at,
-  countDistinct(u.machine_session_id) AS cycle_count
+  countIf(u.status IN (2, 4)) AS cycle_count
 FROM dim_machine AS m FINAL
 INNER JOIN dim_branch AS b FINAL ON m.tenant_id = b.tenant_id AND m.branch_id = b.branch_id
 LEFT JOIN fact_machine_usage AS u FINAL ON
@@ -143,7 +157,22 @@ export type MachineInfo = {
   status: MachineStatus;
   lastActiveAt: string | null;
   cycleCount: number | null;
-  cycleCountSource: "machine_session_id" | "unavailable";
+  /** Which definition `cycleCount` was taken from. It is NOT `machine_session_id`:
+   *  the count is `countIf(status IN (2, 4))` over usage rows, the canonical
+   *  definition, so labelling it by that nullable field would misdescribe it. */
+  cycleCountSource: "usage_row" | "unavailable";
+};
+
+/** How much of the dashboard `cycles` count rests on a `machine_session_id`.
+ *  `countedRows` is the denominator the KPI is computed over, and
+ *  `attributedRows` is how many of those rows carry the field. The difference
+ *  is a real, measured gap, not a rounding artifact: on the production
+ *  warehouse 63.91% of usage rows have no session id, so a reader who is not
+ *  told this will read a row count as a fully attributed session count. */
+export type CycleAttribution = {
+  countedRows: number;
+  attributedRows: number;
+  unattributedRows: number;
 };
 
 export type DashboardTotals = {
@@ -173,6 +202,12 @@ export type DashboardData = {
    *  has no such field), so presence is unknown and must not be presented as
    *  either empty or populated. */
   usageRowsInRange: number | null;
+  /** How much of `totals.cycles` carries a `machine_session_id`. Additive in
+   *  the same sense as `usageRowsInRange`: always present on the ClickHouse
+   *  path (including as a zeroed measurement for an empty window), and `null`
+   *  on the IRIS/demo path, which cannot measure attribution at all. A `null`
+   *  here means the gap is unknown — never that the gap is zero. */
+  cycleAttribution: CycleAttribution | null;
   totals: DashboardTotals;
   branches: DashboardBranch[];
 };
@@ -215,6 +250,7 @@ export async function queryDashboard(
   let totalRevenue = 0;
   let totalCycles = 0;
   const machines = new Set<string>();
+  let attributedCycles = 0;
 
   for (const state of currentStates) {
     const branchKey = `${state.tenantId}:${state.branchId}`;
@@ -241,6 +277,7 @@ export async function queryDashboard(
     const cyc = Number(r.cycles) || 0;
     totalRevenue += rev;
     totalCycles += cyc;
+    attributedCycles += Number(r.attributedCycles) || 0;
 
     const existing = branchMap.get(branchKey) ?? {
       branchId: r.branch_id,
@@ -261,6 +298,16 @@ export async function queryDashboard(
     to,
     source: "clickhouse",
     usageRowsInRange: rows.reduce((total, r) => total + (Number(r.usageRows) || 0), 0),
+    // Attribution is measured over the same rows the KPI counts, so
+    // `unattributedRows` is exactly the number of cycles with no session id
+    // behind them. A `Math.max(0, …)` guard is deliberate: it keeps an
+    // inconsistent pair from reporting a negative gap, which would read as
+    // more attributed rows than there are counted rows.
+    cycleAttribution: {
+      countedRows: totalCycles,
+      attributedRows: attributedCycles,
+      unattributedRows: Math.max(0, totalCycles - attributedCycles)
+    },
     totals: {
       revenueSatang: totalRevenue,
       cycles: totalCycles,
@@ -300,8 +347,8 @@ export async function queryMachineStates(
   };
 
   return rows.map((r: MachineStateRow) => {
-    const sessionCycles = Number(r.cycle_count) || 0;
-    const cycleCount = sessionCycles > 0 ? sessionCycles : null;
+    const countedCycles = Number(r.cycle_count) || 0;
+    const cycleCount = countedCycles > 0 ? countedCycles : null;
     return {
       tenantId: r.tenant_id ?? "unknown",
       machineId: r.machine_id,
@@ -312,7 +359,7 @@ export async function queryMachineStates(
       status: statusMap[r.status ?? ""] ?? "unknown",
       lastActiveAt: r.last_active_at || null,
       cycleCount,
-      cycleCountSource: cycleCount === null ? "unavailable" : "machine_session_id"
+      cycleCountSource: cycleCount === null ? "unavailable" : "usage_row"
     };
   });
 }

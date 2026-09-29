@@ -220,6 +220,117 @@ one. Any production deployment, production migration, live telemetry ingestion,
 machine command, or payment write requires a separate explicit user request,
 the recorded rollback ref, and the post-change smoke checks above.
 
+## Read-only warehouse diagnostic: cycle cardinality
+
+`apps/api/scripts/cycle-cardinality-diagnostic.ts` is a SELECT-only script that
+measures two facts about `fact_machine_usage`: how many rows one real IRIS
+`machine_session_id` spans, and whether one session id can carry more than one
+`status`. Four surfaces used to render a number labelled "รอบ" (cycle) and none
+of them agreed. **This was decided on 2026-09-29, from a real-warehouse run of
+this script**: the canonical cycle count is the paid/finished **row** count.
+The decision, its evidence, and the ฿/cycle plausibility band are recorded in
+`docs/04_traceability/RTM_matrix.md` ("Canonical cycle definition").
+
+Running the script still changes nothing in the stack; this section documents
+how to reproduce the finding, not how to re-open the question.
+
+The script filters to non-synthetic rows
+(`NOT startsWith(source_event_id, 'synthetic:')`) and **refuses to print a
+verdict when there are none**, exiting `1` with `VERDICT: REFUSED`. A seeded or
+empty warehouse therefore cannot produce a number that could be mistaken for a
+finding about IRIS.
+
+### What this repository documents about the connection
+
+| Fact | Value | Where it is documented |
+| :--- | :---- | :--------------------- |
+| Warehouse host | VM 117, `172.30.191.48` over ZeroTier, host `laundrytwin` | `Topology` above |
+| ClickHouse service | container `analytics-clickhouse-1`, image `clickhouse/clickhouse-server:26.3` | `deploy/analytics/compose.yaml` |
+| HTTP port | `8123:8123`, published on all host interfaces; internal health check on `127.0.0.1:8123/ping` | `deploy/analytics/compose.yaml`, `deploy/analytics/clickhouse-listen.xml` |
+| Database | `laundrytwin_analytics` | `deploy/analytics/clickhouse-reader.xml`, `apps/etl/src/schema.ts` |
+| Credential to use | user `reader`; `GRANT SELECT ON laundrytwin_analytics.*` only, `access_management` off, INSERT/DDL denied | `deploy/analytics/clickhouse-reader.xml` |
+| Where the `reader` password lives **on the VM** | `/opt/laundrytwin/.env` as `CLICKHOUSE_PASSWORD` (app env) and `/opt/analytics/.env` as `CLICKHOUSE_PASSWORD` (analytics env), both installed mode 0600 from the untracked `clickhouse_reader_password` Tofu variable | `deploy/tofu/locals.tf` (`app_env`, `analytics_env`), `deploy/tofu/envfiles.tf`, `deploy/tofu/variables.tf` (`app_install_dir` default `/opt/laundrytwin`, `analytics_install_dir` default `/opt/analytics`) |
+| Public ClickHouse route | `https://clickhouse.laundrytwin.duckdns.org` → Caddy `basic_auth` + ClickHouse `reader` | `Public host → service mapping` and `Caddy config` above |
+
+Use `reader`, not `admin`. `admin` is network-scoped to `127.0.0.1` and
+`172.16.0.0/12` and the script needs nothing beyond `SELECT`, so `reader` is
+both sufficient and the correct least-privilege choice.
+
+### The command
+
+From a checkout of this repository, on any machine that can reach the
+ClickHouse HTTP interface:
+
+```bash
+cd apps/api
+CLICKHOUSE_URL=http://<host>:8123 \
+CLICKHOUSE_USER=reader \
+CLICKHOUSE_PASSWORD='<reader password, see below>' \
+CLICKHOUSE_DATABASE=laundrytwin_analytics \
+pnpm exec tsx scripts/cycle-cardinality-diagnostic.ts
+```
+
+Optional flags narrow the measurement to a window or a branch, matching the
+empty-string sentinel used by the analytics queries:
+
+```bash
+pnpm exec tsx scripts/cycle-cardinality-diagnostic.ts \
+  --from=2026-09-01 --to=2026-09-28 [--branch=<branch uuid>]
+```
+
+`apps/api/src/config.ts` loads the git-ignored repository-root `.env` on
+import, so exporting `CLICKHOUSE_*` inline is what selects the target — dotenv
+does not overwrite variables already present in the environment. Passing a
+`CLICKHOUSE_URL` that cannot be reached fails with `ClickHouse is unreachable`
+rather than silently falling back to a local warehouse.
+
+Read the whole output before quoting any line from it. The header states the
+row counts, and `real_rows=0` with `VERDICT: REFUSED` means the run tells you
+nothing about IRIS.
+
+### What this repository does NOT document — the operator must supply it
+
+The following are deliberately absent from the repo and must be obtained out of
+band. Do not add them to this document or to any tracked file.
+
+1. **The `reader` password value.** It exists only on VM 117 — in
+   `/opt/laundrytwin/.env` and `/opt/analytics/.env` (both installed mode 0600
+   from the untracked `clickhouse_reader_password` Tofu variable) and, per the
+   `Caddy config` section above, in the git-ignored
+   `/opt/analytics/clickhouse-reader.local.xml`. Retrieve it over the
+   documented SSH access and export it into the shell for the run; do not paste
+   it into a ticket, a commit, or a shell history that is shared. The repo ships
+   only the placeholder `deploy/analytics/clickhouse-reader.xml`, which takes
+   the password `from_env`.
+2. **A reachable hostname for the HTTP interface from the operator's machine.**
+   The runbook documents the ZeroTier address `172.30.191.48`, the public
+   hostname `clickhouse.laundrytwin.duckdns.org`, and the `8123:8123` host
+   binding, but not which of them the operator's current network can reach. An
+   SSH port-forward (`ssh -L 8123:127.0.0.1:8123 uunw@172.30.191.48`, then
+   `CLICKHOUSE_URL=http://127.0.0.1:8123`) works over the documented
+   key-based SSH access as long as ZeroTier is up; the forward itself is not a
+   documented procedure and is offered here as a route, not as a verified step.
+3. **How the `reader` password is used at the public route.** Caddy
+   `basic_auth` sits in front of the ClickHouse reader there, and the Caddyfile
+   lives only on the Pi, so this repository does not state whether the same
+   credential is valid at both hops. Confirm on the Pi before relying on the
+   public route; the port-forward route above avoids the question entirely.
+4. **Whether the API and analytics containers can be reached for this run.**
+   The script is standalone and needs only ClickHouse, so this is listed only
+   so no one assumes a running API is required. It is not.
+
+### After the run
+
+Read the output against the finding already recorded in
+`docs/04_traceability/RTM_matrix.md` ("Canonical cycle definition"). A run that
+reproduces `1 row per session`, `0 multi-status sessions`, and a `฿/cycle` near
+฿40–45 for the row count confirms the decision. A run that does **not** is new
+evidence: the attribution gap upstream may have changed, and the finding needs
+re-deciding on the new numbers rather than being assumed still valid.
+
+The diagnostic itself deliberately changes no query, type, label, or KPI, so no
+number in the product moves as a result of running it.
+
 ## Troubleshooting quick reference
 
 | Symptom | Likely cause | Check |
