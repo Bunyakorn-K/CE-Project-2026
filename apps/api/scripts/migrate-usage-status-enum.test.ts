@@ -14,6 +14,8 @@ import {
   OLD_STATUS_ENUM,
   parseArgs,
   runStatusEnumMigration,
+  type StatusColumn,
+  type StatusCount,
   UNDO_WARNING
 } from "./migrate-usage-status-enum";
 import type { ClickHouseExecutor } from "../src/analytics/clickhouse";
@@ -86,12 +88,48 @@ describe("backfill mapping", () => {
   });
 
   it("compares by name, not by number, so it is correct under either numbering", () => {
-    expect(sql).toContain("toString(status) != toString(status_new)");
+    for (const pair of ["status = 'paid'", "status = 'finished'"]) {
+      expect(sql).toContain(pair);
+    }
+    // No bare integer comparison between the two enum columns anywhere.
     expect(sql).not.toMatch(/status\s*!=\s*status_new/);
+  });
+
+  it("never reads the new column before it is backfilled", () => {
+    // The shipped WHERE was `toString(status) != toString(status_new)`, which
+    // reads the column the UPDATE is about to write. The ADD COLUMN carries no
+    // DEFAULT, so the value ClickHouse materialises for pre-existing rows is
+    // the type's implicit default: on 26.3.34.136 `pending_payment`, on other
+    // builds the out-of-range 0, which `toString` refuses with
+    // UNKNOWN_ELEMENT_OF_ENUM (Code 691). Correctness therefore rested on an
+    // undocumented server default. The WHERE must be unconditional so the
+    // materialised value cannot matter.
+    const where = sql.slice(sql.indexOf("WHERE"));
+    expect(where).not.toContain("status_new");
+    expect(where).toMatch(/WHERE\s+1\s*=\s*1/i);
+  });
+
+  it("keeps the new column free of a DEFAULT, so no permanent default lands on status", () => {
+    // An explicit DEFAULT would guarantee a readable materialised value, but it
+    // is a column property: it survives the rename onto `status`, `DESCRIBE`
+    // reports it (verified on 26.3.34.136), and a future INSERT that omitted
+    // `status` would then silently record `pending_payment`. The unconditional
+    // WHERE removes the need for it.
+    expect(buildAddColumnSQL("fact_machine_usage")).not.toMatch(/DEFAULT/i);
   });
 
   it("waits for the mutation to finish before anything verifies it", () => {
     expect(sql.replace(/\s+/g, " ")).toContain("mutations_sync = 2");
+  });
+});
+
+describe("buildStatusCountsSQL", () => {
+  it("reads the column it is given, and requires one to be named", () => {
+    expect(buildStatusCountsSQL("fact_machine_usage", "status")).toContain("toString(status)");
+    expect(buildStatusCountsSQL("fact_machine_usage", "status_new")).toContain("toString(status_new)");
+    // Signature is `(table, column)`: there is no default, so a caller cannot
+    // accidentally get the source column by omitting the argument.
+    expect(buildStatusCountsSQL).toHaveLength(2);
   });
 });
 
@@ -141,6 +179,28 @@ describe("runStatusEnumMigration", () => {
       .mockResolvedValueOnce([{ type }]) // status type
       .mockResolvedValueOnce(counts) // pre-flight counts
       .mockResolvedValue(counts); // post counts
+  }
+
+  /**
+   * Routes by the SQL, not by call order. A positional mock is a trap here:
+   * two DDL statements sit between the source read and the pre-swap gate read,
+   * so a queue built for the old call sequence silently hands the gate the
+   * wrong rows. Returning `[]` for DDL and a per-column distribution for the
+   * GROUP BY reads keeps each assertion about one thing.
+   */
+  function executorByColumn(options: {
+    type?: string;
+    source?: StatusCount[];
+    backfilled?: StatusCount[];
+  }) {
+    const source = options.source ?? counts;
+    return vi.fn(async (sql: string) => {
+      if (/^\s*SELECT\s+type/i.test(sql)) return [{ type: options.type ?? OLD_STATUS_ENUM }];
+      const column = /toString\((\w+)\)/.exec(sql)?.[1];
+      if (column === "status") return source;
+      if (column === "status_new") return options.backfilled ?? source;
+      return []; // DDL
+    });
   }
 
   it("writes nothing unless --apply is passed", async () => {
@@ -194,6 +254,61 @@ describe("runStatusEnumMigration", () => {
     // The swap must never have been attempted.
     const issued = executor.mock.calls.map((call) => String(call[0]).toUpperCase());
     expect(issued.some((sql) => sql.includes("RENAME COLUMN"))).toBe(false);
+  });
+
+  it("reads the BACKFILLED column when verifying before the swap, not the source column", async () => {
+    // The defect this pins. The pre-swap gate used to call the same builder as
+    // the pre-flight read, which hardcoded `status` — so between the two calls
+    // the only statements were `ADD COLUMN status_new` and an `UPDATE` that
+    // writes `status_new`. The gate therefore compared the untouched source
+    // column against itself: it could not have detected a failed, partial,
+    // mis-mapped or empty backfill, and it passed for any backfill whatsoever,
+    // while the irreversibility sat ahead of it. Asserting only that the swap
+    // was not attempted — as the test above does — cannot catch that, because
+    // the abort plumbing works either way.
+    const executor = executorByColumn({});
+    await runStatusEnumMigration(executor as unknown as ClickHouseExecutor, { apply: true });
+
+    const reads = executor.mock.calls
+      .map((call) => String(call[0]))
+      .filter((sql) => /\bFROM\b/i.test(sql) && /GROUP BY/i.test(sql));
+    expect(reads).toHaveLength(3); // pre-flight, pre-swap, post-swap
+
+    // Pre-flight reads the source; the old column still holds the old numbering.
+    expect(reads[0]).toContain("toString(status)");
+    expect(reads[0]).not.toContain("status_new");
+
+    // The pre-swap gate must read the column the backfill wrote.
+    expect(reads[1]).toContain("toString(status_new)");
+
+    // After the rename, `status` IS the backfilled column. Stated explicitly at
+    // the call site rather than left to be an accident of the rename order.
+    expect(reads[2]).toContain("toString(status)");
+    expect(reads[2]).not.toContain("status_new");
+
+    // And the gate runs before the rename: reading the backfilled column is
+    // only possible while it is still called `status_new`.
+    const renameIndex = executor.mock.calls.findIndex((call) => /RENAME COLUMN/i.test(String(call[0])));
+    const gateIndex = executor.mock.calls.findIndex((call) => String(call[0]) === reads[1]);
+    expect(renameIndex).toBeGreaterThan(gateIndex);
+  });
+
+  it("would fail a backfill that silently missed a row", async () => {
+    // A real gate, not a tautology. Same wiring as above, but the backfilled
+    // column is missing a status the source has. While the verification was
+    // reading the source column this compared the source to itself and
+    // reported success — and the migration would then rename a wrong column
+    // onto `status` and drop the only copy of the data.
+    const executor = executorByColumn({ backfilled: [{ status: "finished", rows: "4" }] });
+
+    const result = await runStatusEnumMigration(executor as unknown as ClickHouseExecutor, { apply: true });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("cancelled");
+    expect(result.reason).toContain("status_new");
+    const issued = executor.mock.calls.map((call) => String(call[0]).toUpperCase());
+    expect(issued.some((sql) => sql.includes("RENAME COLUMN"))).toBe(false);
+    expect(issued.some((sql) => sql.includes("DROP COLUMN"))).toBe(false);
   });
 });
 

@@ -36,11 +36,20 @@
 // it.
 //
 // The migration is therefore a column rebuild: add the corrected column,
-// backfill it by mapping every old value by NAME, verify the distribution,
-// swap the names, drop the old column. Because the mapping is by name and
-// ClickHouse compares Enum8 by value only, the backfill runs before the swap
-// and is verified before the swap — if a row cannot be mapped the migration
-// aborts with the old column still authoritative and no data lost.
+// backfill it by mapping every old value by NAME, verify the distribution of
+// the BACKFILLED column, swap the names, drop the old column. Because the
+// mapping is by name and ClickHouse compares Enum8 by value only, the backfill
+// runs before the swap and is verified before the swap — if a row cannot be
+// mapped the migration aborts with the old column still authoritative and no
+// data lost.
+//
+// THE ETL MUST NOT BE RUNNING. A row written after the mutation's part
+// snapshot is not rewritten, so it keeps whatever the new column held before
+// the backfill, and the rename then reclassifies it silently. This was
+// reproduced end to end on a scratch table: a `paid` row came out of the swap
+// as `pending_payment`, with no error anywhere. Run the migration inside
+// deploy/etl/hold-etl-for-warehouse-migration.sh, which stops the ETL for the
+// window and always starts it again.
 //
 // SAFETY PROPERTIES
 //   1. Read-only by default. Without --apply it issues two SELECTs and stops.
@@ -51,10 +60,16 @@
 //      cannot hold, so an unmapped row raises UNKNOWN_ELEMENT_OF_ENUM and fails
 //      the whole mutation. There is no fallback value.
 //   4. The backfill comparison is by NAME, never by number, so it is correct
-//      under either numbering and cannot silently skip or double-convert.
-//   5. The distribution is verified BEFORE the swap. A mismatch aborts while
-//      the old column is still the one named `status`, so the table is still
-//      fully readable and the fix is simply to drop the extra column.
+//      under either numbering and cannot silently skip or double-convert. The
+//      mutation's WHERE is unconditional and never reads the new column, so
+//      the value ClickHouse materialises for it cannot affect the outcome.
+//   5. The distribution is verified BEFORE the swap, and the verification reads
+//      the backfilled column — `status_new`, not the source `status`. Reading
+//      the source here would compare the untouched source against itself, pass
+//      for any backfill at all, and leave the irreversibility ahead of the
+//      only step that could catch a bad one. A mismatch aborts while the old
+//      column is still the one named `status`, so the table is still fully
+//      readable and the fix is simply to drop the extra column.
 //   6. Mutations are synchronous (mutations_sync=2) so verification never
 //      races the backfill.
 //
@@ -81,6 +96,17 @@ export const NEW_STATUS_ENUM =
  *  column is parked under once the swap happens. */
 const NEW_COLUMN = "status_new";
 const OLD_COLUMN = "status_old_migrated";
+
+/** The column the source data lives in before the swap. After the swap the
+ *  backfilled column is *renamed onto* this name, so `SOURCE_COLUMN` means
+ *  "the old data" only until step 5. Every read states which one it wants. */
+const SOURCE_COLUMN = "status";
+
+/** The only two physical columns a status distribution can be read from. Typed
+ *  as a union on purpose: a caller cannot invent a third, and a reader of this
+ *  file can see at each call site whether the gate is looking at the source
+ *  column or at the backfilled one. */
+export type StatusColumn = typeof SOURCE_COLUMN | typeof NEW_COLUMN;
 
 /** Every statement this script can issue, in order, for the report and the
  *  tests to agree on. `preflight` and the two `verify` stages are reads. */
@@ -131,16 +157,31 @@ WHERE database = ${database}
   AND name = 'status'`;
 }
 
-/** Per-status row counts. ClickHouse JSONEachRow renders counts as strings. */
-export function buildStatusCountsSQL(table: string): string {
+/**
+ * Per-status row counts for ONE NAMED PHYSICAL COLUMN. ClickHouse JSONEachRow
+ * renders counts as strings.
+ *
+ * `column` is required, never defaulted. The pre-swap verification used to pass
+ * nothing and read `status` — the source column — which made it a tautology: it
+ * compared the untouched source against itself, so it could not have detected a
+ * failed, partial, mis-mapped or empty backfill. Naming the column at every
+ * call site is what keeps that from coming back.
+ */
+export function buildStatusCountsSQL(table: string, column: StatusColumn): string {
   return `
-SELECT toString(status) AS status, count() AS rows
+SELECT toString(${column}) AS status, count() AS rows
 FROM ${table} FINAL
-GROUP BY status
+GROUP BY ${column}
 ORDER BY status`;
 }
 
 export function buildAddColumnSQL(table: string): string {
+  // No DEFAULT, deliberately. An explicit DEFAULT is the only way to guarantee
+  // the new column materialises to a value the new enum can hold, but it is a
+  // permanent column property: it survives the swap onto `status`, `DESCRIBE`
+  // reports it, and a future INSERT that omitted `status` would then silently
+  // record `pending_payment` instead of failing. See buildBackfillSQL for why
+  // the column never has to be read before it is written.
   return `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${NEW_COLUMN} ${NEW_STATUS_ENUM}`;
 }
 
@@ -154,12 +195,39 @@ export function buildAddColumnSQL(table: string): string {
  * is rejected as a whole: a row that matches none of the six stops the
  * migration instead of being assigned a plausible-looking value.
  *
- * ClickHouse requires a WHERE on ALTER ... UPDATE, and `status != ${NEW_COLUMN}`
- * would compare an old-numbered enum to a new-numbered one — comparing
- * integers across two numberings, which is the exact bug being fixed here. The
- * predicate is therefore a name comparison. Rows already holding the right
- * name are skipped, which is safe: for those the stored value is already
- * correct under the new enum.
+ * THE WHERE IS UNCONDITIONAL, and that is the point. It used to be
+ * `toString(status) != toString(${NEW_COLUMN})` — a name comparison that reads
+ * the new column before the new column has been backfilled. That is unsafe for
+ * two separate reasons, both observed on ClickHouse 26.3:
+ *
+ *   1. The ADD COLUMN has no DEFAULT, so the value ClickHouse materialises for
+ *      pre-existing rows is the type's implicit default, not a name we chose.
+ *      On 26.3.34.136 that is `pending_payment` (the first element). The
+ *      predicate therefore depends on an undocumented server default: on a
+ *      build that materialises the out-of-range value 0, `toString()` raises
+ *      `Code: 691 UNKNOWN_ELEMENT_OF_ENUM` and the whole mutation is refused.
+ *      `CAST(0 AS Enum8(...))` raises 691 on this build too, and
+ *      `ADD COLUMN ... Enum8(...) DEFAULT 0` is rejected outright, so the
+ *      DEFAULT-less path is the only way into that state.
+ *   2. A row inserted after the mutation's part snapshot is never rewritten,
+ *      and it is never read either, so the shipped code does not notice: the
+ *      row keeps the materialised value and the rename silently reclassifies
+ *      it. Reproduced end to end on a scratch table — a `paid` row came out of
+ *      the swap as `pending_payment`, dropping one cycle out of
+ *      `status IN ('paid','finished')` with no error anywhere.
+ *
+ * An unconditional WHERE fixes (1) by construction: the un-backfilled column is
+ * never read, so the materialised default is irrelevant, and it fixes the
+ * silent part of (2) by making the sentinel reachable for EVERY row on EVERY
+ * run instead of only for rows that happen to differ from the default.
+ * (2)'s remaining exposure is a row the mutation never sees, which is why the
+ * add->backfill->verify->swap window must be closed against the ETL — see
+ * deploy/etl/hold-etl-for-warehouse-migration.sh.
+ *
+ * An unconditional UPDATE is also idempotent: the expression is a pure function
+ * of `status`, so re-running it rewrites the same values. It rewrites the
+ * `pending_payment` rows too, which the old predicate skipped. That is a few
+ * extra bytes on a 5k-row table and it costs correctness nothing.
  */
 export function buildBackfillSQL(table: string): string {
   return `ALTER TABLE ${table} UPDATE ${NEW_COLUMN} = CAST(
@@ -172,7 +240,7 @@ export function buildBackfillSQL(table: string): string {
     status = 'admitted',       'admitted',
     concat('__unmapped__', toString(status))
   ) AS ${NEW_STATUS_ENUM})
-WHERE toString(status) != toString(${NEW_COLUMN})
+WHERE 1 = 1
 SETTINGS mutations_sync = 2`;
 }
 
@@ -279,8 +347,9 @@ export async function runStatusEnumMigration(
     return { ok: false, applied: false, verified: false, statusType, before: [], after: [], reason: check.reason };
   }
 
-  // 2. The distribution we must reproduce.
-  const before = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table)));
+  // 2. The distribution we must reproduce. Read from the SOURCE column: at
+  //    this point `status` still holds the old numbering.
+  const before = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table, SOURCE_COLUMN)));
 
   if (!apply) {
     return { ok: true, applied: false, verified: false, statusType, before, after: [], reason: "" };
@@ -291,10 +360,17 @@ export async function runStatusEnumMigration(
   await executor(buildAddColumnSQL(table));
   await executor(buildBackfillSQL(table));
 
-  // 4. Verify BEFORE the swap. This is the property that makes the migration
-  //    recoverable: on a mismatch the column named `status` is still the old,
-  //    correct one, and the fix is to drop the extra column.
-  const backfilled = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table)));
+  // 4. Verify BEFORE the swap, reading the BACKFILLED column. This is the
+  //    property that makes the migration recoverable: on a mismatch the column
+  //    named `status` is still the old, correct one, and the fix is to drop the
+  //    extra column.
+  //
+  //    This read used to name `status`, i.e. the untouched source column, so it
+  //    compared the source against itself: it passed for ANY backfill whatever
+  //    happened, including none. Reading `status_new` is the whole difference
+  //    between a gate and a no-op, and it is the step that catches a row the
+  //    mutation never saw — before the rename, not after the drop.
+  const backfilled = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table, NEW_COLUMN)));
   const backfillCheck = compareDistributions(before, backfilled);
   if (!backfillCheck.ok) {
     return {
@@ -315,10 +391,13 @@ export async function runStatusEnumMigration(
   await executor(buildSwapColumnsSQL(table));
   await executor(buildDropOldColumnSQL(table));
 
-  // 6. Verify the end state: the type moved, and the rows did not.
+  // 6. Verify the end state: the type moved, and the rows did not. This read
+  //    names `status` again, but it means the BACKFILLED column: step 5 renamed
+  //    `status_new` onto `status`. It worked by accident before, when the
+  //    column was hardcoded; the call site now says so instead of implying it.
   const finalRows = await executor<Record<string, unknown>>(buildStatusTypeSQL(table));
   const finalType = String(finalRows[0]?.type ?? "");
-  const after = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table)));
+  const after = toCounts(await executor<Record<string, unknown>>(buildStatusCountsSQL(table, SOURCE_COLUMN)));
   const finalCheck = compareDistributions(before, after);
   if (finalType !== NEW_STATUS_ENUM) {
     return {
