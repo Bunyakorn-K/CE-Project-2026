@@ -76,6 +76,16 @@ non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
 2. **Attribution is mostly missing.** 63.91% of rows (2,849 of 4,458) have a
    NULL `machine_session_id`, and that null set is exactly
    `attribution_state = 'pending_attribution'` (2,850 pending vs 1,610 exact).
+
+> **The unattributed share is a live metric, not a constant.** It rises as the
+> ETL ingests the IRIS backlog, because backlog rows are the historical ones
+> that predate session attribution. Re-measured **2026-09-29 15:45Z** over
+> 5,146 rows: **65.25%** (3,358 rows with a NULL `machine_session_id`;
+> 3,357 `pending_attribution` vs 1,789 `exact`). The gap between 3,358 and
+> 3,357 is one row whose `machine_session_id` is populated but whose
+> `attribution_state` is still `pending_attribution` — the two columns are
+> independent, so treat the share as approximate and always state the
+> measurement date. Any figure quoted without one is stale by construction.
 3. **The price band is decisive.** Real revenue is 16,480,000 satang (฿164,800):
 
    | definition | count | ฿/cycle | plausible? |
@@ -128,8 +138,10 @@ with it.
 - `docs/06_ml/ml-training-data-guide.md` claimed "Every row in
   `fact_machine_usage` represents one machine session". That is **wrong about
   the real data** and is corrected rather than deleted: a row is one usage
-  event, one session id spans exactly one row, and 63.91% of rows carry no
-  session id at all.
+  event, one session id spans exactly one row, and 65.25% of rows carry no
+  session id at all (measured 2026-09-29 over 5,146 rows; see the live-metric
+  note above — the 63.91% figure recorded earlier in the day was over 4,458
+  rows and is a point-in-time measurement, not a property of the data).
 - `paid_ratio` was documented as a bare `Float64`. On real data it is
   **undefined, not zero**, when a branch-day has no `paid` and no `finished`
   row, and `paid` appears on only 257 rows of which **6** carry a session id.

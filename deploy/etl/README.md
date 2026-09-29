@@ -16,3 +16,35 @@ Manual run (one-shot, no loop): `sudo docker run --rm --network=host --env-file=
 Logs: `sudo docker compose -f /opt/laundrytwin/compose.yaml logs -f etl`
 
 Update code: sync `apps/etl`, `apps/etl/Dockerfile`, `compose.yaml`, and lockfile to `/opt/laundrytwin`, then build+push the image from the Mac (`docker buildx build --platform linux/amd64 -f apps/etl/Dockerfile -t registry.laundrytwin.duckdns.org/laundrytwin-etl:latest --push .` with `~/.creds/laundrytwin-registry.txt` creds; the Mac cannot push via the internal `10.10.0.117:5000` IP) and `sudo docker compose pull etl && sudo docker compose up -d etl` on the VM (the VM pulls via `127.0.0.1:5000`, the same registry — the public duckdns IP fails from the VM, no NAT loopback).
+
+## Holding the ETL still for a warehouse migration
+
+`hold-etl-for-warehouse-migration.sh` stops the ETL for a column-rebuild
+migration of `fact_machine_usage` and always starts it again.
+
+This is not optional tidiness. The ETL writes usage rows on a 5-minute cycle,
+and the migration renumbers `status` by adding a column, backfilling it with a
+mutation, and renaming. A ClickHouse mutation only rewrites the parts it
+snapshotted, so a row written after that snapshot is not backfilled, and the
+rename then reclassifies it — silently, with no error on the write or the read.
+Reproduced on a scratch table on 2026-09-29: a `paid` row came out of the swap
+as `pending_payment`, taking a cycle out of `status IN ('paid','finished')` and
+a discovered only by noticing a number.
+
+The migration also drops and rebuilds the `proj_by_time` projection
+(`deploy/analytics/clickhouse-tuning.sql`), so the window is longer than a
+single statement.
+
+```sh
+sudo sh deploy/etl/hold-etl-for-warehouse-migration.sh stop
+# ... run the migration ...
+sudo sh deploy/etl/hold-etl-for-warehouse-migration.sh start
+sudo sh deploy/etl/hold-etl-for-warehouse-migration.sh status
+```
+
+Or `run -- <command>`, which stops, runs, and resumes in one shell with the
+resume on an `EXIT`/`INT`/`TERM` trap so a failing migration cannot leave
+ingestion stopped. Either way, **check `status` afterwards**: a stopped ETL
+writes no logs and is indistinguishable from a healthy idle one by inspection.
+The watermark resumes from where it stopped, so the worst outcome of a pause is
+that ingestion is a few seconds late.

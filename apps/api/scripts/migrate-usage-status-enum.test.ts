@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildAddColumnSQL,
+  buildAddProjectionSQL,
   buildBackfillSQL,
   buildDropOldColumnSQL,
+  buildDropProjectionSQL,
+  buildMaterializeProjectionSQL,
   buildStatusCountsSQL,
   buildStatusTypeSQL,
   buildSwapColumnsSQL,
@@ -35,13 +38,32 @@ describe("status enum renumbering — what the migration must not do", () => {
   it("adds the corrected column, backfills it, swaps, then drops the old one", () => {
     expect(MIGRATION_STEPS).toEqual([
       "preflight",
+      "read-projections",
+      "drop-projection",
       "add-column",
       "backfill",
       "verify-backfill",
       "swap",
       "drop-old",
+      "add-projection",
+      "materialize-projection",
       "verify-final"
     ]);
+  });
+
+  it("drops the projection for the swap, because it holds its own copy of status", () => {
+    // `proj_by_time` is `SELECT *` (deploy/analytics/clickhouse-tuning.sql), so
+    // it is a second copy of `status`, not a reference. While it is attached
+    // ClickHouse refuses the RENAME with
+    //   Code: 70. Cannot apply ALTER because it breaks projection proj_by_time
+    // which is how the first --apply died. The projection exists only on the
+    // deployed warehouse, so this could not be found on a scratch table.
+    expect(buildDropProjectionSQL("fact_machine_usage")).toContain("DROP PROJECTION IF EXISTS proj_by_time");
+    expect(buildAddProjectionSQL("fact_machine_usage")).toContain("ADD PROJECTION IF NOT EXISTS proj_by_time");
+    // The rebuilt definition must match the one it replaces, or reads stop
+    // being pruned by started_at.
+    expect(buildAddProjectionSQL("fact_machine_usage")).toContain("ORDER BY (branch_id, started_at, usage_id)");
+    expect(buildMaterializeProjectionSQL("fact_machine_usage")).toContain("MATERIALIZE PROJECTION proj_by_time");
   });
 });
 
@@ -131,6 +153,24 @@ describe("buildStatusCountsSQL", () => {
     // accidentally get the source column by omitting the argument.
     expect(buildStatusCountsSQL).toHaveLength(2);
   });
+
+  it("groups and orders positionally, because the result alias shadows a real column", () => {
+    // The result column is aliased `status`, and `status` is also the source
+    // column's name. The two 26.3 patches disagree on which one `ORDER BY
+    // status` means: 26.3.26.3 (production) resolves it to the real column and
+    // fails with `Code: 215 ... 'status' is not under aggregate function and
+    // not in GROUP BY keys`; 26.3.34.136 resolves it to the alias and the same
+    // text succeeds. Naming the column in GROUP BY is therefore not enough —
+    // the ORDER BY still has to be unambiguous.
+    for (const column of ["status", "status_new"] as StatusColumn[]) {
+      const sql = buildStatusCountsSQL("fact_machine_usage", column);
+      expect(sql).toMatch(/GROUP BY\s+1\b/);
+      expect(sql).toMatch(/ORDER BY\s+1\b/);
+      // The old, name-based forms are what break, on one build or the other.
+      expect(sql).not.toMatch(/GROUP BY\s+status_new\b/);
+      expect(sql).not.toMatch(/ORDER BY\s+status\b/);
+    }
+  });
 });
 
 describe("compareDistributions", () => {
@@ -203,6 +243,20 @@ describe("runStatusEnumMigration", () => {
     });
   }
 
+  function executorWithProjections(names: string[]) {
+    // Tracks the swap so the post-swap type probe reports the new enum, the way
+    // the server would.
+    let swapped = false;
+    return vi.fn(async (sql: string) => {
+      if (/^\s*SELECT\s+type/i.test(sql)) return [{ type: swapped ? NEW_STATUS_ENUM : OLD_STATUS_ENUM }];
+      if (/system\.projections/i.test(sql)) return names.map((name) => ({ name }));
+      if (/RENAME COLUMN/i.test(sql)) swapped = true;
+      const column = /toString\((\w+)\)/.exec(sql)?.[1];
+      if (column) return counts;
+      return [];
+    });
+  }
+
   it("writes nothing unless --apply is passed", async () => {
     const executor = executorReturning(OLD_STATUS_ENUM);
 
@@ -236,6 +290,47 @@ describe("runStatusEnumMigration", () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("already carries");
     expect(executor).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not give a table a projection it never had", async () => {
+    const executor = executorWithProjections([]);
+    await runStatusEnumMigration(executor as unknown as ClickHouseExecutor, { apply: true });
+    const issued = executor.mock.calls.map((call) => String(call[0]).toUpperCase());
+    expect(issued.some((sql) => sql.includes("ADD PROJECTION"))).toBe(false);
+    expect(issued.some((sql) => sql.includes("DROP PROJECTION"))).toBe(false);
+    expect(issued.some((sql) => sql.includes("RENAME COLUMN"))).toBe(true);
+  });
+
+  it("drops the projection before the swap and rebuilds it after the drop", async () => {
+    const executor = executorWithProjections(["proj_by_time"]);
+    const result = await runStatusEnumMigration(executor as unknown as ClickHouseExecutor, { apply: true });
+
+    expect(result.ok).toBe(true);
+    expect(result.projectionRestored).toBe(true);
+    const at = (pattern: RegExp) => executor.mock.calls.findIndex((call) => pattern.test(String(call[0]).toUpperCase()));
+    expect(at(/DROP PROJECTION/)).toBeGreaterThanOrEqual(0);
+    expect(at(/DROP PROJECTION/)).toBeLessThan(at(/RENAME COLUMN/));
+    expect(at(/ADD PROJECTION/)).toBeGreaterThan(at(/DROP COLUMN/));
+    expect(at(/MATERIALIZE PROJECTION/)).toBeGreaterThan(at(/ADD PROJECTION/));
+  });
+
+  it("reports a projection rebuild failure without calling the data migration wrong", async () => {
+    const executor = executorWithProjections(["proj_by_time"]);
+    const real = executor.getMockImplementation()!;
+    executor.mockImplementation(async (sql: string) => {
+      if (/MATERIALIZE PROJECTION/i.test(sql)) throw new Error("Code 241. Memory limit exceeded");
+      return (real as (s: string) => Promise<unknown[]>)(sql);
+    });
+
+    const result = await runStatusEnumMigration(executor as unknown as ClickHouseExecutor, { apply: true });
+
+    // The data was migrated and verified; the projection is a read-performance
+    // object. Reporting this as "the enum is wrong" would send an operator
+    // looking for bad revenue data that is in fact fine.
+    expect(result.ok).toBe(false);
+    expect(result.verified).toBe(true);
+    expect(result.reason).toContain("SUCCEEDED");
+    expect(result.reason).toContain("clickhouse-tuning.sql");
   });
 
   it("stops before the swap when the backfilled distribution does not match", async () => {

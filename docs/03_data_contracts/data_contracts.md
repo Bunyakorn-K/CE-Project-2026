@@ -101,7 +101,9 @@ way. This caveat is independent of the numbering change and is unchanged by it.
 `apps/etl/src/schema.ts` declares the corrected numbering, but
 `CREATE TABLE IF NOT EXISTS` never alters an existing table — that line governs
 **new** tables only. Existing deployments are handled by
-`apps/api/scripts/migrate-usage-status-enum.ts`.
+`apps/api/scripts/migrate-usage-status-enum.ts`, which **ran against production
+on 2026-09-29**; the deployed column now matches the declaration above. Do not
+re-run it: the script refuses an already-migrated column by design.
 
 `ALTER TABLE ... MODIFY COLUMN status Enum8(...)` is **not** usable: it
 reinterprets stored bytes rather than converting them, and on ClickHouse 26.3 it
@@ -109,6 +111,27 @@ is outright refused with `Code: 70 ... Enum conversion changes value for element
 'running' from 3 to 4 (CANNOT_CONVERT_TYPE)`. The migration therefore rebuilds
 the column: add the corrected column, backfill it by mapping every value by
 name, verify the distribution, swap the names, drop the old column.
+
+Three properties of that rebuild are not optional, and each was found by
+running it rather than by reading it:
+
+- **The pre-swap verification must read the backfilled column**, not the source
+  one. Reading the source compares the untouched data against itself and passes
+  for any backfill, including none.
+- **The backfill's `WHERE` must not read the column it is writing.** `ADD COLUMN`
+  without a `DEFAULT` materialises the type's implicit default for existing
+  rows, and on a build that materialises the out-of-range value `0` the
+  predicate itself raises `Code: 691 UNKNOWN_ELEMENT_OF_ENUM`. The `WHERE` is
+  unconditional so the materialised value cannot matter.
+- **The ETL must be held still for the window.** A mutation only rewrites the
+  parts it snapshotted, so a row written afterwards keeps the pre-backfill value
+  and the rename reclassifies it silently — reproduced end to end, where a
+  `paid` row came out of the swap as `pending_payment`. Use
+  `deploy/etl/hold-etl-for-warehouse-migration.sh`.
+
+The `proj_by_time` projection (below) is `SELECT *`, so it holds its own copy of
+`status` and must be dropped for the swap and rebuilt after it; while it is
+attached the RENAME is refused with the same `Code: 70`.
 
 **The production migration has not been run.** The script has only been executed
 against local scratch tables. The deployment gate is still blocked.

@@ -87,12 +87,21 @@ state preservation. The cycle KPI is the paid/finished **row** count
 (`countIf(status IN ('paid', 'finished'))`) — the canonical definition decided
 2026-09-29 from a real-warehouse cardinality measurement, recorded in
 `docs/04_traceability/RTM_matrix.md`. `status` is now numbered by the IRIS
-lifecycle order (decided 2026-09-29); filter it by name, never by number, and
-note `apps/api/scripts/migrate-usage-status-enum.ts` — the production
-migration has NOT been run. Because 63.91% of real usage rows carry
-no `machine_session_id`, the dashboard response carries
-`cycleAttribution` and the web dashboard states the unattributed share in
-Thai; a cycle count must never be presented as fully attributed. This is
+lifecycle order (decided 2026-09-29); filter it by name, never by number.
+**The production migration HAS been run** (2026-09-29, via
+`apps/api/scripts/migrate-usage-status-enum.ts --apply`): `fact_machine_usage.status`
+is `pending_payment=1, paid=2, admitted=3, running=4, finished=5, cancelled=6`,
+and `DESCRIBE TABLE fact_machine_usage` now matches `apps/etl/src/schema.ts`.
+Do not re-run it; the script refuses an already-migrated column by design. The
+`proj_by_time` projection must be dropped for the swap and rebuilt after it, and
+the ETL must be held still for the window — see
+`deploy/etl/hold-etl-for-warehouse-migration.sh`. Because **65.25%** of real
+usage rows carry no `machine_session_id` (measured 2026-09-29 over 5,146 rows),
+the dashboard response carries `cycleAttribution` and the web dashboard states
+the unattributed share in Thai; a cycle count must never be presented as fully
+attributed. **That share is a live metric, not a constant** — it rises as the ETL
+ingests the IRIS backlog, and any figure quoted without a measurement date is
+stale. This is
 code/test evidence, not production E2E. The LINE
 authentication flow is not yet verified end to end. Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded

@@ -43,6 +43,12 @@
 // mapped the migration aborts with the old column still authoritative and no
 // data lost.
 //
+// The table's `proj_by_time` projection is dropped for the swap and rebuilt
+// afterwards. It is `SELECT *`, so it holds its own copy of `status`, and
+// ClickHouse refuses the RENAME while it is attached (`Code: 70 ... breaks
+// projection`). That projection exists only on the deployed warehouse, so a
+// local rehearsal cannot find it — it was found by the first --apply.
+//
 // THE ETL MUST NOT BE RUNNING. A row written after the mutation's part
 // snapshot is not rewritten, so it keeps whatever the new column held before
 // the backfill, and the rename then reclassifies it silently. This was
@@ -108,15 +114,37 @@ const SOURCE_COLUMN = "status";
  *  column or at the backfilled one. */
 export type StatusColumn = typeof SOURCE_COLUMN | typeof NEW_COLUMN;
 
+/** The table's time-range projection (deploy/analytics/clickhouse-tuning.sql).
+ *  It is `SELECT *`, so it holds a second copy of `status` — a copy of the
+ *  column, not a reference to it. The RENAME therefore trips ClickHouse's
+ *  projection check:
+ *
+ *    Code: 70. Cannot apply ALTER because it breaks projection proj_by_time:
+ *    Enum conversion changes value for element 'running' from 3 to 4
+ *
+ *  observed on production 26.3.26.3, and only there: the projection exists on
+ *  the deployed warehouse and not on a scratch table, so a local rehearsal
+ *  cannot find it. It has to be dropped for the swap and rebuilt afterwards.
+ *  Losing it is a read-performance regression, not a correctness one — the base
+ *  table still answers every query — which is what makes it safe to have it
+ *  absent for the length of a migration. */
+const PROJECTION = "proj_by_time";
+const PROJECTION_DEFINITION = "SELECT * ORDER BY (branch_id, started_at, usage_id)";
+
 /** Every statement this script can issue, in order, for the report and the
- *  tests to agree on. `preflight` and the two `verify` stages are reads. */
+ *  tests to agree on. `preflight`, the two `verify` stages and
+ *  `read-projections` are reads. */
 export const MIGRATION_STEPS = [
   "preflight",
+  "read-projections",
+  "drop-projection",
   "add-column",
   "backfill",
   "verify-backfill",
   "swap",
   "drop-old",
+  "add-projection",
+  "materialize-projection",
   "verify-final"
 ] as const;
 
@@ -168,11 +196,45 @@ WHERE database = ${database}
  * call site is what keeps that from coming back.
  */
 export function buildStatusCountsSQL(table: string, column: StatusColumn): string {
+  // GROUP BY / ORDER BY are POSITIONAL. The result column is aliased `status`,
+  // which is also the name of the source column, and the two servers disagree
+  // about which one `ORDER BY status` means: on 26.3.26.3 (production) the real
+  // column wins, so the read failed with `Code: 215 ... 'status' is not under
+  // aggregate function and not in GROUP BY keys`; on 26.3.34.136 the alias wins
+  // and the same text succeeds. Rehearsing on the wrong 26.3 patch would not
+  // have caught it, and the failure is only reachable once `status_new` exists
+  // — i.e. after the ADD COLUMN, so a pre-flight run is unaffected and the
+  // --apply run dies where the irreversibility is about to start. `1` is
+  // unambiguous on every build.
   return `
 SELECT toString(${column}) AS status, count() AS rows
 FROM ${table} FINAL
-GROUP BY ${column}
-ORDER BY status`;
+GROUP BY 1
+ORDER BY 1`;
+}
+
+/** Which projections are attached to the table. Read before anything is
+ *  changed, so the projection is only rebuilt if it was really there — a table
+ *  without one must not acquire one as a side effect of a migration. */
+export function buildProjectionsSQL(table: string): string {
+  const { database, table: name } = splitTableRef(table);
+  return `
+SELECT name
+FROM system.projections
+WHERE database = ${database}
+  AND table = '${name}'`;
+}
+
+export function buildDropProjectionSQL(table: string): string {
+  return `ALTER TABLE ${table} DROP PROJECTION IF EXISTS ${PROJECTION}`;
+}
+
+export function buildAddProjectionSQL(table: string): string {
+  return `ALTER TABLE ${table} ADD PROJECTION IF NOT EXISTS ${PROJECTION} (${PROJECTION_DEFINITION})`;
+}
+
+export function buildMaterializeProjectionSQL(table: string): string {
+  return `ALTER TABLE ${table} MATERIALIZE PROJECTION ${PROJECTION} SETTINGS mutations_sync = 2`;
 }
 
 export function buildAddColumnSQL(table: string): string {
@@ -322,6 +384,9 @@ export type MigrationResult = {
   before: StatusCount[];
   after: StatusCount[];
   reason: string;
+  /** Whether the table's projection was present before and has been rebuilt.
+   *  `false` on a table that never had one is correct, not a failure. */
+  projectionRestored?: boolean;
 };
 
 function toCounts(rows: Array<Record<string, unknown>>): StatusCount[] {
@@ -355,7 +420,17 @@ export async function runStatusEnumMigration(
     return { ok: true, applied: false, verified: false, statusType, before, after: [], reason: "" };
   }
 
-  // 3. Add, then backfill. The old column is untouched throughout, so any
+  // 3. The projection has to go before the swap: it is `SELECT *`, so it holds
+  //    its own copy of `status` and ClickHouse refuses the RENAME while it is
+  //    attached. Recorded first so a table that never had one does not acquire
+  //    one as a side effect.
+  const hadProjection =
+    (await executor<Record<string, unknown>>(buildProjectionsSQL(table))).map((row) => String(row.name)).length > 0;
+  if (hadProjection) {
+    await executor(buildDropProjectionSQL(table));
+  }
+
+  // 4. Add, then backfill. The old column is untouched throughout, so any
   //    failure before the swap leaves the table fully readable.
   await executor(buildAddColumnSQL(table));
   await executor(buildBackfillSQL(table));
@@ -387,12 +462,12 @@ export async function runStatusEnumMigration(
     };
   }
 
-  // 5. Swap, then drop the old column. Past this point there is no undo.
+  // 6. Swap, then drop the old column. Past this point there is no undo.
   await executor(buildSwapColumnsSQL(table));
   await executor(buildDropOldColumnSQL(table));
 
-  // 6. Verify the end state: the type moved, and the rows did not. This read
-  //    names `status` again, but it means the BACKFILLED column: step 5 renamed
+  // 7. Verify the end state: the type moved, and the rows did not. This read
+  //    names `status` again, but it means the BACKFILLED column: step 6 renamed
   //    `status_new` onto `status`. It worked by accident before, when the
   //    column was hardcoded; the call site now says so instead of implying it.
   const finalRows = await executor<Record<string, unknown>>(buildStatusTypeSQL(table));
@@ -422,7 +497,35 @@ export async function runStatusEnumMigration(
     };
   }
 
-  return { ok: true, applied: true, verified: true, statusType: finalType, before, after, reason: "" };
+  // 8. Rebuild the projection. The data is already verified at this point, so a
+  //    failure here is a read-performance regression, not a data problem, and
+  //    the message says so rather than reporting the migration as wrong.
+  let projectionRestored = false;
+  if (hadProjection) {
+    try {
+      await executor(buildAddProjectionSQL(table));
+      await executor(buildMaterializeProjectionSQL(table));
+      projectionRestored = true;
+    } catch (error) {
+      return {
+        ok: false,
+        applied: true,
+        verified: true,
+        statusType: finalType,
+        before,
+        after,
+        reason:
+          `the enum migration itself SUCCEEDED and the data is verified, but the ` +
+          `${PROJECTION} projection could not be rebuilt: ` +
+          `${error instanceof Error ? error.message : String(error)}\n` +
+          `Reads still return correct results, only slower — the projection is a ` +
+          `pruning optimisation, not an index. Re-apply it with the statements in ` +
+          `deploy/analytics/clickhouse-tuning.sql.`
+      };
+    }
+  }
+
+  return { ok: true, applied: true, verified: true, statusType: finalType, before, after, reason: "", projectionRestored };
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +577,10 @@ export function formatMigrationResult(result: MigrationResult, options: { table?
   lines.push("Distribution after:");
   lines.push(...table(result.after));
   lines.push("");
+  if (result.projectionRestored) {
+    lines.push(`Projection: ${PROJECTION} rebuilt and materialized.`);
+    lines.push("");
+  }
   lines.push(
     result.verified
       ? "RESULT: MIGRATED AND VERIFIED — same statuses, same row counts, new numbering."

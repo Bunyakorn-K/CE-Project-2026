@@ -39,11 +39,16 @@
 // here, but note what this file can and cannot do about it: `CREATE TABLE IF
 // NOT EXISTS` never alters an existing table, so this line governs NEW tables
 // only. An existing deployment keeps the old numbering until
-// `apps/api/scripts/migrate-usage-status-enum.ts` is run against it — which is
-// a production migration and is not authorized yet. `ALTER TABLE ... MODIFY
-// COLUMN` is NOT the way to do it: ClickHouse either refuses the renumbering
-// (Code 70, CANNOT_CONVERT_TYPE, verified on 26.3) or, on older builds, leaves
-// parts under inconsistent enums. The migration rebuilds the column instead.
+// `apps/api/scripts/migrate-usage-status-enum.ts` is run against it. That
+// migration RAN on 2026-09-29 against production: this declaration is now what
+// the deployed `fact_machine_usage` actually carries, verified with `DESCRIBE
+// TABLE`. It is not idempotent and must not be re-run — the script refuses an
+// already-migrated column. `ALTER TABLE ... MODIFY COLUMN` is NOT the way to do
+// it: ClickHouse either refuses the renumbering (Code 70, CANNOT_CONVERT_TYPE,
+// verified on 26.3) or, on older builds, leaves parts under inconsistent enums.
+// The migration rebuilds the column instead, dropping and rebuilding the
+// `proj_by_time` projection around the swap and requiring the ETL to be held
+// still — see `deploy/etl/hold-etl-for-warehouse-migration.sh`.
 //
 // Note also that IRIS's own written enums are stale in the OTHER direction:
 // packages/contracts/src/sync.ts:55,64 and docs/05-database-schema.md:246 list

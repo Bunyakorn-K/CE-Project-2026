@@ -77,9 +77,24 @@ compose() {
   fi
 }
 
+# Ask Docker for the container's real state, not compose's opinion of it.
+# `docker compose ps` lists only RUNNING services, so a container this script
+# has just stopped reads as "absent" rather than "exited" — which made the stop
+# verification report `unknown` on a container that had stopped correctly, and
+# turned a working stop into a refusal.
+container_name() {
+  # By compose label, not by name: the project name is not the directory name,
+  # and `docker compose` v2 has no `inspect` subcommand to ask instead.
+  sudo -n docker ps -a \
+    --filter "label=com.docker.compose.service=$SERVICE" \
+    --filter "label=com.docker.compose.project.config_files=$COMPOSE_FILE" \
+    --format '{{.Names}}' 2>/dev/null | head -1
+}
+
 service_state() {
-  compose ps --format '{{.Service}} {{.State}}' 2>/dev/null \
-    | awk -v svc="$SERVICE" '$1 == svc { print $2; found = 1 } END { if (!found) print "unknown" }'
+  name=$(container_name)
+  [ -n "$name" ] || { echo "unknown"; return; }
+  sudo -n docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo "unknown"
 }
 
 wait_for_state() {
@@ -121,7 +136,11 @@ do_stop() {
   if wait_for_state exited 60; then
     echo "ETL: stopped. Ingestion is paused; resume with: sh $0 start"
   else
-    echo "ETL: state is $(service_state), expected exited. Refusing to continue." >&2
+    state=$(service_state)
+    echo "ETL: state is $state, expected exited. Refusing to continue." >&2
+    if [ "$state" != "exited" ]; then
+      echo "      If '$state' is correct, fix SERVICE in this script." >&2
+    fi
     return 1
   fi
 }
