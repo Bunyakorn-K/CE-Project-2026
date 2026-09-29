@@ -1,0 +1,34 @@
+# Internal Docker registry v2 configuration.
+#
+# The `auth.htpasswd` block is mandatory: without it the registry accepts
+# anonymous push AND pull, so anyone who can reach :5000 can overwrite the
+# images the deploy path pulls. deploy/tofu renders the matching htpasswd file
+# from the `registry_htpasswd_entry` variable and installs it beside this file
+# at ${registry_dir}/htpasswd (default /srv/registry).
+#
+# There is no TLS in here. The registry is trusted-network only; the Mac pushes
+# through the Pi's Caddy route (registry.laundrytwin.duckdns.org) and the VM
+# pulls over ZeroTier. Do not widen the published port without adding TLS and
+# re-checking the pull path in deploy/tofu/README.md.
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: :5000
+  headers:
+    X-Content-Type-Options: [nosniff]
+auth:
+  htpasswd:
+    realm: basic-realm
+    path: /auth/htpasswd
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3

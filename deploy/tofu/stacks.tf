@@ -5,6 +5,10 @@ resource "null_resource" "analytics_stack" {
     ref           = var.app_repo_ref
     analytics_dir = local.analytics_dir
     compose_hash  = filemd5("${path.module}/../analytics/compose.yaml")
+    # A new analytics credential (e.g. a rotated reader password) must
+    # recreate the containers that consume it. Hashed so the trigger value in
+    # state is a digest rather than another copy of the plaintext.
+    env_hash = sha256(local.analytics_env)
   }
   provisioner "local-exec" {
     command = <<-EOT
@@ -43,6 +47,11 @@ resource "null_resource" "app_stack" {
     web_docker = filemd5("${path.module}/../../apps/web/Dockerfile")
     etl_docker = filemd5("${path.module}/../../apps/etl/Dockerfile")
     compose    = filemd5("${path.module}/../../compose.yaml")
+    # Without this, moving var.api_image_tag (or any env value) rewrites the
+    # .env files but leaves the containers on their old image - the *_IMAGE
+    # keys would be delivered and then ignored. Hashed for the same reason as
+    # the analytics trigger above.
+    env_hash = sha256("${local.app_env}${local.etl_env}${local.weather_env}")
   }
   provisioner "local-exec" {
     command = <<-EOT
@@ -88,6 +97,9 @@ resource "null_resource" "smoke" {
       check clickhouse http://127.0.0.1:8123/ping    200
       check airflow    http://127.0.0.1:8081/api/v2/monitor/health 200
       check superset   http://127.0.0.1:8088/health  200
+      # 401, not 200: an unauthenticated registry answers 200 and accepts
+      # anonymous push, so this is the check that catches removed htpasswd auth.
+      check registry_auth http://127.0.0.1:5000/v2/ 401
       if [ "$fail" -ne 0 ]; then exit 1; fi
       echo "ALL SMOKE OK"
     EOT

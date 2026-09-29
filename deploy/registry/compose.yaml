@@ -1,0 +1,32 @@
+# Internal Docker registry v2, used by the app deploy path.
+#
+# Kept as a standalone compose file (not part of deploy/analytics/compose.yaml)
+# because it is a build/deploy dependency, not an analytics service: it must
+# come up before `docker compose pull` in deploy/tofu, and tearing down the
+# analytics stack must never take the image source with it.
+#
+# Bring it up on the deploy host with:
+#   sudo docker compose -f deploy/registry/compose.yaml up -d
+# and record the pull credential in the daemon's config.json:
+#   sudo docker login 10.10.0.117:5000 -u laundrytwin   # prompts; never on argv
+#
+# Both files this needs (config.yml, htpasswd) are installed 0600 by
+# deploy/tofu; see deploy/registry/README.md.
+name: laundrytwin-registry
+services:
+  registry:
+    container_name: laundrytwin-registry
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      # 0.0.0.0 because the deploy host pulls images by its LAN/ZeroTier
+      # address (10.10.0.117:5000); binding to 127.0.0.1 would break every
+      # `docker compose pull`. The auth block in config.yml is what protects
+      # this listener.
+      - "5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./config.yml:/etc/docker/registry/config.yml:ro
+      - ./htpasswd:/auth/htpasswd:ro
+volumes:
+  registry-data: {}

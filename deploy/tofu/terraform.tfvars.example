@@ -3,13 +3,25 @@
 better_auth_secret       = "CHANGE_ME"
 line_channel_access_token = "CHANGE_ME"
 line_channel_secret       = "CHANGE_ME"
-analytics_read_api_key    = "CHANGE_ME"
-clickhouse_password       = "CHANGE_ME"
-clickhouse_reader_password = "CHANGE_ME"
+clickhouse_password       = "CHANGE_ME"          # ClickHouse admin (ETL/weather write path)
+clickhouse_reader_password = "CHANGE_ME"         # ClickHouse reader (API/analytics read path)
 pg_connection_string      = "postgres://user:pass@host:5432/db"
 airflow_admin_password    = "CHANGE_ME"
 airflow_db_password       = "CHANGE_ME"
 superset_secret_key       = "CHANGE_ME"
+
+# Required in practice, defaulted to "" so a first plan can run:
+#   tmd_api_key             - the weather collector throws without it
+#   line_login_channel_ids  - LINE Login rejects every LIFF token without it
+#   mcp_access_token        - the MCP route refuses every bearer token without it
+#   registry_htpasswd_entry - the apply refuses to install an unauthenticated registry
+tmd_api_key              = "CHANGE_ME"
+line_login_channel_ids   = "2011592166,2011592167,2011592168"
+mcp_access_token         = "CHANGE_ME"
+# Pre-hashed, not plaintext. Generate with:
+#   docker run --rm httpd:2-alpine htpasswd -nB laundrytwin
+# then paste the whole "user:hash" line. See deploy/registry/README.md.
+registry_htpasswd_entry  = "laundrytwin:CHANGE_ME"
 
 # Optional overrides (defaults shown):
 app_repo_url           = "https://github.com/Bunyakorn-K/CE-Project-2026.git"
@@ -17,6 +29,7 @@ app_repo_ref           = "main"
 app_install_dir        = "/opt/laundrytwin"
 analytics_install_dir  = "/opt/analytics"
 etl_data_dir           = "/opt/laundrytwin-etl"
+registry_dir           = "/srv/registry"
 better_auth_url        = "https://api.laundrytwin.duckdns.org"
 cors_origin            = "https://web.laundrytwin.duckdns.org"
 laundrytwin_demo_mode  = false
@@ -24,12 +37,32 @@ clickhouse_url         = "http://analytics-clickhouse-1:8123"
 clickhouse_user        = "admin"
 clickhouse_database    = "laundrytwin_analytics"
 vite_liff_id           = ""
-mcp_access_token       = ""
 mcp_allow_revenue      = false
-openrouter_api_key     = ""
 bot_model              = ""
 bot_mcp_url            = ""
+line_login_channel_id  = ""
+
+# Images. compose.yaml interpolates API_IMAGE/WEB_IMAGE/ETL_IMAGE/WEATHER_IMAGE
+# out of /opt/laundrytwin/.env; leave them unset and compose falls back to the
+# bare `laundrytwin-*:latest` names, which Docker Hub resolves instead of the
+# internal registry. Pin an immutable tag for a real rollout.
+registry_url           = "10.10.0.117:5000"
+api_image_tag          = "latest"
+web_image_tag          = "latest"
+etl_image_tag          = "latest"
+weather_image_tag      = "latest"
+
+# Per-service env file paths. weather_env_file must not point at the ETL env
+# file: the collector reads TMD + ClickHouse, never IRIS Postgres.
+etl_env_file           = "/opt/laundrytwin-etl/.env"
+weather_env_file       = "/opt/laundrytwin/weather.env"
+
 etl_watermark_path     = "/data/watermark.json"
 etl_since_fallback_days = 30
 etl_usage_batch        = 5000
-etl_temperature_batch = 50000
+etl_temperature_batch  = 50000
+
+# Removed 2026-09-29 - no code path in apps/ read them, and rendering them
+# re-created the dead secret surface this change deleted:
+#   analytics_read_api_key
+#   openrouter_api_key

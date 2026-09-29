@@ -19,6 +19,27 @@ output "local_endpoints" {
   }
 }
 
+output "env_files" {
+  description = "Which env file each container receives. One file per service: no file is fanned out to a container that cannot read it."
+  value = {
+    api       = "${local.app_dir}/.env"
+    web       = "(none - no env file; VITE_* values are baked at image build time)"
+    etl       = var.etl_env_file
+    weather   = var.weather_env_file
+    analytics = "${local.analytics_dir}/.env"
+  }
+}
+
+output "images" {
+  description = "Image references written to /opt/laundrytwin/.env and pulled by deploy/compose.yaml."
+  value = {
+    api     = local.api_image
+    web     = local.web_image
+    etl     = local.etl_image
+    weather = local.weather_image
+  }
+}
+
 output "notes" {
   description = "Operational notes for this deployment."
   value = join("\n", [
@@ -26,5 +47,7 @@ output "notes" {
     "Superset metadata DB initializes empty on a fresh host: import/recreate the dashboard, datasets and admin user.",
     "Airflow initializes a fresh metadata DB; the laundrytwin_warehouse_freshness DAG ships in deploy/analytics/dags.",
     "Rollback is: cd into both install dirs, docker compose down, git checkout the previous ref, docker compose up -d.",
+    "The registry files in ${var.registry_dir} are installed but the container is NOT started or recreated by tofu, so an apply cannot interrupt a running deploy path. Start it with: docker compose -f ${var.registry_dir}/compose.yaml up -d",
+    "The registry smoke check expects 401 on /v2/. A 200 means htpasswd auth is gone and anyone who can reach :5000 can push.",
   ])
 }

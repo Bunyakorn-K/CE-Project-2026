@@ -37,7 +37,10 @@ services:
 
   weather:
     image: ${WEATHER_IMAGE:-laundrytwin-weather:latest}
-    env_file: ${ETL_ENV_FILE:-/opt/laundrytwin-etl/.env}
+    # Its own env file, not ETL_ENV_FILE: the collector reads TMD + ClickHouse
+    # and never IRIS Postgres. Sharing the ETL env handed this container a
+    # PG_CONNECTION_STRING it cannot use.
+    env_file: ${WEATHER_ENV_FILE:-/opt/laundrytwin/weather.env}
     network_mode: host
     restart: unless-stopped
     healthcheck:
