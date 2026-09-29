@@ -220,6 +220,114 @@ one. Any production deployment, production migration, live telemetry ingestion,
 machine command, or payment write requires a separate explicit user request,
 the recorded rollback ref, and the post-change smoke checks above.
 
+## ETL incident 2026-09-25 — the four-day silent hang
+
+`laundrytwin-etl-1` stopped loading at 2026-09-25 12:21 UTC and produced no
+error for four days. The evidence was the shape of the silence, not a message:
+the `while true; do node src/index.ts; sleep 300; done` wrapper was still
+alive, its `node` child had consumed **4 s of total CPU**, `RestartCount=0`, and
+`docker logs` held nothing but successful `ETL complete:` lines. A blocked
+Postgres statement looks exactly like that.
+
+### What was wrong, on the IRIS side
+
+The temperature read paginated on `(ingested_at, seq, event_id)`. In IRIS
+(`Meepain-group/iris-project` at `813ffa7`):
+
+| Fact about `machine_temperature_sample` | Consequence for that read |
+| :--- | :--- |
+| `PARTITION BY RANGE (occurred_at)` | A predicate on `ingested_at` prunes nothing; every page touched every partition. |
+| Indexed on `occurred_at` (migration `0030`), **no index on `ingested_at` in any of the 203 migrations** | The keyset could not be served by an index. |
+| ~210 rows per cycle per dryer, **no retention** (IRIS's rotate cron covers `machine_event` only; `0030` deferred this table to a follow-up that never happened) | The scan grew monotonically, so a run that worked slowly eventually stopped finishing at all. |
+
+`machine_usage` was exonerated and is unchanged: at 4,458 rows over 9 weeks its
+keyset is trivial. (It has no index on `created_at` either — only
+`(branch_id, created_at)`, `(machine_id)`, `(member_id)` — which is a comment,
+not a defect, at that size.)
+
+### What changed in this repository (2026-09-29)
+
+- The temperature read keys on `occurred_at` — indexed and the partition key —
+  with the same strict `(seq, event_id)` tie-breakers, inside a range bounded by
+  `ETL_TEMPERATURE_LAG_HOURS`. Full detail in `apps/etl/README.md`.
+- Every source and warehouse request is bounded
+  (`ETL_PG_STATEMENT_TIMEOUT_MS=180000`, `ETL_PG_CONNECT_TIMEOUT_MS=10000`,
+  `ETL_PG_IDLE_IN_TX_TIMEOUT_MS=30000`, `ETL_CH_REQUEST_TIMEOUT_MS=120000`) and
+  every phase is logged with a budget (`ETL_PHASE_TIMEOUT_MS=900000`).
+- `docker logs` now carries `ETL run start …`, `ETL phase=<name> status=start`,
+  per-batch progress, and `status=failed` lines. A future hang names its phase
+  without a debugger.
+
+### Watermark migration, and the one manual step it may need
+
+`temperature.at` is now `occurred_at` and carries `"key": "occurred_at"`. A
+watermark written before the change is **not** reinterpreted — that would skip
+every row between the two positions. On the first run after the change the ETL
+issues one re-anchor query (the last row at or before the old `ingested_at`
+position) and persists the result. That query is a full scan by construction, so
+it gets a 10-minute server-side budget. If it cannot finish:
+
+1. Look for `ETL temperature=cursor-migrate` in `docker logs`.
+2. Pin the boundary instead: set `ETL_TEMPERATURE_SINCE_ISO` to the last
+   `occurred_at` you know was loaded, and re-run. This **re-reads** everything
+   after that instant, and `fact_temperature_sample` is a plain `MergeTree`, so
+   a re-read inserts duplicates. Choose the instant deliberately.
+3. Removing the watermark file entirely is the worst option: it falls back to
+   `ETL_SINCE_FALLBACK_DAYS`, which the Terraform default sets to 30.
+
+### Upstream fixes LaundryTwin cannot make
+
+These live in the IRIS repository. Until they land, the ETL works around them;
+recording them here so they are not lost.
+
+1. **No index on `machine_temperature_sample.ingested_at`**, and therefore no
+   partition pruning available for it. Anything else that reads that table by
+   ingest time has the same exposure.
+2. **No `2026_10` partition.** Partitions exist only for 2026_05 … 2026_09 and
+   nothing rotates them. From 2026-10-01 IRIS will stop recording temperature
+   with `no partition of relation … found for row` (failure mode stated in
+   migration `0030:81-82`).
+3. **No retention for `machine_temperature_sample`.** The rotate cron only
+   covers `machine_event`; the follow-up `0030` promised for this table never
+   happened, so the table is unbounded.
+4. **`ETL_SINCE_FALLBACK_DAYS` is 0 in code and in `apps/etl/.env.example`, but
+   the deployed Terraform default is 30** (`deploy/tofu/variables.tf`,
+   `etl_since_fallback_days`). Check the real value in
+   `/opt/laundrytwin-etl/.env` before assuming either. The combination to avoid
+   is a 30-day fallback *and* a lost watermark: the temperature read then
+   restarts 30 days back, and although it is now an index range instead of a
+   full scan, it still walks a large window in one run.
+
+### The measurement this change still owes
+
+The change is justified by the IRIS schema facts above, **not by a measured
+query-time improvement in this repository.** No IRIS Postgres is reachable from
+a development machine, and the local warehouse cannot stand in for it: the
+synthetic `fact_temperature_sample` there has 8,867 rows whose `ingested_at`
+never deviates from `occurred_at` (max observed lag 6 s), so a keyset on either
+column selects the same rows and both query shapes read the same 3,594 rows.
+
+Whoever holds the `reader` credential (see the credential table below) should
+run the old and the new statement against the real
+`machine_temperature_sample` (~3.5M rows, 2026-05-26 → 2026-09-25 as of
+2026-09-25) for a comparable window, and record `read_rows` / `read_bytes` /
+elapsed for each plus `EXPLAIN (ANALYZE, BUFFERS)` showing the plan no longer
+visits every partition:
+
+```sql
+-- old shape: keyset on the unindexed column
+SELECT ... FROM machine_temperature_sample s
+WHERE (s.ingested_at, s.seq, s.event_id) > ($1, $2, $3)
+ORDER BY s.ingested_at, s.seq, s.event_id LIMIT 20000;
+
+-- new shape: keyset on the indexed partition key, bounded above
+SELECT ... FROM machine_temperature_sample s
+WHERE s.occurred_at >= $1
+  AND (s.occurred_at, s.seq, s.event_id) > ($1, $2, $3)
+  AND s.occurred_at <= $4
+ORDER BY s.occurred_at, s.seq, s.event_id LIMIT 20000;
+```
+
 ## Read-only warehouse diagnostic: cycle cardinality
 
 `apps/api/scripts/cycle-cardinality-diagnostic.ts` is a SELECT-only script that
@@ -343,3 +451,4 @@ number in the product moves as a result of running it.
 | Airflow DAGs not running | Scheduler heartbeat stale | `curl http://127.0.0.1:8081/api/v2/monitor/health` — restart the stale role container |
 | `database is locked` anywhere | SQLite metadata (should be gone) | Airflow + Superset metadata must live on analytics-postgres-1 |
 | docker login to registry fails | Double auth on Caddy | Caddy block for registry must NOT add basic_auth |
+| `laundrytwin-etl-1` alive, no new `ETL complete:` line | A source or warehouse call is blocked | `docker logs laundrytwin-etl-1 --tail 50` — the last `ETL phase=<name> status=start` names the phase; a phase with no `status=ok` is the one that stalled. Bounded timeouts now turn a real block into `status=failed` within `ETL_PHASE_TIMEOUT_MS`. |

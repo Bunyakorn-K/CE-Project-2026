@@ -15,7 +15,16 @@ export type ClickHouseConfig = {
   password?: string;
   database?: string;
   fetchImpl?: typeof fetch;
+  /**
+   * Per-request budget in ms; 0 disables it. Bounded because an unbounded
+   * request is the same silent-hang failure the 2026-09-25 ETL incident had on
+   * the Postgres side: the wrapper loop keeps running, the process burns no
+   * CPU, and nothing is written to `docker logs`.
+   */
+  requestTimeoutMs?: number;
 };
+
+export const CLICKHOUSE_REQUEST_BUDGET_DEFAULT_MS = 120_000;
 
 export class ClickHouseClient {
   private readonly base: string;
@@ -23,6 +32,7 @@ export class ClickHouseClient {
   private readonly password: string;
   private readonly database: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
 
   constructor(config: ClickHouseConfig = {}) {
     this.base = (config.url ?? process.env.CLICKHOUSE_URL ?? "http://127.0.0.1:8123").replace(/\/$/, "");
@@ -30,6 +40,7 @@ export class ClickHouseClient {
     this.password = config.password ?? process.env.CLICKHOUSE_PASSWORD ?? "";
     this.database = config.database ?? process.env.CLICKHOUSE_DATABASE ?? "laundrytwin_analytics";
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.requestTimeoutMs = config.requestTimeoutMs ?? CLICKHOUSE_REQUEST_BUDGET_DEFAULT_MS;
   }
 
   /** Run a statement (DDL / administrative). Returns response body text. */
@@ -75,8 +86,15 @@ export class ClickHouseClient {
           ...(body ? { "Content-Type": "application/x-ndjson" } : {}),
         },
         body,
+        signal: this.requestTimeoutMs > 0 ? AbortSignal.timeout(this.requestTimeoutMs) : undefined,
       });
     } catch (error) {
+      const name = (error as { name?: string } | null)?.name;
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new ClickHouseError(
+          `ClickHouse request to ${this.base} exceeded its budget of ${this.requestTimeoutMs} ms`
+        );
+      }
       throw new ClickHouseError(`ClickHouse unreachable at ${this.base}: ${String(error)}`);
     }
     if (!response.ok) {

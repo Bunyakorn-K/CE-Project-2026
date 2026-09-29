@@ -12,12 +12,31 @@ export type UsageCursor = {
   id: string;
 };
 
+/**
+ * Last loaded `machine_temperature_sample.occurred_at` (UTC), with `seq` and
+ * `event_id` as tie-breakers.
+ *
+ * `key` is a format marker, not data: it records which source column `at` is
+ * bound to. Watermarks written before 2026-09-29 keyed the temperature read on
+ * `ingested_at`, which has no index in IRIS and gets no partition pruning; those
+ * are loaded as `IngestedTemperatureCursor` and re-anchored once, never
+ * reinterpreted in place (an `ingested_at` value used as an `occurred_at`
+ * boundary would skip every row between the two positions).
+ */
 export type TemperatureCursor = {
-  /** last loaded ingested_at (UTC) */
+  key: "occurred_at";
+  /** last loaded occurred_at (UTC) */
   at: string;
   /** last loaded machine_temperature_sample.seq */
   seq: string;
   /** last loaded machine_temperature_sample.event_id — breaks ties between rows with equal (at, seq) */
+  id: string;
+};
+
+/** Pre-2026-09-29 temperature cursor: `at` was the last loaded `ingested_at`. */
+export type IngestedTemperatureCursor = {
+  at: string;
+  seq: string;
   id: string;
 };
 
@@ -28,8 +47,14 @@ export type Watermark = {
   temperatureIngestedAt: string | null;
   /** strict composite usage cursor */
   usage: UsageCursor | null;
-  /** strict composite temperature cursor */
+  /** strict composite temperature cursor, keyed on `occurred_at` */
   temperature: TemperatureCursor | null;
+  /**
+   * Strict composite temperature cursor keyed on `ingested_at`, from a watermark
+   * written before 2026-09-29. Held only so the ETL can re-anchor it onto the
+   * indexed `occurred_at` keyset; cleared once that succeeds.
+   */
+  temperatureIngestedCursor: IngestedTemperatureCursor | null;
 };
 
 export type FileIo = {
@@ -61,7 +86,7 @@ export class WatermarkStore {
 
   load(): Watermark {
     const raw = this.io.read(this.path);
-    if (!raw) return { usageCreatedAt: null, temperatureIngestedAt: null, usage: null, temperature: null };
+    if (!raw) return { ...EMPTY_WATERMARK };
     try {
       const parsed = JSON.parse(raw) as Partial<Watermark>;
       const usageCreatedAt = typeof parsed.usageCreatedAt === "string" ? parsed.usageCreatedAt : null;
@@ -71,10 +96,19 @@ export class WatermarkStore {
       // The next run re-reads from the composite boundary and the strict filter
       // picks up any rows the old `>` cutoff previously skipped.
       const usage = isUsageCursor(parsed.usage) ? parsed.usage : null;
+      // `temperature` is honoured only when it declares the source column it is
+      // bound to. An unlabelled (or differently labelled) object is a
+      // pre-2026-09-29 `ingested_at` cursor: kept for one-time re-anchoring,
+      // never used as an `occurred_at` boundary (that would skip every row
+      // between the two positions).
       const temperature = isTemperatureCursor(parsed.temperature) ? parsed.temperature : null;
-      return { usageCreatedAt, temperatureIngestedAt, usage, temperature };
+      const legacy = temperature === null ? parsed.temperature : null;
+      const temperatureIngestedCursor = isIngestedTemperatureCursor(legacy)
+        ? { at: legacy.at, seq: legacy.seq, id: legacy.id }
+        : null;
+      return { usageCreatedAt, temperatureIngestedAt, usage, temperature, temperatureIngestedCursor };
     } catch {
-      return { usageCreatedAt: null, temperatureIngestedAt: null, usage: null, temperature: null };
+      return { ...EMPTY_WATERMARK };
     }
   }
 
@@ -83,16 +117,37 @@ export class WatermarkStore {
   }
 }
 
+const EMPTY_WATERMARK: Watermark = {
+  usageCreatedAt: null,
+  temperatureIngestedAt: null,
+  usage: null,
+  temperature: null,
+  temperatureIngestedCursor: null,
+};
+
 function isUsageCursor(v: unknown): v is UsageCursor {
   return !!v && typeof v === "object" && typeof (v as UsageCursor).at === "string" && typeof (v as UsageCursor).id === "string";
 }
 
 function isTemperatureCursor(v: unknown): v is TemperatureCursor {
+  const c = v as TemperatureCursor | null;
   return (
-    !!v &&
-    typeof v === "object" &&
-    typeof (v as TemperatureCursor).at === "string" &&
-    typeof (v as TemperatureCursor).seq === "string" &&
-    typeof (v as TemperatureCursor).id === "string"
+    !!c &&
+    typeof c === "object" &&
+    c.key === "occurred_at" &&
+    typeof c.at === "string" &&
+    typeof c.seq === "string" &&
+    typeof c.id === "string"
+  );
+}
+
+function isIngestedTemperatureCursor(v: unknown): v is IngestedTemperatureCursor {
+  const c = v as IngestedTemperatureCursor | null;
+  return (
+    !!c &&
+    typeof c === "object" &&
+    typeof c.at === "string" &&
+    typeof c.seq === "string" &&
+    typeof c.id === "string"
   );
 }

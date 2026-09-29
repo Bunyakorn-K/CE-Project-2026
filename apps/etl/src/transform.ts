@@ -11,9 +11,12 @@
 //                     warehouse enum so no folding needed.
 //   * initiated_via — kiosk_d3_pro (canonical IRIS name replacing kiosk_k2 /
 //                     pos_d3) is normalised -> kiosk_k2 to match the warehouse.
-//   * attribution_state — derived from attribution_reason (the DB's
-//                     pending/resolved binary does not carry the
-//                     exact/legacy/heuristic/pending_attribution taxonomy).
+//   * attribution_state — NOT IRIS's own values. IRIS constrains
+//                     machine_usage.attribution_state to
+//                     ('pending','resolved','unknown','conflict'); the
+//                     warehouse's exact/legacy/heuristic/pending_attribution is
+//                     an evidence class LaundryTwin derives from
+//                     attribution_reason (below).
 //   * attribution_source — NULL->unknown; wdf->handheld_dispatch; payment is
 //                     channel-agnostic so it is disambiguated by initiated_via
 //                     (liff->liff, staff_v3->staff_v3).
@@ -112,11 +115,14 @@ export function normalizeInitiatedVia(value: string): string {
   return value;
 }
 
-// attribution_state: the DB column is a binary resolved/pending flag; the
-// warehouse enum is an evidence-class taxonomy. We classify it from
+// attribution_state: IRIS stores ('pending','resolved','unknown','conflict') in
+// machine_usage.attribution_state, and `pending_attribution` in
+// wdf_lifecycle_binding — neither is the warehouse's taxonomy. The warehouse
+// enum is an evidence-class taxonomy LaundryTwin derives, so we classify from
 // attribution_reason (missing identity -> not yet attributed; exact edge
 // lifecycle -> exact) and fall back to pending_attribution for anything
-// unrecognised rather than mislabelling as exact.
+// unrecognised rather than mislabelling as exact. attribution_reason is NOT
+// NULL in IRIS, so the empty case is defensive, not expected.
 export function deriveAttributionState(reason: string | null | undefined): string | null {
   if (!reason || reason.length === 0) return "pending_attribution";
   switch (reason) {

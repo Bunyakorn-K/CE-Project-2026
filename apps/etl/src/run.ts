@@ -4,10 +4,18 @@
 //
 // Idempotency model:
 //   - Primary: incremental whose watermark (usage.created_at,
-//     temperature.ingested_at) only advances AFTER a batch commits. A retry of
+//     temperature.occurred_at) only advances AFTER a batch commits. A retry of
 //     a failed batch re-reads the same window.
-//   - Backup: fact tables are ReplacingMergeTree keyed by source_event_id, so
-//     even if an overlapping row is re-inserted it converges to one row.
+//   - Backup: fact_machine_usage is ReplacingMergeTree keyed by source_event_id
+//     and converges on re-insert. fact_temperature_sample is a plain MergeTree
+//     ordered by (tenant_id, branch_id, occurred_at, event_id), so re-reading a
+//     temperature row inserts a second copy: the temperature read must not
+//     re-read a window it has already loaded.
+//
+// Diagnosability (2026-09-29): every phase logs start/finish with its elapsed
+// time and each temperature/usage batch logs its own progress, and a phase that
+// exceeds its budget fails the run loudly. The previous build logged only the
+// final summary, so a four-day hang produced no signal at all.
 //
 // Dims are loaded before facts each run (full resync) so joins never see a
 // missing branch/machine name.
@@ -38,6 +46,26 @@ export type EtlResult = {
   temperaturesLoaded: number;
 };
 
+/**
+ * How far behind wall-clock the temperature read stops. A row is written to
+ * IRIS with both `occurred_at` (device event time) and `ingested_at` (write
+ * time), so a row whose event time is older than the current cursor can still
+ * land in the source afterwards; on an `ingested_at` keyset that could not
+ * happen, on an `occurred_at` keyset it would put the row permanently behind the
+ * cursor. Stopping this far short of now() leaves room for that lag. The real
+ * worst-case occurred_at -> ingested_at delay in IRIS has never been measured
+ * from this repository, so treat 24h as a deliberately generous default rather
+ * than a measured one, and raise it if a source is seen to buffer longer.
+ */
+export const TEMPERATURE_LAG_DEFAULT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Per-phase budget. A phase that exceeds it fails the run instead of hanging
+ * silently. The source statement timeout and the warehouse request budget are
+ * what actually release the process; this is the loud signal on top of them.
+ */
+export const PHASE_BUDGET_DEFAULT_MS = 15 * 60 * 1000;
+
 export type RunOptions = {
   source: MachineUsageSource;
   warehouse: ClickHouseClient;
@@ -47,51 +75,179 @@ export type RunOptions = {
   sinceFallbackDays?: number;
   /** Clock injection point for tests; defaults to the UTC wall clock. */
   now?: Date;
+  /** Upper bound for the temperature read. Default {@link TEMPERATURE_LAG_DEFAULT_MS}. */
+  temperatureLagMs?: number;
+  /** Per-phase budget in ms; 0 disables it. Default {@link PHASE_BUDGET_DEFAULT_MS}. */
+  phaseTimeoutMs?: number;
+  /** Operator-pinned temperature start (ISO-8601); wins over any stored cursor. */
+  temperatureSinceIso?: string | null;
+  /** Log sink; defaults to stdout so `docker logs` carries the phase trail. */
+  log?: (line: string) => void;
 };
 
 export async function runEtl(options: RunOptions): Promise<EtlResult> {
   const { source, warehouse, watermarks } = options;
   const usageBatchSize = options.usageBatchSize ?? 2000;
   const temperatureBatchSize = options.temperatureBatchSize ?? 20000;
+  const temperatureLagMs = options.temperatureLagMs ?? TEMPERATURE_LAG_DEFAULT_MS;
+  const phase = new PhaseRunner({
+    log: options.log ?? ((line) => console.log(line)),
+    budgetMs: options.phaseTimeoutMs ?? PHASE_BUDGET_DEFAULT_MS,
+  });
 
-  for (const ddl of CREATE_TABLES) await warehouse.execute(ddl);
+  await phase.run("schema", async () => {
+    for (const ddl of CREATE_TABLES) await warehouse.execute(ddl);
+  });
 
   const now = options.now ?? nowUtc();
   const extractedAt = now;
+  const temperatureUntil = new Date(now.getTime() - temperatureLagMs);
 
   // 1. Dims (full resync each run).
-  const branches = await source.listBranches();
+  const branches = await phase.run("dim-branch", () => source.listBranches());
   const dimBranches = branches.map((b) => toDimBranch(b, extractedAt));
-  if (dimBranches.length > 0) await warehouse.insert("dim_branch", dimBranches);
+  if (dimBranches.length > 0) await phase.run("dim-branch-insert", () => warehouse.insert("dim_branch", dimBranches));
 
-  const machines = (await source.listMachines())
+  const machines = (
+    await phase.run("dim-machine", () => source.listMachines())
+  )
     .map((m) => toDimMachine(m, extractedAt))
     .filter((r): r is DimMachineRow => r !== null);
-  if (machines.length > 0) await warehouse.insert("dim_machine", machines);
+  if (machines.length > 0) await phase.run("dim-machine-insert", () => warehouse.insert("dim_machine", machines));
 
   const wm = watermarks.load();
 
   // 2. Machine usage facts. Strict composite cursors so an interrupted batch
   //    resumes exactly where it stopped (no re-read, no skipped boundary rows).
   const usageSince: UsageCursor = wm.usage ?? startUsageCursor(now, options.sinceFallbackDays ?? 0);
-  const usagesLoaded = await loadUsage({ source, warehouse }, usageSince, usageBatchSize, watermarks, extractedAt);
+  const usagesLoaded = await phase.run("usage", () =>
+    loadUsage({ source, warehouse, log: phase.log }, usageSince, usageBatchSize, watermarks, extractedAt)
+  );
 
-  // 3. Temperature facts.
-  const temperatureSince: TemperatureCursor =
-    wm.temperature ?? startTemperatureCursor(now, options.sinceFallbackDays ?? 0);
-  const temperaturesLoaded = await loadTemperature(
-    { source, warehouse },
-    temperatureSince,
-    temperatureBatchSize,
+  // 3. Temperature facts. Keyed on occurred_at (indexed + partition key in
+  //    IRIS) and bounded by the lag guard, unlike the ingested_at keyset that
+  //    full-scanned the table and hung the run on 2026-09-25.
+  const temperatureSince = await resolveTemperatureSince({
+    source,
     watermarks,
-    extractedAt
+    wm,
+    now,
+    temperatureUntil,
+    fallbackDays: options.sinceFallbackDays ?? 0,
+    sinceIso: options.temperatureSinceIso ?? null,
+    log: phase.log,
+  });
+  if (new Date(temperatureSince.at) > temperatureUntil) {
+    phase.log(
+      `ETL warning: temperature cursor ${temperatureSince.at} is ahead of the lag guard ` +
+        `${temperatureUntil.toISOString()}; the read stays idle until the clock catches up`
+    );
+  }
+  const temperaturesLoaded = await phase.run("temperature", () =>
+    loadTemperature(
+      { source, warehouse, log: phase.log },
+      temperatureSince,
+      temperatureBatchSize,
+      watermarks,
+      extractedAt,
+      temperatureUntil
+    )
   );
 
   return { branchesLoaded: dimBranches.length, machinesLoaded: machines.length, usagesLoaded, temperaturesLoaded };
 }
 
+/** Logs every phase and fails the run when one overruns its budget. */
+class PhaseRunner {
+  constructor(
+    private readonly opts: { log: (line: string) => void; budgetMs: number }
+  ) {}
+
+  get log(): (line: string) => void {
+    return this.opts.log;
+  }
+
+  async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+    this.opts.log(`ETL phase=${name} status=start`);
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<never>((_resolve, reject) => {
+      if (this.opts.budgetMs <= 0) return;
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `ETL phase=${name} exceeded its budget of ${this.opts.budgetMs} ms ` +
+                `(elapsed ${Date.now() - startedAt} ms) — the phase did not finish`
+            )
+          ),
+        this.opts.budgetMs
+      );
+      timer.unref?.();
+    });
+    try {
+      const result = await Promise.race([work(), budget]);
+      this.opts.log(`ETL phase=${name} status=ok elapsed_ms=${Date.now() - startedAt}`);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.opts.log(`ETL phase=${name} status=failed elapsed_ms=${Date.now() - startedAt} error=${message}`);
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+}
+
+async function resolveTemperatureSince(ctx: {
+  source: MachineUsageSource;
+  watermarks: WatermarkLike;
+  wm: Watermark;
+  now: Date;
+  temperatureUntil: Date;
+  fallbackDays: number;
+  sinceIso: string | null;
+  log: (line: string) => void;
+}): Promise<TemperatureCursor> {
+  if (ctx.wm.temperature) return ctx.wm.temperature;
+  if (ctx.sinceIso) {
+    const pinned = new Date(ctx.sinceIso);
+    if (Number.isNaN(pinned.getTime())) {
+      throw new Error(`ETL_TEMPERATURE_SINCE_ISO is not a valid ISO-8601 instant: ${ctx.sinceIso}`);
+    }
+    ctx.log(
+      `ETL temperature=start source=ETL_TEMPERATURE_SINCE_ISO at=${pinned.toISOString()} ` +
+        "note=rows before this instant are NOT re-read"
+    );
+    return { key: "occurred_at", at: pinned.toISOString(), seq: "0", id: "" };
+  }
+  if (ctx.wm.temperatureIngestedCursor) {
+    const legacy = ctx.wm.temperatureIngestedCursor;
+    ctx.log(
+      `ETL temperature=cursor-migrate from=ingested_at at=${legacy.at} ` +
+        "reason=ingested_at is unindexed in IRIS and gets no partition pruning"
+    );
+    const migrated = await ctx.source.resolveTemperatureCursorFromIngested(legacy);
+    if (migrated) {
+      ctx.log(`ETL temperature=cursor-migrated to=occurred_at at=${migrated.at} seq=${migrated.seq}`);
+      // Persist the re-anchor immediately: it is a boundary of rows already in
+      // the warehouse, so nothing is re-read if this run then fails.
+      const wm = ctx.watermarks.load();
+      wm.temperature = migrated;
+      wm.temperatureIngestedCursor = null;
+      ctx.watermarks.save(wm);
+      return migrated;
+    }
+    ctx.log(
+      "ETL temperature=cursor-migrate result=empty; the source has no row at or before the legacy " +
+        "cursor, so the fallback window applies"
+    );
+  }
+  return startTemperatureCursor(ctx.now, ctx.fallbackDays);
+}
+
 async function loadUsage(
-  ctx: { source: MachineUsageSource; warehouse: ClickHouseClient },
+  ctx: { source: MachineUsageSource; warehouse: ClickHouseClient; log: (line: string) => void },
   since: UsageCursor,
   batchSize: number,
   watermarks: WatermarkLike,
@@ -99,7 +255,8 @@ async function loadUsage(
 ): Promise<number> {
   let total = 0;
   let cursor = since;
-  for (;;) {
+  const startedAt = Date.now();
+  for (let batch = 1; ; batch += 1) {
     const rows = await ctx.source.listUsageSince(cursor, { limit: batchSize });
     if (rows.length === 0) break;
     const facts = rows.map((r) => toFactMachineUsage(r, extractedAt));
@@ -110,31 +267,41 @@ async function loadUsage(
     const wm = watermarks.load();
     wm.usage = cursor;
     watermarks.save(wm);
+    ctx.log(
+      `ETL phase=usage batch=${batch} rows=${rows.length} total_rows=${total} elapsed_ms=${Date.now() - startedAt}`
+    );
     if (rows.length < batchSize) break;
   }
   return total;
 }
 
 async function loadTemperature(
-  ctx: { source: MachineUsageSource; warehouse: ClickHouseClient },
+  ctx: { source: MachineUsageSource; warehouse: ClickHouseClient; log: (line: string) => void },
   since: TemperatureCursor,
   batchSize: number,
   watermarks: WatermarkLike,
-  extractedAt: Date
+  extractedAt: Date,
+  until: Date
 ): Promise<number> {
   let total = 0;
   let cursor = since;
-  for (;;) {
-    const rows = await ctx.source.listTemperatureSince(cursor, { limit: batchSize });
+  const startedAt = Date.now();
+  for (let batch = 1; ; batch += 1) {
+    const rows = await ctx.source.listTemperatureSince(cursor, { limit: batchSize, until });
     if (rows.length === 0) break;
     const facts = rows.map((r) => toFactTemperatureSample(r, extractedAt));
     await ctx.warehouse.insert("fact_temperature_sample", facts);
     total += facts.length;
     const last = rows[rows.length - 1];
-    cursor = { at: last.ingested_at.toISOString(), seq: last.seq, id: last.event_id };
+    // `at` is occurred_at, the column the keyset and the index are bound to.
+    cursor = { key: "occurred_at", at: last.occurred_at.toISOString(), seq: last.seq, id: last.event_id };
     const wm = watermarks.load();
     wm.temperature = cursor;
     watermarks.save(wm);
+    ctx.log(
+      `ETL phase=temperature batch=${batch} rows=${rows.length} total_rows=${total} ` +
+        `cursor_at=${cursor.at} until=${until.toISOString()} elapsed_ms=${Date.now() - startedAt}`
+    );
     if (rows.length < batchSize) break;
   }
   return total;
@@ -151,5 +318,5 @@ function startUsageCursor(now: Date, fallbackDays: number): UsageCursor {
 }
 
 function startTemperatureCursor(now: Date, fallbackDays: number): TemperatureCursor {
-  return { at: earlier(fallbackDays, now), seq: "0", id: "" };
+  return { key: "occurred_at", at: earlier(fallbackDays, now), seq: "0", id: "" };
 }

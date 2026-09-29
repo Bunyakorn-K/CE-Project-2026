@@ -69,16 +69,24 @@ async function walkUsage(source: ReturnType<typeof createPostgresSource>) {
 
 async function walkTemperature(source: ReturnType<typeof createPostgresSource>) {
   let count = 0;
-  let cursor: TemperatureCursor = { at: new Date(0).toISOString(), seq: "0", id: "" };
+  let cursor: TemperatureCursor = {
+    key: "occurred_at",
+    at: new Date(0).toISOString(),
+    seq: "0",
+    id: "",
+  };
   let first: TemperatureSampleRow | null = null;
   let last: TemperatureSampleRow | null = null;
   for (;;) {
+    // No `until`: this walk deliberately reports the full extent of the table,
+    // which is the point of the diagnostic. The ETL itself always applies a lag
+    // guard so a page stays a bounded, prunable range.
     const rows = await source.listTemperatureSince(cursor, { limit: 50000 });
     if (rows.length === 0) break;
     count += rows.length;
     if (!first) first = rows[0]!;
     last = rows[rows.length - 1]!;
-    cursor = { at: last.ingested_at.toISOString(), seq: last.seq, id: last.event_id };
+    cursor = { key: "occurred_at", at: last.occurred_at.toISOString(), seq: last.seq, id: last.event_id };
     if (rows.length < 50000) break;
   }
   return { count, first, last };

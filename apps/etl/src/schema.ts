@@ -5,19 +5,28 @@
 // `CREATE TABLE IF NOT EXISTS` at runtime that could diverge from a live table;
 // the ETL assumes the schema below (and validated extra enum members) is present.
 //
-// Idempotency: fact tables are ReplacingMergeTree versioned by the source row's
-// own updated_at (ingested_at for temperature), so a re-insert converges to one
-// row. Money stays integer satang; temperature_f is the raw integer from the
-// source and temperature_c the derived Celsius. Missing data stays NULL — we
-// never fabricate a value.
+// Idempotency: fact_machine_usage is ReplacingMergeTree versioned by the source
+// row's own updated_at, so a re-insert converges to one row.
+// fact_temperature_sample is a plain MergeTree, so re-inserting a temperature
+// row leaves a second copy — the ETL watermark must never re-read a window it
+// has already loaded. Money stays integer satang; temperature_f is the raw
+// integer from the source and temperature_c the derived Celsius. Missing data
+// stays NULL — we never fabricate a value.
 //
 // Enum members (validated live / aligned with IRIS source):
 //   status         pending_payment, paid, running, finished, cancelled, admitted
 //   initiated_via  staff_v3, liff, kiosk_k2, coin
 //   temp_level     cold, warm, hot, low, medium, high
 //   machine_kind   washer, dryer
-//   attribution_state   exact, legacy, heuristic, pending_attribution
 //   attribution_source  staff_v3, liff, handheld_dispatch, unknown
+//
+// attribution_state below is NOT IRIS's taxonomy. IRIS constrains
+// machine_usage.attribution_state to ('pending','resolved','unknown','conflict')
+// (migration 0052, never altered since); 'pending_attribution' belongs to a
+// different table, wdf_lifecycle_binding. The four values declared in
+// FACT_USAGE_COLUMNS are LaundryTwin's own evidence classes, DERIVED by
+// transform.ts::deriveAttributionState from machine_usage.attribution_reason —
+// IRIS has no column carrying them.
 
 export type Column = { name: string; ch: string };
 
