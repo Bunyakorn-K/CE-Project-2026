@@ -185,7 +185,8 @@ LINE LIFF/browser -> React web -> Hono API + SQLite -> optional IRIS read API
                                       v
                               ClickHouse analytics warehouse
                               (fact_machine_usage, fact_weather_sample,
-                               fact_temperature_sample, dim_branch_location)
+                               fact_temperature_sample, fact_gas_pressure_sample,
+                               dim_branch_location)
                                       |
                                       v
                               allow-listed MCP analytics tools
@@ -202,6 +203,21 @@ hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts
 into `fact_weather_sample` tagged by `tenant_id/branch_id`.
 Location targets come from `dim_branch_location` JOIN `dim_branch active=1`.
 Location schema includes province, sub_district, district (currently NULL).
+
+A **gas-pressure** collector for the `otterimju2` site exists in code
+(`apps/etl/src/gas.ts`, `apps/etl/src/gas-run.ts`, Docker target `gas`,
+compose service `gas`) and would load three Home Assistant channels into
+`fact_gas_pressure_sample` hourly. It has local test evidence — 26 unit tests,
+the DDL and its idempotency executed on a real ClickHouse engine, and a replay
+of the real 50,567-row export through the collector with zero rows dropped —
+but **it is not deployed**: there is no production table, no running container,
+and no provisioned Home Assistant token. `value_psi` is nullable and
+`unavailable` is stored as NULL, never 0 (the observed minimum is 9 psi). The
+`gas_detector_*` entities are **deliberately excluded** — they are a liveness
+heartbeat, not a leak detector. This source is additive and separate from
+usage; nothing in the Digital Twin or the cycle/revenue KPIs derives from it,
+and no alert is raised from it. Full contract and the safety boundary:
+`docs/03_data_contracts/ha_gas_sensor_contract.md`.
 
 The ML baseline (`get_off_peak_windows`) uses a percentile heuristic
 over `fact_machine_usage`. The complete feature engineering guide for
@@ -269,8 +285,9 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-09-30: 384 tests green** — API 270, web 53,
-ETL 61 (supersedes 227 green / API 152 / web 38 / ETL 37, measured 2026-09-28;
+Local automated evidence on **2026-09-30: 413 tests green** — API 273, web 53,
+ETL 87 (supersedes 384 / API 270 / web 53 / ETL 61 earlier the same day, and
+227 green / API 152 / web 38 / ETL 37, measured 2026-09-28;
 web had fallen to 1 after the dead-code deletion removed
 `dashboard-metrics.test.ts`). The separate Playwright layout suite is 11 tests
 and is **not** part of `pnpm test`. Node 24.x is used (see `.nvmrc`); no

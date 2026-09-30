@@ -6,10 +6,18 @@ sensors backed by a MySQL recorder store. It defines the available fields, their
 units, the measurement evidence, and — equally important — what each field
 **does not** mean.
 
-**Status: contract only. Nothing is ingested.** No ETL, no ClickHouse table, no
-API surface, and no production change exists for this source. This document
-describes a source that was *measured by hand on 2026-09-30*; it is not evidence
-of a running pipeline.
+**Status: three pressure entities have a collector; nothing is deployed.**
+As of 2026-09-30 there is code, schema and local test evidence for loading
+`gas_pressure_a`, `gas_pressure_b` and `changeover_pressure` into
+`fact_gas_pressure_sample` (`apps/etl/src/gas.ts`, `apps/etl/src/gas-run.ts`,
+`apps/etl/src/schema.ts`). **No production table exists yet, no container is
+running, and no Home Assistant token has been provisioned** — so this is still
+not evidence of a running pipeline. There is **no API surface** and **no alert**
+for this source, and none is proposed here.
+
+The remaining fields in this document (`gas_rate_*`, `gas_energy_total`,
+`tank_change_*_monthly`) and the `gas_detector_*` heartbeat entities are
+**contract only** and are deliberately not ingested. See "Ingestion scope".
 
 **CRITICAL FOR AI AGENTS:** This is **not** a life-safety system and **not** a
 leak detector. Read "Safety boundary" before using any number in this document.
@@ -143,9 +151,9 @@ the RTM applies to the unattributed share.
 
 | Field | Unit | Rows | Window (2026-09-30) | Avg | Min | Max | Stale at measure |
 | :--- | :--- | ---: | :--- | ---: | ---: | ---: | ---: |
-| `gas_pressure_a` | psi | 5,178 | 09-22 14:36 → 09-30 04:33 | 64.41 | **9** | 154 | 3 min |
-| `gas_pressure_b` | psi | 19,738 | 09-22 14:12 → 09-30 04:36 | 87.65 | **9** | 141 | 0 min |
-| `changeover_pressure` (gas **filter**) | psi | 25,651 | 09-22 14:13 → 09-30 04:36 | 21.99 | **9** | 25 | 0 min |
+| `gas_pressure_a` | psi | 5,178 | 09-22 14:36 → 09-30 04:33 | 64.64 | **9** | 154 | 3 min |
+| `gas_pressure_b` | psi | 19,738 | 09-22 14:12 → 09-30 04:36 | 87.73 | **9** | 141 | 0 min |
+| `changeover_pressure` (gas **filter**) | psi | 25,651 | 09-22 14:13 → 09-30 04:36 | 22.01 | **9** | 25 | 0 min |
 | `gas_rate_a` | **unverified** | 5,073 | 09-22 14:36 → 09-30 04:33 | −0.05 | −2.06 | 24.52 | 3 min |
 | `gas_rate_b` | **unverified** | 19,432 | 09-22 14:12 → 09-30 04:36 | −0.01 | −3.57 | 23.20 | 0 min |
 | `gas_energy_total` | **unverified** | 144 | 09-22 18:15 → 09-30 04:31 | 2849.21 | 0 | 3236.20 | — |
@@ -155,6 +163,21 @@ the RTM applies to the unattributed share.
 The "Stale at measure" column is the gap between the entity's last recorded row
 and the moment of measurement. **A stale pressure reading is `unknown`, not
 "pressure held steady since."**
+
+> **Correction (2026-09-30, found by replaying the export through the
+> collector).** The three Avg figures above were originally 64.41 / 87.65 /
+> 21.99. Those are the averages **with the 18 `unavailable` rows per entity
+> coerced to 0 psi** — the same coercion Rule 1 forbids. The Min column had
+> already been corrected to 9, but the Avg column still carried it. Corrected
+> values exclude the unavailable rows: **64.64 / 87.73 / 22.01** (over
+> 5,160 / 19,720 / 25,633 numeric rows respectively).
+>
+> The two sets of numbers are close, which is exactly why this is worth
+> stating rather than quietly editing: the error is invisible in the average
+> and obvious in the minimum. An average that includes "no reading" as "no
+> pressure" biases every mean downward, and a 3-row correction will never look
+> alarming enough to be caught by a reader. The row counts, Min and Max were
+> correct throughout and are unchanged.
 
 ### What each field does and does not mean
 
@@ -344,6 +367,91 @@ alive and toggling*, and nothing more.
   signal; it makes no claim about the installation. Per the safety boundary
   above, dedicated local detection and alarms stay outside the software-only
   scope regardless.
+
+---
+
+## 🗄️ Ingestion scope — what the collector loads, and what it must never load
+
+Added 2026-09-30. `fact_gas_pressure_sample` carries **three** channels, from
+an explicit allow-list in `GAS_CHANNELS` (`apps/etl/src/gas.ts`) rather than an
+entity-id pattern, so a new Home Assistant entity cannot be ingested by
+accident:
+
+| channel | entity | what it is |
+| :--- | :--- | :--- |
+| `gas_run_a_pressure` | `sensor.otterimju2_gas_pressure_a` | gas manifold Run A |
+| `gas_run_b_pressure` | `sensor.otterimju2_gas_pressure_b` | gas manifold Run B |
+| `changeover_filter_pressure` | `sensor.otterimju2_changeover_pressure` | gas **filter** differential — see the naming collision above |
+
+The channel name, not the entity id, is the semantic label. `channel` is a
+`LowCardinality`-free `Enum8` so an unexpected label fails the INSERT rather
+than landing as free text.
+
+### Deliberately NOT ingested
+
+- **`binary_sensor.otterimju2_gas_detector_a/_b`.** The heartbeat, per the
+  section above. Adding these to the allow-list would manufacture a "leak half
+  the time" reading. A test asserts the allow-list contains no `gas_detector`
+  entity, so this cannot be widened by accident.
+- **`gas_rate_a` / `gas_rate_b`** — derivative sensors whose unit is unverified
+  in this document, and Home Assistant already computes them from the pressure
+  we store. Storing both would put two copies of the same fact under different
+  names.
+- **`gas_energy_total`, `tank_change_*_monthly`** — cumulative counters and
+  month-boundary counts. Different grain, different reset semantics, and only
+  144 and 1–3 rows respectively in the measured window. They need their own
+  contract, not a column on this table.
+
+### How `unavailable` is stored
+
+`value_psi` is `Nullable(Float32)` and `unavailable` becomes **NULL**, never 0.
+`state_raw` keeps the exact source string and `is_available` carries the flag,
+so the distinction survives into the warehouse and stays auditable. Measured
+on the real export: 18 `unavailable` rows per entity, true numeric minimum
+**9 psi**, and **zero** rows with `value_psi = 0`.
+
+### Branch binding
+
+`branch_id` is the join key everywhere and resolves to
+`5e9611c1-6380-4d58-8ec7-ba4fb8fe4369` — the `about you.wash & dry แม่โจ้ -
+หลิ่งมื่น` row in `dim_branch`, which already holds all 15,850 usage rows and 19
+machines. `branch_slug = 'otterimju2'` is stored alongside it so the site can
+be found by the name the shop uses, without introducing a second branch identity.
+
+> **This binding is an ops decision, not a discovered fact.** The `otterimju2`
+> name comes from the site's own Home Assistant entity ids and public hostname.
+> No running configuration on the edge agent or in IRIS was found asserting
+> that this site *is* that branch — the one `branch_id` hit in the agent's
+> source tree is a Rust **test fixture**, not live config. The two identifiers
+> are consistent with the same shop ("otterimju" = แม่โจ้, and this is the only
+> แม่โจ้ branch in `dim_branch`), but confirm before this reaches production.
+> Re-pointing the collector is two env vars (`GAS_BRANCH_ID`,
+> `GAS_BRANCH_SLUG`); it is not a code change.
+
+### Verified 2026-09-30
+
+| Check | Result |
+|---|---|
+| DDL executed on a real ClickHouse engine (`clickhouse-local`) | creates; Enum8, `LowCardinality`, `ReplacingMergeTree(ingested_at)` all accepted |
+| Idempotency — re-insert the same sample with a later `ingested_at` | converges to one row; latest wins (105, not 104) |
+| `unavailable` round-trip | stays NULL; `countIf(value_psi = 0)` = 0 |
+| ETL unit tests | 26 new, in `apps/etl/test/gas.test.ts` |
+| Full ETL suite | 87 pass (was 61) |
+| Replay of the **real 50,567-row export** (3 allow-listed entities) | 50,567 rows produced, 0 dropped, 0 unparseable timestamps, no empty channel |
+| Replay per channel | a: 5,178 rows / 18 null / min 9 / max 154 · b: 19,738 / 18 / 9 / 141 · filter: 25,651 / 18 / 9 / 25 |
+| Home Assistant REST contract | `/api/history/period/<start>?filter_entity_id=…&end_time=…&no_attributes`, offset-aware ISO timestamps, array-of-arrays response — per official docs |
+
+**Not verified:** no live Home Assistant call has been made. There is no token,
+so the response shape is documented, not observed. The first real run must be
+eyeballed against this table before the data is trusted.
+
+### Retention ceiling
+
+Home Assistant's recorder runs `purge_keep_days: 7`. A collector outage longer
+than 7 days is **unrecoverable at the source** — the rows are gone before the
+collector returns. `GAS_LOOKBACK_HOURS` defaults to 3 (one missed run plus
+overlap, which `ReplacingMergeTree(ingested_at)` converges) and the runner
+warns above 7. This is a property of the source, not a tuning choice.
 
 ---
 
