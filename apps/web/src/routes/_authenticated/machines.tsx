@@ -3,7 +3,7 @@ import { Card } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
-import { machineStatusMeta } from "../../lib/machine-status";
+import { machineStatusMeta, freshnessMeta } from "../../lib/machine-status";
 
 export const Route = createFileRoute("/_authenticated/machines")({
   component: MachinesPage
@@ -60,13 +60,6 @@ function fmtTime(iso: string | null): string {
 
 function stateMeta(state: string | null): { label: string; className: string } {
   return machineStatusMeta(state);
-}
-
-function freshnessMeta(freshness: string): { label: string; className: string } {
-  if (freshness === "fresh") return { label: "สดตามแหล่งข้อมูล", className: "status-pill--success" };
-  if (freshness === "stale") return { label: "ข้อมูลไม่สด", className: "status-pill--warning" };
-  if (freshness === "unavailable") return { label: "ไม่พร้อมใช้งาน", className: "status-pill--danger" };
-  return { label: `ความสดไม่ทราบ: ${freshness}`, className: "status-pill--neutral" };
 }
 
 function sourceLabel(source: string): string {
@@ -183,7 +176,17 @@ function MachineCard({ machine }: { machine: Machine }) {
             <div><span>Coinbox</span><strong>{machine.telemetry.coinbox ?? "ไม่ทราบ"}</strong></div>
             <div><span>Error</span><strong>{machine.telemetry.errorCode === null ? "ไม่ทราบ" : machine.telemetry.errorCode}</strong></div>
           </div>
-        ) : <div className="state-message">{machine.reason ?? "ไม่มี telemetry สำหรับเครื่องนี้"}</div>}
+        ) : (
+          <div className="state-message">
+            {/* Thai from the freshness enum rather than the server's English
+                prose. An unrecognised freshness value falls back to the
+                server's own reason -- showing the source string beats guessing
+                at a cause this build does not model. */}
+            {freshness.known
+              ? freshness.reason
+              : machine.reason ?? "ไม่มี telemetry สำหรับเครื่องนี้"}
+          </div>
+        )}
         <p className="kpi-detail">พบข้อมูลล่าสุด {fmtTime(machine.lastSeen)}</p>
       </Card.Content>
     </Card>

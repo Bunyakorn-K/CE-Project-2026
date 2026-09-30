@@ -816,4 +816,77 @@ describe("LaundryTwin API", () => {
       }
     });
   });
+
+  // The warehouse cannot raise alerts -- there is no alert fact source -- but
+  // that is an absent source, not a broken one, and the two must not read the
+  // same to the operator. This route had no test.
+  describe("alerts route", () => {
+    const IRIS_KEYS = ["IRIS_READ_BASE_URL", "IRIS_LAUNDRYTWIN_READ_API_KEY", "LAUNDRYTWIN_DEMO_MODE"] as const;
+
+    function withoutIrisReadSource(): () => void {
+      const saved = new Map(IRIS_KEYS.map((key) => [key, process.env[key]]));
+      for (const key of IRIS_KEYS) delete process.env[key];
+      return () => {
+        for (const [key, value] of saved) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+    }
+
+    it("denies a zero-grant principal before any source is called", async () => {
+      authenticate([]);
+      const clickhouse = vi.fn();
+      const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+      const response = await app.request("/api/report/alerts?from=2026-09-25&to=2026-10-01");
+
+      expect(response.status).toBe(403);
+      expect(clickhouse).not.toHaveBeenCalled();
+    });
+
+    it("reports the absent alert source instead of failing the request", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const clickhouse = vi.fn();
+        const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+        const response = await app.request("/api/report/alerts?from=2026-09-25&to=2026-10-01");
+
+        expect(response.status).toBe(200);
+        // The distinction this route exists to preserve: a 503 would tell the
+        // operator the source is broken, when it is the warehouse that has no
+        // alert fact table at all. The reason string has to survive so the UI
+        // can say which of the two it is.
+        await expect(response.json()).resolves.toMatchObject({
+          alerts: {
+            contractVersion: "clickhouse-alerts-unavailable",
+            source: "clickhouse",
+            fetchedAt: expect.any(String),
+            alerts: [],
+            availability: "unavailable",
+            reason: "ClickHouse analytics warehouse has no alert fact source"
+          }
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("does not query the warehouse to answer it", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const clickhouse = vi.fn();
+        const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+        await app.request("/api/report/alerts?from=2026-09-25&to=2026-10-01");
+
+        expect(clickhouse).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
+  });
 });

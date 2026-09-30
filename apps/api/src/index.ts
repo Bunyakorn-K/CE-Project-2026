@@ -341,7 +341,14 @@ export function createApp(dependencies: AppDependencies = {}) {
     const scope = resolveReportScope(c, principal, c.req.query("branchId"));
     if (scope instanceof Response) return scope;
 
-    if (isDevelopmentAuthBypassEnabled()) {
+    // Same ClickHouse-first rule as the summary, branch list, and live
+    // snapshot. The honest empty answer below was already written for the case
+    // where the warehouse has no alert fact source; gating it on the dev bypass
+    // meant the ClickHouse-only deployment never reached it and showed a 503
+    // instead. Reporting "no alerts, and here is why" is the correct state for
+    // a warehouse that genuinely cannot raise alerts -- an HTTP error would
+    // read as a broken source rather than an absent one.
+    if (isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured())) {
       return c.json({
         alerts: {
           contractVersion: "clickhouse-alerts-unavailable",
