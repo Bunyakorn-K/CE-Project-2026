@@ -1,5 +1,5 @@
 import type { LiffIdentity } from "../../liff";
-import { getLiffInitError, initLiff } from "../../liff";
+import { getLiffInitError, initLiff, missingIdTokenReason } from "../../liff";
 import type { PropsWithChildren } from "react";
 import { useEffect, useState } from "react";
 import { apiUrl } from "../api/client";
@@ -72,7 +72,7 @@ export function LiffGate({ children }: PropsWithChildren) {
         }
         const [profile, idToken] = await Promise.all([liff.getProfile(), liff.getIDToken()]);
         if (cancelled) return;
-        if (!idToken) throw new Error("LINE did not provide an ID token for this LIFF app");
+        if (!idToken) throw new Error(await missingIdTokenReason(liff));
         setPhase("exchange");
         const exchanged = await exchangeIdentity({ displayName: profile.displayName, userId: profile.userId, idToken }, controller.signal);
         if (cancelled) return;

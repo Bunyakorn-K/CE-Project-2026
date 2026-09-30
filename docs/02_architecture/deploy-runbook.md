@@ -137,6 +137,48 @@ defining the same user make ClickHouse fail every login with Code 516, so
 `admin` must have exactly one definition. Public traffic arrives as
 `10.10.0.1` (the VM LAN gateway) and is therefore denied; `reader` stays open.
 
+## LINE LIFF login configuration
+
+Login is the one flow that cannot be configured from this repository. The web
+image bakes `VITE_LIFF_ID` at build time and the API verifies the ID token
+against LINE using `LINE_LOGIN_CHANNEL_IDS` / `LINE_LOGIN_CHANNEL_ID`, but the
+**scopes the LIFF app issues tokens under are a channel-console setting**, and
+they are what actually decides whether login works.
+
+**Required on the LIFF app (LINE Developers Console → provider → channel → LIFF
+tab → Scope):**
+
+| Scope | Why it is needed | Symptom if missing |
+| :-- | :-- | :-- |
+| `openid` | The SDK issues an ID token only with this scope. The API verifies that token against `api.line.me/oauth2/v2.1/verify` — without it there is nothing to verify. | `isLoggedIn()` is true and the profile resolves, but the page fails with a missing-ID-token error. This is the confusing one: everything looks logged in. |
+| `profile` | `liff.getProfile()` supplies the display name the gate shows. | The exchange has no display name to show. |
+| `email` | Optional. Only for showing the user's email; the grant is a separate user consent. | Not required for login. |
+
+**Diagnosing it from the browser console**, without reading the app's code:
+
+```js
+// LIFF app scopes — if "openid" is absent, it is a console setting.
+liff.getContext()
+// What this specific user has granted.
+liff.permission.getGrantedAll()
+```
+
+`getContext()` and `getGrantedAll()` answer different questions: the first is
+what the app is *configured* with, the second is what the user *agreed to*. A
+scope can be enabled in the console and still be absent from the granted list
+until the user re-consents — the fix there is to sign out and sign in again, not
+to touch the console.
+
+The page's own error message distinguishes the two cases: a missing app scope
+names the console, a missing grant asks the user to re-consent, and if neither
+list can be read it says so instead of guessing. That distinction exists because
+an unreadable list and an empty list must not produce the same conclusion — one
+is a config fix, the other is a consent fix.
+
+**Not established here:** the LINE authentication flow is not verified end to end
+against production. Per the repository's own rule, a manual sign-in in the LINE
+app is not the same as a verified login.
+
 ## Operational notes
 
 - **ZeroTier is load-bearing:** the Pi reaches the VM over 172.30.191.0/24.
@@ -474,6 +516,7 @@ number in the product moves as a result of running it.
 | Public hosts down, ZeroTier IPs up | Pi ↔ VM ZeroTier link | `zerotier-cli listpeers` (Pi), `sudo zerotier-cli status` (VM) |
 | One host 502 | That container down | `sudo docker ps` on VM; `sudo docker compose -f /opt/analytics/compose.yaml ps` |
 | Cert expired | Caddy renewal blocked (HTTP-01 needs port 80 through) | `curl -vI ... \| grep -i expire`; Pi Caddy logs |
+| LINE login fails with a missing-ID-token error, though the user is clearly signed in | The LIFF app has no `openid` scope, so LINE issues no ID token. A console setting, not a server or env one. | `liff.getContext()` in the LIFF browser console — see [LINE LIFF login configuration](#line-liff-login-configuration). If `openid` *is* there, check `liff.permission.getGrantedAll()` and have the user sign out and back in. |
 | Superset login loops | Authentik outpost / group membership | `auth.notnotik.duckdns.org` reachable; user in `final project member` |
 | App shows demo data | Explicit preview mode with demo session cookie | `https://laundrytwin.duckdns.org/health` → `"demoMode":true`; check `LAUNDRYTWIN_DEMO_MODE` and preview-only intent |
 | Airflow DAGs not running | Scheduler heartbeat stale | `curl http://127.0.0.1:8081/api/v2/monitor/health` — restart the stale role container |

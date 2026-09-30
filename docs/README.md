@@ -21,7 +21,7 @@ Facts that change should be stated in **one** file. This table is that map.
 | Runnable ClickHouse queries | [`03_data_contracts/gas-pressure-queries.sql`](03_data_contracts/gas-pressure-queries.sql) | — |
 | Test count | [`AGENTS.md`](../AGENTS.md) §Verification | other docs |
 | Requirement → function mapping | [`04_traceability/RTM_matrix.md`](04_traceability/RTM_matrix.md) | — |
-| Deployment topology, TLS, troubleshooting | [`02_architecture/deploy-runbook.md`](02_architecture/deploy-runbook.md) | — |
+| Deployment topology, TLS, troubleshooting, **LINE LIFF login configuration** | [`02_architecture/deploy-runbook.md`](02_architecture/deploy-runbook.md) | — |
 | Engineering rules and change workflow | [`AGENTS.md`](../AGENTS.md) | — |
 
 **Why this rule exists.** The usage row count was stated in twelve files and
@@ -54,7 +54,7 @@ Two exceptions, both deliberate:
 
 | File | Purpose |
 |---|---|
-| [`deploy-runbook.md`](02_architecture/deploy-runbook.md) | **topology, TLS, rollout gate, troubleshooting.** Read before any deploy |
+| [`deploy-runbook.md`](02_architecture/deploy-runbook.md) | **topology, TLS, rollout gate, troubleshooting, LINE LIFF scopes.** Read before any deploy, and before any LINE sign-in failure |
 | [`er-diagram-implementation.md`](02_architecture/er-diagram-implementation.md) | ER diagram of what is actually implemented |
 | [`data-and-activity-diagrams.md`](02_architecture/data-and-activity-diagrams.md) | target MVP data and activity flows |
 | [`use-case-sequence-diagrams.md`](02_architecture/use-case-sequence-diagrams.md) | use case and sequence diagrams |

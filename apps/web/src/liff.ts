@@ -78,6 +78,59 @@ export function manualLiffLogin(liffId: string): void {
   })();
 }
 
+/**
+ * Why `getIDToken()` came back empty.
+ *
+ * An ID token is only issued when the LIFF app has the `openid` scope selected
+ * in the LINE Developers Console (LIFF tab) and the user granted it. A LIFF app
+ * without that scope is otherwise perfectly healthy: `isLoggedIn()` is true and
+ * `getProfile()` works, so the failure shows up only at the ID token and reads
+ * like a broken backend. The two causes need different fixes — one is a console
+ * setting, the other is the user re-consenting — so they must not share a
+ * message.
+ *
+ * `appScopes` is `liff.getContext()` (what the LIFF app is configured with) and
+ * `grantedScopes` is `liff.permission.getGrantedAll()` (what this user agreed
+ * to). `null` means "could not read", which is different from "not present".
+ */
+export function missingIdTokenMessage(input: {
+  appScopes: readonly string[] | null;
+  grantedScopes: readonly string[] | null;
+}): string {
+  if (input.appScopes !== null && !input.appScopes.includes("openid")) {
+    return "แอป LINE LIFF ยังไม่ได้เปิดสิทธิ์ openid — เจ้าของช่องต้องเปิดสิทธิ์นี้ใน LINE Developers Console แท็บ LIFF แล้วผู้ใช้เปิดแอปใหม่";
+  }
+  if (input.grantedScopes !== null && !input.grantedScopes.includes("openid")) {
+    return "ผู้ใช้ยังไม่ได้อนุญาตสิทธิ์ openid — ให้ออกจากระบบแล้วเข้า LINE ใหม่ เพื่อให้แสดงหน้าขออนุญาตอีกครั้ง";
+  }
+  return "LINE ไม่ได้ส่ง ID token มาให้แอปนี้ — ตรวจสอบว่าแอป LINE LIFF เปิดสิทธิ์ openid แล้ว และผู้ใช้ได้อนุญาต";
+}
+
+/**
+ * Read the two scope lists without letting a failure here mask the real one.
+ * LIFF throws rather than returning an empty list when it cannot answer, and an
+ * empty list would be read as "the scope is missing" — the one conclusion this
+ * function must not reach on no evidence.
+ */
+export async function missingIdTokenReason(
+  liff: typeof import("@line/liff")["default"]
+): Promise<string> {
+  const [appScopes, grantedScopes] = await Promise.all([
+    readScopes(() => liff.getContext()),
+    readScopes(() => liff.permission.getGrantedAll())
+  ]);
+  return missingIdTokenMessage({ appScopes, grantedScopes });
+}
+
+async function readScopes(read: () => unknown): Promise<string[] | null> {
+  try {
+    const value = read();
+    return Array.isArray(value) ? (value as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function connectLiff(liffId: string): Promise<LiffIdentity | null> {
   const liff = await initLiff(liffId);
   if (!liff) return null;
@@ -92,7 +145,7 @@ export async function connectLiff(liffId: string): Promise<LiffIdentity | null> 
 
   const [profile, idToken] = await Promise.all([liff.getProfile(), liff.getIDToken()]);
   if (!idToken) {
-    throw new Error("LINE did not provide an ID token for this LIFF app");
+    throw new Error(await missingIdTokenReason(liff));
   }
 
   return {
