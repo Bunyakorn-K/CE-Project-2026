@@ -581,6 +581,41 @@ solves this exact problem for the status vocabulary, and each known freshness
 state got a Thai reason. An unrecognized freshness stays unknown and falls back
 to the server's own reason rather than guessing a cause.
 
+The alerts card had the same defect for the same reason and was only visible
+once `170b527` made it render at all: it showed "ClickHouse analytics warehouse
+has no alert fact source" under a Thai heading. Fixed in `d573e9c` (web only) as
+`apps/web/src/lib/alerts-view.ts`, following the existing `lib/*-view.ts`
+convention. It keys on `contractVersion`, **not** on matching the English text —
+matching prose would break silently the first time that string is reworded, and
+would make a translation mistake look like a working check. An unrecognised
+contract defers to the server's own reason, because this build cannot claim to
+know why a response shape it does not model is unavailable.
+
+**One deploy uncovered two of these.** Making a route answer is what makes its
+English `reason` visible; fixing the source without fixing the presentation would
+have shipped a Thai page with a newly-revealed English line. Check the card, not
+just the status code.
+
+### Final production state
+
+| Service | Image |
+| :--- | :--- |
+| api | `deploy-170b527-20261001` |
+| web | `deploy-d573e9c-20261001` |
+
+All six pages return 200 (`/dashboard`, `/machines`, `/analytics`, `/admin`,
+`/playground`, `/ai`). All eight API routes still return 401 unauthenticated,
+so none of the fallbacks widened access. In the browser, every Analytics request
+is now 200 including alerts, and the rendered card reads "คลังข้อมูล ClickHouse
+ยังไม่มีแหล่งข้อมูลการแจ้งเตือน" with no English reason anywhere in the page
+body (checked programmatically, not by eye).
+
+**Still not established by any of this:** these are real responses from the
+production ClickHouse warehouse over TLS, but the branch and machine scope was
+exercised as a single tenant-wide owner. The per-branch scoping paths are covered
+by unit tests, not by a production account holding a narrower grant, and LINE
+end-to-end verification is still outstanding.
+
 ### Rolling back
 
 `170b527` deploys API and web together (both files changed). Roll back to the
