@@ -7,14 +7,16 @@
 # Targets:
 #   etl (default)    — ingestion worker:   node --import tsx src/index.ts
 #   weather          — TMD weather poller: node --import tsx src/weather-run.ts
+#   gas              — Home Assistant gas-pressure poller: src/gas-run.ts
 #
 # Build from the repo root:
 #   docker build -f apps/etl/Dockerfile -t laundrytwin-etl .             # default = etl
 #   docker build -f apps/etl/Dockerfile --target weather -t laundrytwin-weather .
+#   docker build -f apps/etl/Dockerfile --target gas -t laundrytwin-gas .
 #
 # NOTE: the etl target MUST stay the last stage — a bare `docker build` with no
-# --target builds the final stage, so if weather were last the etl image would
-# silently ship the weather command.
+# --target builds the final stage, so if weather or gas were last the etl image
+# would silently ship the wrong command.
 
 # syntax=docker/dockerfile:1
 FROM node:24-bookworm-slim AS base
@@ -46,6 +48,14 @@ CMD ["sh", "-c", "while true; do node --import tsx src/index.ts; sleep 300; done
 # stage so that a bare `docker build` (no --target) yields the etl command.
 FROM runtime AS weather
 CMD ["sh", "-c", "while true; do node --import tsx src/weather-run.ts; sleep 3600; done"]
+
+# Gas-pressure collector. Hourly, matching the weather collector: these are
+# slowly-changing manifold pressures, and the source (Home Assistant) purges
+# its recorder at 7 days, so a tight loop buys nothing but duplicate reads.
+# Each pass re-reads a 3-hour lookback and the table is ReplacingMergeTree
+# versioned by ingested_at, so overlapping passes converge to one row.
+FROM runtime AS gas
+CMD ["sh", "-c", "while true; do node --import tsx src/gas-run.ts; sleep 3600; done"]
 
 # etl is the default target — keep it last. See the header note.
 FROM runtime AS etl

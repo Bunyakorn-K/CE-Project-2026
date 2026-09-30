@@ -169,6 +169,53 @@ const FACT_WEATHER_COLUMNS: Column[] = [
   { name: "weather_cond", ch: "Nullable(Int32)" },
 ];
 
+// Gas pressure samples from Home Assistant (branch `otterimju2`). This is a
+// SEPARATE, ADDITIVE source: usage still comes from IRIS Postgres via the main
+// ETL, and nothing in the Digital Twin or the usage KPIs is derived from this
+// table. Provenance is different and the two must never be conflated — see
+// docs/03_data_contracts/ha_gas_sensor_contract.md.
+//
+// The three entities are the two gas-run manifold pressures and the gas FILTER
+// differential pressure. `channel` is the semantic label and is deliberately
+// NOT derivable from the entity id: `sensor.*_changeover_pressure` is the
+// filter, not a changeover pressure, and the id alone is misleading.
+//
+// `value_psi` is NULLABLE and that is load-bearing. Home Assistant reports
+// `unavailable` as the literal string state when the reading is missing. The
+// true numeric minimum observed across 2026-09-22..30 is 9 psi, so coercing
+// the sentinel to 0 would fabricate an "empty tank" reading that is 9 psi
+// away from the truth. `state_raw` keeps the exact source string so the
+// distinction survives into the warehouse and stays auditable.
+//
+// The `gas_detector_*` binary sensors are DELIBERATELY absent. Measured
+// 2026-09-30: they toggle on a 50.00-50.03% daily ratio every day with a fixed
+// 5-25s cadence and constant attributes — a liveness heartbeat, not a leak
+// detector. There is no leak signal in that source and ingesting it would
+// manufacture a "leak half the time" reading. Do not add it here.
+//
+// Idempotency: ReplacingMergeTree versioned by ingested_at, keyed on
+// (tenant_id, branch_id, channel, recorded_at), so re-polling an overlapping
+// window converges to one row per sample and a later re-read wins.
+const FACT_GAS_COLUMNS: Column[] = [
+  { name: "tenant_id", ch: "UUID" },
+  { name: "branch_id", ch: "UUID" },
+  // Operator-facing source-site name, e.g. 'otterimju2'. branch_id remains the
+  // join key everywhere; this exists so the site can be found by the name the
+  // shop actually uses without a second lookup table.
+  { name: "branch_slug", ch: "String" },
+  { name: "channel", ch: "Enum8('gas_run_a_pressure' = 1, 'gas_run_b_pressure' = 2, 'changeover_filter_pressure' = 3)" },
+  { name: "entity_id", ch: "String" },
+  { name: "unit", ch: "LowCardinality(String)" },
+  { name: "value_psi", ch: "Nullable(Float32)" },
+  // The exact Home Assistant state string, including 'unavailable'.
+  { name: "state_raw", ch: "String" },
+  { name: "is_available", ch: "UInt8" },
+  // When the recorder stored the sample. Home Assistant returns offset-aware
+  // ISO timestamps, so this is a true UTC instant, not shop wall-clock.
+  { name: "recorded_at", ch: "DateTime64(3)" },
+  { name: "ingested_at", ch: "DateTime64(3)" },
+];
+
 function ddl(
   table: string,
   columns: Column[],
@@ -210,6 +257,14 @@ export const CREATE_TABLES: string[] = [
     undefined,
     "timestamp"
   ),
+  ddl(
+    "fact_gas_pressure_sample",
+    FACT_GAS_COLUMNS,
+    "ReplacingMergeTree",
+    "(tenant_id, branch_id, channel, recorded_at)",
+    "toYYYYMM(recorded_at)",
+    "ingested_at"
+  ),
 ];
 
 export const TABLE_COLUMNS: Record<string, string[]> = {
@@ -219,6 +274,7 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
   fact_machine_usage: FACT_USAGE_COLUMNS.map((c) => c.name),
   fact_temperature_sample: FACT_TEMPERATURE_COLUMNS.map((c) => c.name),
   fact_weather_sample: FACT_WEATHER_COLUMNS.map((c) => c.name),
+  fact_gas_pressure_sample: FACT_GAS_COLUMNS.map((c) => c.name),
 };
 
 export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as Array<keyof typeof TABLE_COLUMNS>;
