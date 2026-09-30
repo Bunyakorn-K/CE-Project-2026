@@ -232,14 +232,22 @@ Two consequences worth knowing before testing:
   confirmed the route renders the real Thai policy for an outside visitor.
   That check also exposed a caveat, below.
 
-  `/privacy` and `/terms` are currently inside the LIFF gate
-  (`apps/web/src/main.tsx` wraps the whole router in `LiffGate`). A visitor
-  arriving with **no** LIFF cookie reads the policy normally. A returning
-  visitor who is signed into LINE but holds no grant sees the Thai
-  "pending approval" card instead of the policy, because the gate renders
-  before routing. A LINE reviewer will normally arrive fresh, so this does not
-  block review, but it is a real gap in the policy's availability to signed-in
-  users and is not yet fixed.
+  `/privacy` and `/terms` were inside the LIFF gate, so a signed-in-but-ungranted
+  visitor saw the Thai "pending approval" card instead of the policy. **Fixed
+  2026-10-01:** `LiffGate` now reads the current path and renders its children
+  unconditionally on those two routes (`isUngatedPath` in
+  `apps/web/src/lib/components/liff-gate.tsx`). The LIFF exchange effect still
+  runs on them — only the blocking UI is skipped — so a visitor who reads the
+  policy first is already exchanged by the time they sign in.
+
+  The gate deliberately stays **above** `RouterProvider` rather than becoming a
+  route layout. `_authenticated`'s `beforeLoad` fetches `/api/me` and redirects
+  on 401, and `beforeLoad` runs before any effect; moving the exchange into the
+  route tree would fire that fetch before the session cookie existed, and every
+  legitimate first sign-in would bounce to `/login`. Because the gate is above
+  the provider it cannot use `useRouterState`, so the path comes from the router
+  instance's `latestLocation` (populated in the constructor, so it is correct on
+  the first render) plus a `subscribe("onResolved")` listener.
 - **English localization is set** (2026-09-30): Basic settings →
   Localization now carries one row, `English / LaundroTwin / Multi-branch
   smart laundry management dashboard — live machine status, revenue, and

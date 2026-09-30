@@ -1,7 +1,8 @@
 import type { LiffIdentity } from "../../liff";
 import { getLiffInitError, initLiff, missingIdTokenReason } from "../../liff";
+import { router } from "../../router";
 import type { PropsWithChildren } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { apiUrl } from "../api/client";
 
 type State = "loading" | "ready" | "error";
@@ -42,12 +43,74 @@ async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Pr
   return (await response.json()) as ExchangeResponse;
 }
 
+/**
+ * Routes that must stay readable no matter what the LINE session says.
+ *
+ * A privacy policy and a terms page are legal documents, not product surface.
+ * Gating them means a user who is signed in but not yet granted access cannot
+ * read the policy that governs their data — and a LINE reviewer following the
+ * Privacy policy URL lands on the pending card instead of the document. Both
+ * make the policy harder to produce, not easier.
+ *
+ * The URL is public and the pages hold no branch data, so the gate's only
+ * effect here is to hide them.
+ */
+const UNGATED_PATHS = new Set(["/privacy", "/terms"]);
+
+export function isUngatedPath(pathname: string): boolean {
+  const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  return UNGATED_PATHS.has(normalized);
+}
+
+/**
+ * The slice of the router this gate needs: a current path, and a subscription
+ * that fires when navigation resolves.
+ *
+ * The gate has to stay *above* the RouterProvider, not inside the router as a
+ * layout route. `_authenticated`'s `beforeLoad` fetches `/api/me` and redirects
+ * on 401, and `beforeLoad` runs before any effect — so if the token exchange
+ * lived in the route tree, that fetch would fire before the ID token had been
+ * traded for a session cookie and a legitimate first sign-in would always
+ * bounce to /login. `useRouterState` needs provider context, which is exactly
+ * what is not available up here, so the path is read off the router instance
+ * instead. It carries `latestLocation` from its own constructor, so the value
+ * is correct on the very first render, before the provider has mounted.
+ */
+export type PathSource = {
+  subscribe: (onChange: () => void) => () => void;
+  getPath: () => string;
+};
+
+/** Subscribes to `onResolved`, so the gate re-renders after each navigation. */
+export function createRouterPathSource(source: {
+  subscribe: (event: "onResolved", listener: () => void) => () => void;
+  latestLocation: { pathname: string };
+}): PathSource {
+  return {
+    subscribe: (onChange) => source.subscribe("onResolved", onChange),
+    getPath: () => source.latestLocation.pathname
+  };
+}
+
+const routerPathSource = createRouterPathSource(router);
+
+function useCurrentPath(pathSource: PathSource): string {
+  return useSyncExternalStore(pathSource.subscribe, pathSource.getPath, pathSource.getPath);
+}
+
 export function LiffGate({ children }: PropsWithChildren) {
   const [state, setState] = useState<State>("loading");
   const [phase, setPhase] = useState<Phase>("init");
   const [error, setError] = useState<string | null>(null);
   const [pendingAccess, setPendingAccess] = useState(false);
+  const pathname = useCurrentPath(routerPathSource);
+  const bypass = isUngatedPath(pathname);
 
+  // The effect below runs on every path, including the ungated ones. That is
+  // deliberate: it establishes the session for the app as a whole, so a user
+  // who reads the policy first and signs in afterwards is already exchanged.
+  // `bypass` only decides what is *rendered* while that happens — the gate is
+  // not skipped, its blocking UI is.
   useEffect(() => {
     const liffId = import.meta.env.VITE_LIFF_ID as string | undefined;
     if (!liffId) {
@@ -97,6 +160,8 @@ export function LiffGate({ children }: PropsWithChildren) {
       controller.abort();
     };
   }, []);
+
+  if (bypass) return <>{children}</>;
 
   if (state === "loading") {
     return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;

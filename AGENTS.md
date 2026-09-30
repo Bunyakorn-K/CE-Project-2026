@@ -314,10 +314,11 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-09-30: 493 tests green** — API 320, web 86,
+Local automated evidence on **2026-10-01: 499 tests green** — API 320, web 92,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** Older figures (413/384/227) were superseded within
-the same day, and web briefly fell to 1 after the dead-code deletion removed
+rather than repeating it.** The web figure rose from 86 to 92 on 2026-10-01 with
+the LIFF-gate legal-route bypass. Older figures (413/384/227, then 493) were
+superseded, and web briefly fell to 1 after the dead-code deletion removed
 `dashboard-metrics.test.ts`. The separate Playwright suite is 20 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts` and `dashboard.pw.ts` assert rendered honesty labels — that a
