@@ -145,16 +145,17 @@ against LINE using `LINE_LOGIN_CHANNEL_IDS` / `LINE_LOGIN_CHANNEL_ID`, but the
 **scopes the LIFF app issues tokens under are a channel-console setting**, and
 they are what actually decides whether login works.
 
-**Required on the LIFF app (LINE Developers Console → provider → channel → LIFF
-tab → Scope):**
+**Required on the LIFF app** (LINE Developers Console → provider → channel →
+**LIFF** tab → Scope, or for a LINE MINI App the **Web app settings** tab →
+Scopes):
 
-> **The LIFF tab with a Scope section belongs to a LINE Login channel. A LINE MINI
-> App channel does not have one.** Per LINE's MINI App console guide, its *Web
-> app settings* tab cannot change the scope of its internal LIFF apps. So a MINI
-> App is not a configurable substitute for a LINE Login LIFF app — if the app
-> is a MINI App, the `openid` scope cannot be added to it at all, and the fix is
-> to create a LIFF app on a LINE Login channel, not to keep looking in the MINI
-> App settings.
+> **A LINE MINI App channel can be given the `openid` scope** — its *Web app
+> settings* tab has a Scopes row with an Edit button, the same control a LIFF
+> tab has. An earlier version of this file claimed the opposite, on the
+> strength of LINE's published MINI App guide rather than the console; the
+> console was checked on 2026-09-30 and the checkbox is there and editable.
+> A MINI App is therefore a viable substitute for a LINE Login LIFF app, and
+> the fix for a missing scope is one checkbox, not a new channel.
 
 | Scope | Why it is needed | Symptom if missing |
 | :-- | :-- | :-- |
@@ -196,13 +197,32 @@ So `VITE_LIFF_ID` was baked into the image correctly and the SDK (2.22.0) loaded
 from `static.line-scdn.net` without console errors — the scope set was the only
 thing missing. `VITE_LIFF_ID` is `2011592166-uToRdTwS`, whose prefix is the first
 entry of `LINE_LOGIN_CHANNEL_IDS`; that internal-channel shape identifies this as
-a **LINE MINI App**, which is why `openid` is neither present nor addable. The
-server code is not the constraint — `parseChannelIds` feeds every listed ID to
-the verifier as `client_id`, so both a MINI App's internal channel and a LINE
-Login channel verify fine once a token exists.
+a **LINE MINI App**. The server code is not the constraint — `parseChannelIds`
+feeds every listed ID to the verifier as `client_id`, so both a MINI App's
+internal channel and a LINE Login channel verify fine once a token exists.
 
-**After switching to a LINE Login LIFF app, re-read this and expect
-`["profile","openid"]`**; a scope left out of that list is a scope not applied.
+**Fixed 2026-09-30** by ticking `openid` on that MINI App's Scopes row (Web app
+settings) and pressing Update; the console then read `openid, profile`. No
+channel was created and no image was rebuilt, because the LIFF ID is unchanged.
+The same channel also lists `OPENID_CONNECT` under Basic settings →
+Permissions, so the channel already had the capability and only the LIFF app
+was missing the selection.
+
+Two consequences worth knowing before testing:
+
+- Adding a scope to an app users have already consented to does **not** update
+  what those users granted. Anyone who signed in before this change has to
+  re-open the app to see the consent screen again; until then
+  `permission.getGrantedAll()` still lacks `openid` and the page asks them to
+  re-consent.
+- The MINI App is still `Unverified`, and its Review and Published endpoint URLs
+  both still point at LINE's placeholder pages rather than
+  `https://laundrytwin.duckdns.org`. Only Developing is pointed at production.
+  That does not affect a sign-in test against the Developing LIFF URL, but the
+  app cannot be submitted for review until those are set.
+
+**Re-read the measurement after the change and expect `["profile","openid"]`**;
+a scope left out of that list is a scope not applied.
 
 **Not established here:** the LINE authentication flow is not verified end to end
 against production. Per the repository's own rule, a manual sign-in in the LINE
