@@ -221,8 +221,25 @@ Two consequences worth knowing before testing:
   would have sent reviewers to a static asset instead of the app. This means a
   LINE reviewer exercising the Review LIFF URL reaches production and sees real
   ClickHouse data, which is the normal and intended arrangement for a review
-  submission. Privacy policy URL is still unset on Basic settings and is a
-  separate review requirement.
+  submission.
+- **Privacy policy URL is now set** (2026-09-30) to
+  `https://laundrytwin.duckdns.org/privacy`, verified by reloading Basic
+  settings and reading the row back, not by trusting the form's own success
+  state. It matches the existing Terms of use row
+  (`https://laundrytwin.duckdns.org/terms`) and is a **required** Basic
+  settings field — the console rejects an empty value. Before publishing that
+  URL, the page itself was loaded with cookies and localStorage cleared, which
+  confirmed the route renders the real Thai policy for an outside visitor.
+  That check also exposed a caveat, below.
+
+  `/privacy` and `/terms` are currently inside the LIFF gate
+  (`apps/web/src/main.tsx` wraps the whole router in `LiffGate`). A visitor
+  arriving with **no** LIFF cookie reads the policy normally. A returning
+  visitor who is signed into LINE but holds no grant sees the Thai
+  "pending approval" card instead of the policy, because the gate renders
+  before routing. A LINE reviewer will normally arrive fresh, so this does not
+  block review, but it is a real gap in the policy's availability to signed-in
+  users and is not yet fixed.
 
 **Verified 2026-09-30 in a real sign-in against production,** after the scope
 change. The chain, as measured in the browser:
