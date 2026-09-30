@@ -148,6 +148,14 @@ they are what actually decides whether login works.
 **Required on the LIFF app (LINE Developers Console → provider → channel → LIFF
 tab → Scope):**
 
+> **The LIFF tab with a Scope section belongs to a LINE Login channel. A LINE MINI
+> App channel does not have one.** Per LINE's MINI App console guide, its *Web
+> app settings* tab cannot change the scope of its internal LIFF apps. So a MINI
+> App is not a configurable substitute for a LINE Login LIFF app — if the app
+> is a MINI App, the `openid` scope cannot be added to it at all, and the fix is
+> to create a LIFF app on a LINE Login channel, not to keep looking in the MINI
+> App settings.
+
 | Scope | Why it is needed | Symptom if missing |
 | :-- | :-- | :-- |
 | `openid` | The SDK issues an ID token only with this scope. The API verifies that token against `api.line.me/oauth2/v2.1/verify` — without it there is nothing to verify. | `isLoggedIn()` is true and the profile resolves, but the page fails with a missing-ID-token error. This is the confusing one: everything looks logged in. |
@@ -185,8 +193,15 @@ missing-ID-token error:
 ```
 
 So `VITE_LIFF_ID` was baked into the image correctly and the SDK (2.22.0) loaded
-from `static.line-scdn.net` without console errors — the app scope set was the
-only thing missing. **After adding `openid`, re-read this and expect
+from `static.line-scdn.net` without console errors — the scope set was the only
+thing missing. `VITE_LIFF_ID` is `2011592166-uToRdTwS`, whose prefix is the first
+entry of `LINE_LOGIN_CHANNEL_IDS`; that internal-channel shape identifies this as
+a **LINE MINI App**, which is why `openid` is neither present nor addable. The
+server code is not the constraint — `parseChannelIds` feeds every listed ID to
+the verifier as `client_id`, so both a MINI App's internal channel and a LINE
+Login channel verify fine once a token exists.
+
+**After switching to a LINE Login LIFF app, re-read this and expect
 `["profile","openid"]`**; a scope left out of that list is a scope not applied.
 
 **Not established here:** the LINE authentication flow is not verified end to end
