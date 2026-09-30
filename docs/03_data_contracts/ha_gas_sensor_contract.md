@@ -543,3 +543,17 @@ pipeline exists.
 - Any move to ingestion requires a new decision record, a `register_map_version`
   question answered for a non-IRIS source, and the retention question settled
   with the user. This contract authorises none of it.
+
+---
+
+## Reading the ingested data
+
+`fact_gas_pressure_sample` is live. Ready-to-run ClickHouse queries — current
+value per channel, hourly and daily rollups, collector health, and step-change
+detection — are in [`gas-pressure-queries.sql`](./gas-pressure-queries.sql),
+along with the `FINAL` placement and `argMax` rules that are easy to get wrong.
+That file records the DESCRIBE-verified column list, so it is also the
+quickest way to check whether a column exists before writing against it.
+
+The safety boundary above is not relaxed by having queries. None of them detect
+a leak, and none may be surfaced as an alarm.

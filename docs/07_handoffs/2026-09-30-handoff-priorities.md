@@ -333,4 +333,5 @@ contain no detail"; they carry an explicit cause for 55 of 59 events.
 | `docs/04_traceability/ops-verification-2026-09-30-temperature-dedup-migration.md` | 3,762,139 → 2,258,219, the `FINAL` placement bug, why a reload was impossible |
 | `docs/04_traceability/ops-verification-2026-09-30-gas-collector-deploy.md` | the 5-step deploy, grant step, `gas_detector_*` exclusion |
 | `docs/03_data_contracts/ha_gas_sensor_contract.md` | gas field contract, units, the safety boundary |
+| `docs/03_data_contracts/gas-pressure-queries.sql` | runnable ClickHouse queries for the gas table, all executed against production, plus the `FINAL`/`argMax` traps |
 | `docs/02_architecture/deploy-runbook.md` | topology, rollout gate, troubleshooting quick reference |
