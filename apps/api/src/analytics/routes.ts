@@ -3,9 +3,11 @@ import type { Principal } from "../access-store";
 import type { ClickHouseExecutor } from "./clickhouse";
 import type { AnalyticsMeta } from "./envelope";
 import { buildOpenApiDocument } from "./openapi";
+import { registerOffPeakRoutes } from "./offpeak-routes";
 import { registerRevenueRoutes } from "./revenue";
 import { parseAnalyticsRange, resolveAnalyticsScope } from "./scope";
 import { registerTemperatureRoutes } from "./temperature";
+import { registerWeatherRoutes } from "./weather-routes";
 import { registerUtilizationRoutes } from "./utilization";
 
 export type AnalyticsDeps = {
@@ -60,4 +62,6 @@ export function registerAnalyticsRoutes(app: Hono<AppEnv>, deps: AnalyticsDeps) 
   registerRevenueRoutes(app, deps);
   registerUtilizationRoutes(app, deps);
   registerTemperatureRoutes(app, deps);
+  registerOffPeakRoutes(app, deps);
+  registerWeatherRoutes(app, deps);
 }

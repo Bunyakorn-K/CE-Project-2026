@@ -7,6 +7,7 @@ import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
 import { canViewRevenue as revenueAllowed } from "../../lib/access";
 import { temperatureSummary, type TemperatureTruncation } from "../../lib/temperature-view";
+import { hourRangeLabel, offPeakEmptyReason, weekdayLabel, type OffPeakRow, type OffPeakRules } from "../../lib/offpeak-view";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
   component: AnalyticsPage
@@ -17,6 +18,8 @@ type AnalyticsMeta = {
   range: { from: string; to: string };
   branchId: string | null;
   dataSource: SourceTag;
+  method?: string;
+  rules?: Record<string, unknown>;
   caveats?: string[];
   truncation?: TemperatureTruncation;
 };
@@ -25,6 +28,7 @@ type RevenueRow = { date: string; branchId: string; branchName: string; revenueS
 type CycleRow = { date: string; branchId: string; branchName: string; cycles: number; avgDurationMin: number };
 type UtilizationRow = { hourBucket: string; machineId: string; machineCode: string; totalDurationMin: number; cycles: number };
 type TemperatureRow = { occurredAt: string; machineId: string; machineCode: string; temperatureF: number | null; temperatureC: number | null; phase: string };
+type WeatherRow = { date: string; branchName: string; cycles: number; avgTempC: number | null; avgHumidityPct: number | null; totalRainMm: number | null; missingTemp: number };
 type Branch = { id: string; name: string };
 type Alert = {
   id: string;
@@ -150,6 +154,18 @@ function AnalyticsPage() {
     enabled: validRange
   });
 
+  const offPeakQuery = useQuery({
+    queryKey: ["analytics", "off-peak", branchId, range.from, range.to],
+    queryFn: () => fetchJson<AnalyticsEnvelope<OffPeakRow>>(analyticsPath("/api/v1/analytics/off-peak", range.from, range.to, branchId), "ไม่สามารถโหลดช่วงเวลาที่ไม่หนาแน่นได้"),
+    enabled: validRange
+  });
+
+  const weatherQuery = useQuery({
+    queryKey: ["analytics", "weather", branchId, range.from, range.to],
+    queryFn: () => fetchJson<AnalyticsEnvelope<WeatherRow>>(analyticsPath("/api/v1/analytics/weather/usage", range.from, range.to, branchId), "ไม่สามารถโหลดข้อมูลอากาศได้"),
+    enabled: validRange
+  });
+
   const alertsQuery = useQuery({
     queryKey: ["report", "alerts", branchId, range.from, range.to],
     queryFn: async () => {
@@ -192,7 +208,7 @@ function AnalyticsPage() {
         <div className="page-header">
           <div>
             <h1>พื้นที่วิเคราะห์ข้อมูล</h1>
-            <p>ตรวจสอบรายได้ รอบซัก การใช้งาน อุณหภูมิ และหลักฐานการแจ้งเตือนในขอบเขตที่เซิร์ฟเวอร์อนุญาต</p>
+            <p>ตรวจสอบรายได้ รอบซัก การใช้งาน อุณหภูมิ ช่วงเวลาที่ไม่หนาแน่น อากาศเทียบรอบซัก และหลักฐานการแจ้งเตือนในขอบเขตที่เซิร์ฟเวอร์อนุญาต</p>
           </div>
         </div>
       </section>
@@ -326,6 +342,58 @@ function AnalyticsPage() {
                 {temperatureRows.slice(-8).reverse().map((row) => (
                   <tr key={`${row.machineId}-${row.occurredAt}-${row.phase}`}>
                     <td>{formatDateTime(row.occurredAt)}</td><td className="data-code">{row.machineCode}</td><td className="numeric-cell">{row.temperatureC === null ? "ไม่ทราบ" : `${row.temperatureC.toFixed(1)}°C`}</td><td>{row.phase || "ไม่ทราบ"}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </AnalyticsResult>
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card variant="transparent" className="surface-card analytics-section">
+        <Card.Content>
+          <div className="section-heading"><h2>ช่วงเวลาที่ไม่หนามเนน</h2><span>สรุปจากสำเร็วงวันที่เลือกแล้ว ไม่ใช้นกันหมอ</span></div>
+          {offPeakQuery.isLoading ? (
+            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดช่วงเวลา</div>
+          ) : offPeakQuery.isError ? (
+            <div className="error-message" role="alert">ไม่สามารถโหลดช่วงเวลาได้: {offPeakQuery.error.message}</div>
+          ) : offPeakQuery.data && (
+            <AnalyticsResult query={offPeakQuery} empty={offPeakEmptyReason(offPeakQuery.data.meta.rules as unknown as OffPeakRules | undefined)}>
+              <DataTable headers={["อันดัน", "ช่วงเวลา", "สาขา", "รอบชัก", "เวลาใช้งาน"]}>
+                {offPeakQuery.data.data.map((row) => (
+                  <tr key={`${row.branchId}-${row.dayOfWeek}-${row.hourOfDay}`}>
+                    <td className="numeric-cell">{row.rank}</td>
+                    <td>{weekdayLabel(row.weekday, row.dayOfWeek)}</td>
+                    <td className="data-code">{hourRangeLabel(row.hourOfDay)}</td>
+                    <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
+                    <td className="numeric-cell">{row.totalDurationMin.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </AnalyticsResult>
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card variant="transparent" className="surface-card analytics-section">
+        <Card.Content>
+          <div className="section-heading"><h2>อากาศและรอบชัก</h2><span>คัมสรับความ ไม่ใช้฀นวิไพที่มีจากมีเกือนไพร้วมของอากาศ</span></div>
+          {weatherQuery.isLoading ? (
+            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดข้อมูลอากาศ</div>
+          ) : weatherQuery.isError ? (
+            <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลอากาศได้: {weatherQuery.error.message}</div>
+          ) : weatherQuery.data && (
+            <AnalyticsResult query={weatherQuery} empty="ไม่มีข้อมูลอากาศทั้งไท้ช่วงวันที่เลือก">
+              <DataTable headers={["วันที่", "สาขา", "รอบชัก", "อุณหมดียเฉล", "ค่าระวมกาล", "ประสำภวยเงิน", "ไม่มีค่า"]}>
+                {weatherQuery.data.data.slice(-12).reverse().map((row) => (
+                  <tr key={`${row.branchName}-${row.date}`}>
+                    <td>{formatDate(row.date)}</td>
+                    <td>{row.branchName}</td>
+                    <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
+                    <td className="numeric-cell">{row.avgTempC === null ? "ไม่ทราบ" : `${row.avgTempC.toFixed(1)}°C`}</td>
+                    <td className="numeric-cell">{row.avgHumidityPct === null ? "ไม่ทราบ" : `${row.avgHumidityPct.toFixed(0)}%`}</td>
+                    <td className="numeric-cell">{row.totalRainMm === null ? "ไม่ทราบ" : `${row.totalRainMm.toFixed(1)} มม.`}</td>
+                    <td className="numeric-cell">{row.missingTemp.toLocaleString("th-TH")}</td>
                   </tr>
                 ))}
               </DataTable>
