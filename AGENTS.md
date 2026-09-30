@@ -54,6 +54,10 @@ Read the relevant project documents before changing code:
   training data pipeline, and model training plan (Phase 2).
 - `docs/02_architecture/deploy-runbook.md`: deployment topology, service
   configuration, and operational verification.
+- `docs/07_handoffs/2026-09-30-handoff-priorities.md`: **start here to pick
+  work up.** The ranked list of what is left, with the evidence record named per
+  item. It supersedes `2026-09-30-next-session-plan.md`, whose "unpushed at
+  `7409f5f`" and "restarts unexplained" claims are both now wrong.
 - `apps/web/PRODUCT.md`: web product users, workflows, constraints, and
   Thai-first product principles.
 

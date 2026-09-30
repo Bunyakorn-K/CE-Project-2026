@@ -1,5 +1,13 @@
 # Next Session Handoff — 2026-09-30
 
+> **SUPERSEDED — read `2026-09-30-handoff-priorities.md` instead.**
+> This file is kept as the mid-session record it was written as. Two of its
+> claims are now wrong and are corrected in place below: the git state in
+> "Current State", and PRIORITY 4's conclusion that the container restarts were
+> unexplained (the chain is now proven; the *trigger* is still unknown). The
+> ranked list of remaining work also now leads with an item this file did not
+> identify: **there is no automated ClickHouse backup at all.**
+
 > Supersedes `2026-09-25-next-session-plan.md` for anything about production,
 > the warehouse, or the deployment. Read **Read This First** before anything
 > else: the cause of the 17-day warehouse hole is now **known**, and it is not
@@ -66,11 +74,12 @@ Detail, evidence and confidence levels:
 
 ## Current State
 
-Committed at `e3198e4` on `main`, 32 files. `e3198e4` and this handoff are
-**unpushed**; `origin/main` is at `7409f5f`. Count with
-`git log --oneline origin/main..HEAD` rather than trusting a number written
-here — this document is itself one of those commits, so any count it states is
-already stale by one.
+Committed at `e3198e4` on `main`, 32 files. ~~`e3198e4` and this handoff are
+**unpushed**; `origin/main` is at `7409f5f`.~~ **CORRECTED 2026-09-30 later
+that day: this is no longer true.** Everything through `44f9770` is pushed and
+the working tree is clean. Count with `git log --oneline origin/main..HEAD`
+rather than trusting a number written here — this document is itself one of
+those commits, so any count it states is already stale by one.
 
 `tofu` runs on the target host and does `git fetch` +
 `reset --hard origin/${app_repo_ref}` (`deploy/tofu/checkout.tf:28-31`), then
@@ -298,6 +307,15 @@ Rotate outside the repository, with a rollback target and a post-rotation
 health check.
 
 ### PRIORITY 4 — three unexplained container restarts
+
+> **PARTIALLY SUPERSEDED 2026-09-30 later that day.** The conclusion below that
+> the restarts are "unexplained" is now wrong: the chain is fully proven as a
+> Postgres backend death → whole-cluster reinit → all connections refused →
+> `unless-stopped` restarts Airflow. 59 such reinitializations are now measured,
+> 55 with an explicit cause. **The trigger is still not identified** — that part
+> of the claim below stands. The `dmesg` sentence is also wrong: `dmesg` is
+> *not* empty, `journalctl -k` carries all 22 host OOM events. Full evidence:
+> `docs/04_traceability/ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md`.
 
 On 2026-09-30, `analytics-airflow-scheduler-1`,
 `analytics-airflow-triggerer-1` and `analytics-airflow-dag-processor-1` each
