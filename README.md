@@ -35,12 +35,14 @@ Read these documents before changing behavior or data models:
 - [`docs/07_handoffs/2026-09-30-handoff-priorities.md`](docs/07_handoffs/2026-09-30-handoff-priorities.md)
   ranks the work that is **left**, with the evidence record named per item.
   Start here to pick something up.
+- [`docs/README.md`](docs/README.md) is the **documentation map**: every
+  document indexed, and which file owns each fact that changes.
 
-**Start here if you are new to this repository:** read this file, then the
-handoff above, then the evidence records it points at. The operational history
-of this project is unusually load-bearing — several current facts exist only
-because an incident was investigated in detail, and re-deriving them from the
-code alone will produce a wrong answer.
+**Start here if you are new to this repository:** read this file, then
+[`docs/README.md`](docs/README.md) for the map, then the handoff above. The
+operational history of this project is unusually load-bearing — several current
+facts exist only because an incident was investigated in detail, and
+re-deriving them from the code alone will produce a wrong answer.
 
 ## Current implementation status
 

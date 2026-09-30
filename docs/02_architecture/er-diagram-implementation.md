@@ -236,12 +236,12 @@ Notes:
   `attribution_machine_session_id` (`apps/etl/src/postgres.ts:141`,
   `apps/etl/src/transform.ts:194`). Its cardinality was measured on 2026-09-29
   against the real warehouse (4,458 non-synthetic rows, 2026-07-22 → 2026-09-25):
-  **one row per session and one status per session**, with the id absent on
-  63.91% of rows. Its **share of NULL rows was re-measured 2026-09-30 11:39:11
-  UTC** over 7,908 non-synthetic rows spanning 2026-07-22 → 2026-09-30, after the
-  warehouse recovery merge: **67.8933%** (5,369 rows), essentially the
-  `attribution_state = 'pending_attribution'` set. The 1:1 session cardinality
-  was **not re-measured** on 2026-09-30. No counter uses it to count cycles —
+  **one row per session and one status per session**. The id is absent on the
+  majority of rows — currently ~68%, a live metric whose current value is in
+  `docs/06_ml/ml-training-data-guide.md` §9.1 — and that absent set is
+  essentially the `attribution_state = 'pending_attribution'` set. The 1:1
+  session cardinality was **not re-measured** after the 2026-09-30 recovery
+  merge. No counter uses it to count cycles —
   the canonical cycle count is the row count
   `countIf(status IN ('paid', 'finished'))` — and it is used only to report how much of
   that count carries session-level evidence (`dashboard.cycleAttribution`). Its

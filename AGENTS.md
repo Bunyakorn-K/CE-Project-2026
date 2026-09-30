@@ -58,6 +58,10 @@ Read the relevant project documents before changing code:
   work up.** The ranked list of what is left, with the evidence record named per
   item. It supersedes `2026-09-30-next-session-plan.md`, whose "unpushed at
   `7409f5f`" and "restarts unexplained" claims are both now wrong.
+- `docs/README.md`: the **documentation map.** It indexes every document and
+  states which file is the single source of truth for each fact that changes.
+  Consult it before searching `docs/` — a fact restated in N places is a
+  duplication bug, and the map says where the one copy belongs.
 - `apps/web/PRODUCT.md`: web product users, workflows, constraints, and
   Thai-first product principles.
 

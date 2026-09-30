@@ -241,11 +241,11 @@ The temperature read paginated on `(ingested_at, seq, event_id)`. In IRIS
 | Indexed on `occurred_at` (migration `0030`), **no index on `ingested_at` in any of the 203 migrations** | The keyset could not be served by an index. |
 | ~210 rows per cycle per dryer, **no retention** (IRIS's rotate cron covers `machine_event` only; `0030` deferred this table to a follow-up that never happened) | The scan grew monotonically, so a run that worked slowly eventually stopped finishing at all. |
 
-`machine_usage` was exonerated and is unchanged: at 7,908 rows over 71 calendar
-days (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC) its keyset is
-trivial. (It has no index on `created_at` either — only
-`(branch_id, created_at)`, `(machine_id)`, `(member_id)` — which is a comment,
-not a defect, at that size.)
+`machine_usage` was exonerated and is unchanged: at roughly 8,000 rows over
+roughly 70 calendar days (the current figure is in
+`docs/06_ml/ml-training-data-guide.md` §5) its keyset is trivial. (It has no
+index on `created_at` either — only `(branch_id, created_at)`, `(machine_id)`,
+`(member_id)` — which is a comment, not a defect, at that size.)
 
 ### What changed in this repository (2026-09-29)
 

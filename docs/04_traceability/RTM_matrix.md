@@ -224,9 +224,14 @@ measured **2026-09-30 11:39:11 UTC** over **7,908** non-synthetic rows spanning
 - **Coverage.** 70 distinct day buckets across the 71 calendar days
   2026-07-22…2026-09-30; every one of the 17 days 2026-08-31…2026-09-16 now
   has rows. 2026-07-27 is the only usage gap day and is a genuine source gap.
-  The 2026-09-30 merge recovered a 17-day hole in the live warehouse; its
-  **root cause is still unresolved**, and another restore could lose a different
-  window.
+  The 2026-09-30 merge recovered a 17-day hole in the live warehouse. Its
+  **root cause is resolved: no data was deleted** — the 17 days were orphaned
+  by the 2026-09-17 rollback, not destroyed, and have been merged back. The
+  residual risk is that the *procedure* is still unguarded: another restore
+  could still lose a different window, and the two restore-time guards
+  (restore-source freshness assertion, post-restore `max(extracted_at)`
+  continuity check) remain open. See
+  `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md` §1.
 
 #### Why rows, and not sessions
 

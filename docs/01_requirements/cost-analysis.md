@@ -9,10 +9,13 @@ AMD FX-8350, 8 cores, ~125 W TDP), compose stacks under `/opt`
 (laundrytwin, analytics, arcane, librechat), internal docker registry on the
 same VM, ZeroTier overlay, duckdns domain, LINE Official Account (Messaging
 API). Data volumes (2026-09-06): 4.3k usages, 3.49M temperature samples —
-left as recorded for this document's own date. Current figures
-(2026-09-30 11:39:11 UTC): 7,908 usage rows, 3,760,465 temperature rows;
-see `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`.
-freshness DAG runs every 5 min.
+left as recorded for this document's own date. Current row counts are **not
+restated here**: the usage figure moves as the ETL ingests the IRIS backlog and
+as recovery merges land, and the temperature figure changed on 2026-09-30 when
+1.5M duplicate rows were collapsed. Both are stated once, in
+`docs/06_ml/ml-training-data-guide.md` §5 and §9.1, and in
+`docs/04_traceability/ops-verification-2026-09-30-temperature-dedup-migration.md`.
+The freshness DAG runs every 5 min.
 
 ## 1. Self-hosted baseline (current)
 
