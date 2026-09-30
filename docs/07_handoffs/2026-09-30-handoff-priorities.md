@@ -7,7 +7,8 @@ lines, was written mid-session, and two of its claims are now wrong (see
 record named per item.
 
 **Repo state at time of writing:** `main` at `44f9770`, working tree clean,
-**0 unpushed commits**. 417 tests green (API 277 / web 53 / ETL 87).
+**0 unpushed commits**. Test suite green — the current count is maintained in
+`AGENTS.md` §Verification, not repeated here.
 
 **Today's work is closed and pushed.** Three scoped items finished: the gas
 collector deploy, the `fact_temperature_sample` de-duplication, and the
@@ -317,9 +318,10 @@ contain no detail"; they carry an explicit cause for 55 of 59 events.
 - **Status is numbered by IRIS lifecycle order**
   (`pending_payment=1, paid=2, admitted=3, running=4, finished=5, cancelled=6`).
   Filter by name, never by number.
-- **Unattributed share is a live metric, not a constant.** It was 67.8933%
-  (5,369 of 7,908) measured 2026-09-30 11:39:11 UTC. Any figure quoted without
-  a measurement date is stale.
+- **Unattributed share is a live metric, not a constant.** It was ~68% when
+  measured on 2026-09-30. The current figure lives in
+  `docs/06_ml/ml-training-data-guide.md` §9.1; any number quoted without a
+  measurement date is stale.
 - **Never commit credentials, provider tokens, production databases, customer
   data, live captures, or `.env` files.** Git hooks run `gitleaks` pre-commit
   and pre-push; `--no-verify` must never be used to land a real secret.

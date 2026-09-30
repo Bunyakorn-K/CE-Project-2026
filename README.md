@@ -153,41 +153,32 @@ The warehouse is `laundrytwin_analytics` on VM 117. It holds
 table is not an ML input — it has no machine or usage key and is not part of
 any feature set.
 
-**Data volume: 7,908 non-synthetic usage rows over 71 calendar days**
-(2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC). This supersedes
-4,458 rows over 9 weeks (2026-09-29), which superseded the earlier "~4.8k rows"
-figure. **The figure moves** as the ETL ingests the IRIS backlog and as
-recovery merges land — quote it with its measurement date or not at all.
-
-| Model | Minimum | Current | Status |
-|---|---|---|---|
-| Heuristic baseline | none | — | **Done** — `get_off_peak_windows` MCP tool |
-| ARIMA / SARIMA | 90 days | 71 | Not started — 19 days short |
-| Prophet | 90 days | 71 | Not started — 19 days short |
-| Gradient Boosting | 90 days + features | 71 | Not started — 19 days short |
-
-Phase A (percentile heuristic) is the only shipped model. Phases B–D —
-evaluation harness, model candidate, promotion effect measurement — are
-**specified but not started**, and Phase B is blocked on the same 19 days.
+**~8,000 non-synthetic usage rows over ~70 calendar days — still short of the
+90-day minimum that Prophet/SARIMA/GBM candidates need.** Phase A, the
+percentile heuristic behind `get_off_peak_windows`, is the only shipped model;
+Phases B–D (evaluation harness, model candidate, promotion effect) are
+specified but not started, and Phase B waits on the same missing days.
 
 Three constraints shape any model built on this data:
 
-- **Attribution.** 67.8933% of usage rows (5,369 of 7,908) carry no
-  `machine_session_id`. `cycle_count` is a row count by decision, not a count
-  of identified sessions, and no feature may treat it as one. This is a live
-  metric, not a constant.
-- **Coverage.** 70 of 71 day buckets are populated. 2026-07-27 is the one gap
-  and it is a genuine source gap, not an artefact — a missing day in a training
-  series is a discontinuity, not a zero.
-- **Weather.** TMD NWP returns byte-identical values for all Thai provinces in
-  the same collection window, so there is no per-province signal yet. It is a
+- **Attribution.** Most usage rows carry no `machine_session_id`, so
+  `cycle_count` is a row count by decision, not a count of identified
+  sessions, and no feature may treat it as one.
+- **Coverage.** One day in the window is a genuine source gap, not a
+  artefact — a missing day in a training series is a discontinuity, not a zero.
+- **Weather.** TMD NWP returns identical values for all Thai provinces in the
+  same collection window, so there is no per-province signal yet. It is a
   forecast, not an observation, and correlation is not causation.
 
 Evaluation reports **hit-rate@k, MAE, utilization lift, and coverage/fallout —
 never MAE alone**, because a Phase 2 decision is a business decision.
 
-Full schema, feature engineering, and training plan:
-[`docs/06_ml/ml-training-data-guide.md`](docs/06_ml/ml-training-data-guide.md)
+**The exact row count, its measurement date, and the full feature schema and
+training plan live in one place only:
+[`docs/06_ml/ml-training-data-guide.md`](docs/06_ml/ml-training-data-guide.md).**
+That number moves as the ETL ingests the IRIS backlog and as recovery merges
+land, so this section stays approximate on purpose — do not add precise figures
+back here.
 
 ## Run locally
 
@@ -273,11 +264,10 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on **2026-09-30: 417 tests green** — API 277, web 53,
-ETL 87 (supersedes 413 / API 273 / web 53 / ETL 87, 384 / API 270 / web 53 /
-ETL 61, and 227 green / API 152 / web 38 / ETL 37, all measured 2026-09-30
-earlier or 2026-09-28; web had fallen to 1 after the dead-code deletion removed
-`dashboard-metrics.test.ts`).
+Local automated evidence on **2026-09-30: 417 tests green** (API 277, web 53,
+ETL 87). The count is maintained in one place only — see
+[Verification in `AGENTS.md`](AGENTS.md#verification) for the current figure and
+its history.
 The separate Playwright layout suite is 11 tests and is not part of `pnpm test`.
 Node 24.x is used (see `.nvmrc`). `pnpm --filter @laundrytwin/api check`, web
 check/test/build, and ETL test pass. Manual browser QA of the active router was
