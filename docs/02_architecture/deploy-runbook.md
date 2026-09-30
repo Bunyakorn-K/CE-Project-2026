@@ -240,6 +240,29 @@ Two consequences worth knowing before testing:
   before routing. A LINE reviewer will normally arrive fresh, so this does not
   block review, but it is a real gap in the policy's availability to signed-in
   users and is not yet fixed.
+- **English localization is set** (2026-09-30): Basic settings →
+  Localization now carries one row, `English / LaundroTwin / Multi-branch
+  smart laundry management dashboard — live machine status, revenue, and
+  analytics.` The console requires English before a review can be requested,
+  and the row was read back after a hard reload to confirm it persisted. Only
+  English was added; the region is Thailand, so the Thai text still lives in
+  Basic settings → Channel name/description, which is what a Thai-language
+  LINE client sees.
+
+**Verification is blocked for a reason no console setting can fix.** The Review
+request tab does not offer a submit path at all; it states only:
+
+> Your LINE MINI App is unverified. […] Notes: If the region to provide the
+> service is Thailand or Taiwan, only certified providers can apply for the
+> verification review.
+
+Channel `2011592166` is a **LINE MINI App** with Region to provide the service =
+Thailand, and its provider is a plain one (not LINE certification). The
+endpoint URLs, privacy policy, and English localization set above are all
+necessary for a review but **not sufficient to submit one**. Either the channel
+must be created under a LINE-certified provider, or it must stay `Unverified`
+and be operated as an unverified MINI App. Do not describe the channel as
+review-ready or verified.
 
 **Verified 2026-09-30 in a real sign-in against production,** after the scope
 change. The chain, as measured in the browser:
