@@ -314,12 +314,16 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-09-30: 417 tests green** — API 277, web 53,
+Local automated evidence on **2026-09-30: 488 tests green** — API 320, web 81,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** Older figures (413/384/227) were superseded within
 the same day, and web briefly fell to 1 after the dead-code deletion removed
-`dashboard-metrics.test.ts`. The separate Playwright layout suite is 11 tests
-and is **not** part of `pnpm test`. Node 24.x is used (see `.nvmrc`); no
+`dashboard-metrics.test.ts`. The separate Playwright suite is 20 tests
+and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
+`analytics.pw.ts` and `dashboard.pw.ts` assert rendered honesty labels — that a
+weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
+and that the executive summary is hidden over an empty window and states when
+its source is unavailable. Node 24.x is used (see `.nvmrc`); no
 `package.json` declares `engines` and the Dockerfiles build from the floating
 `node:24-bookworm-slim` tag, so nothing local enforces a narrower Node version.
 `pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL test pass.

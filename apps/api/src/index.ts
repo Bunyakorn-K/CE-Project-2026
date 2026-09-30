@@ -385,7 +385,13 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (scope instanceof Response) return scope;
 
     try {
-      if (isDevelopmentAuthBypassEnabled()) {
+      // The summary has to answer from whichever source the rest of the report
+      // answers from, or the executive sentence disagrees with the numbers
+      // printed beside it. IRIS is optional, so gating this route on the dev
+      // bypass alone left the one ClickHouse-only deployment with a working
+      // dashboard and a failing summary. Demo stays on the client path because
+      // createIrisReadClient serves it without any IRIS env var.
+      if (isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured())) {
         const [dashboard, machines] = await Promise.all([
           queryDashboard(clickhouse, range.from, range.to, scope),
           queryClickHouseLiveMachines(clickhouse, scope)
@@ -395,6 +401,9 @@ export function createApp(dependencies: AppDependencies = {}) {
           mayViewRevenue(principal.grants)
         );
         return c.json({
+          source: "clickhouse",
+          availability: "usage-derived",
+          range,
           summary: buildThaiStakeholderSummary({
             dashboard: projectedDashboard,
             machines,
@@ -412,6 +421,9 @@ export function createApp(dependencies: AppDependencies = {}) {
       ]);
       const projectedDashboard = redactDashboardRevenue(dashboard, mayViewRevenue(principal.grants));
       return c.json({
+        source: projectedDashboard.source,
+        availability: "available",
+        range,
         summary: buildThaiStakeholderSummary({
           dashboard: projectedDashboard,
           machines: live?.machines ?? [],
@@ -690,6 +702,12 @@ function demoMachineStatus(state: string | null): MachineInfo["status"] {
 
 function isDevelopmentAuthBypassEnabled() {
   return process.env.NODE_ENV === "development" && process.env.LAUNDRYTWIN_DEV_BYPASS === "true";
+}
+
+// Both halves, because createIrisReadClient throws when either is missing and
+// checking only the base URL would route a request at a client that cannot call.
+function isIrisReadConfigured(): boolean {
+  return Boolean(process.env.IRIS_READ_BASE_URL && process.env.IRIS_LAUNDRYTWIN_READ_API_KEY);
 }
 
 function requirePrincipal(c: Context<{ Variables: AppVariables }>) {

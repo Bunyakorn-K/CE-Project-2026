@@ -911,6 +911,19 @@ main {
   border-radius: 12px;
 }
 
+/* The executive summary is the one sentence on the page, so it gets body
+   weight at a readable size rather than KPI-card scale. Line length is capped
+   because the sentence is built from fragments and reads as prose, not a
+   single number. */
+.executive-summary {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.65;
+}
+
 .error-message {
   color: var(--danger);
   background: var(--danger-bg);

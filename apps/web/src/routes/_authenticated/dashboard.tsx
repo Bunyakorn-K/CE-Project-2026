@@ -14,6 +14,12 @@ import {
   type MetricCell
 } from "../../lib/dashboard-view";
 import { machineStatusMeta } from "../../lib/machine-status";
+import {
+  summaryAvailabilityLabel,
+  summarySourceLabel,
+  summaryView,
+  type SummaryEnvelope
+} from "../../lib/summary-view";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage
@@ -179,6 +185,17 @@ function DashboardPage() {
     refetchInterval: 60000
   });
 
+  const summaryQuery = useQuery({
+    queryKey: ["report", "summary", branchId, range.from, range.to],
+    queryFn: () =>
+      fetchJson<SummaryEnvelope>(reportPath("/api/report/summary", range.from, range.to, branchId), "ไม่สามารถโหลดสรุปผู้บริหารได้"),
+    enabled: validRange && view === "dashboard",
+    // The summary counts the same cycles the KPI card does. When the window has
+    // no usage rows there is nothing to summarise, and summaryView hides the
+    // sentence rather than printing "0 cycles" as a finding.
+    retry: false
+  });
+
   const dashData = dashQuery.data?.dashboard;
   const twinData = twinQuery.data;
   const activeSource = view === "twin" ? twinData?.source ?? null : dashQuery.data?.source ?? null;
@@ -202,6 +219,13 @@ function DashboardPage() {
     presence,
     formatNumber: formatCount,
     formatBaht: baht
+  });
+  // The summary sentence counts the same cycles as the KPI card, so the
+  // attribution gap printed below the KPIs covers it too. It is rendered above
+  // them only because it is the sentence an executive reads first.
+  const summary = summaryView({
+    summary: summaryQuery.data?.summary,
+    usageRowsInRange: dashData?.usageRowsInRange
   });
 
   return (
@@ -280,16 +304,42 @@ function DashboardPage() {
               </div>
               {emptyWindowMessage && <div className="state-message">{emptyWindowMessage}</div>}
 
+              {/* Ahead of the KPI cards, because it is the sentence an
+                  executive reads first — and the attribution note ahead of
+                  both, because it qualifies every cycle count on this page. */}
+              {attribution.kind !== "none" && (
+                <div className="state-message" role="status">{attribution.message}</div>
+              )}
+
+              {summaryQuery.isError && (
+                <div className="state-message" role="status">สรุปผู้บริหารไม่พร้อมใช้งาน: {summaryQuery.error.message}</div>
+              )}
+              {summary.kind === "text" && (
+                <section className="surface-card" aria-label="สรุปสำหรับผู้บริหาร">
+                  <div className="section-heading">
+                    <div>
+                      <h2>สรุปสำหรับผู้บริหาร</h2>
+                      <p className="section-description">เรียงจากตัวเลขชุดเดียวกับการ์ดด้านล่างด้วยกฎคงที่ ไม่ใช่ข้อความที่โมเดลเขียน</p>
+                    </div>
+                  </div>
+                  <p className="executive-summary">{summary.text}</p>
+                  <div className="data-context" aria-live="polite">
+                    <span className="source-pill">{summarySourceLabel(summaryQuery.data?.source)}</span>
+                    <span>{summaryAvailabilityLabel(summaryQuery.data?.availability)}</span>
+                    {summaryQuery.data?.range && (
+                      <strong>{formatDate(summaryQuery.data.range.from)} — {formatDate(summaryQuery.data.range.to)}</strong>
+                    )}
+                    <span>สร้างเมื่อ {formatDateTime(summaryQuery.data?.generatedAt ?? null)}</span>
+                  </div>
+                </section>
+              )}
+
               <section className="kpi-grid" aria-label="ตัวชี้วัดหลัก">
                 <KpiCard cell={kpis.revenue} />
                 <KpiCard cell={kpis.cycles} />
                 <KpiCard cell={kpis.inventory} />
                 <KpiCard cell={kpis.branches} />
               </section>
-
-              {attribution.kind !== "none" && (
-                <div className="state-message" role="status">{attribution.message}</div>
-              )}
 
               <section>
                 <div className="section-heading">

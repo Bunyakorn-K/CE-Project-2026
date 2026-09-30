@@ -465,4 +465,152 @@ describe("LaundryTwin API", () => {
       { from: "2026-09-18", to: "2026-09-25", branchId: expectedScope }
     );
   });
+
+  // PRODUCT.md lists executive-summary reporting as a current capability, and
+  // the summary builder was unit-tested, but this route had no test at all: no
+  // authorization case, no redaction case, and no proof it answers at all in the
+  // ClickHouse-only deployment that is the documented production shape.
+  describe("executive summary route", () => {
+    const IRIS_KEYS = ["IRIS_READ_BASE_URL", "IRIS_LAUNDRYTWIN_READ_API_KEY", "LAUNDRYTWIN_DEMO_MODE"] as const;
+
+    /** The ClickHouse-only production shape: no IRIS, no demo client. */
+    function withoutIrisReadSource(): () => void {
+      const saved = new Map(IRIS_KEYS.map((key) => [key, process.env[key]]));
+      for (const key of IRIS_KEYS) delete process.env[key];
+      return () => {
+        for (const [key, value] of saved) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+    }
+
+    it.each(["/api/report/summary"])("denies a zero-grant principal at %s before any source is called", async (path) => {
+      authenticate([]);
+      const clickhouse = vi.fn();
+      const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+      const response = await app.request(path);
+
+      expect(response.status).toBe(403);
+      expect(clickhouse).not.toHaveBeenCalled();
+    });
+
+    it("rejects a branch outside the principal grant before querying", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "tech-01", role: "technician", branchId: "branch-01" }]);
+        const clickhouse = vi.fn();
+        const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+        const response = await app.request("/api/report/summary?branchId=branch-02");
+
+        expect(response.status).toBe(403);
+        expect(clickhouse).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
+
+    it("answers from ClickHouse when no IRIS read source is configured", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const { clickhouse } = dashboardExecutor();
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/summary?from=2026-09-18&to=2026-09-25");
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          source: "clickhouse",
+          availability: "usage-derived",
+          range: { from: "2026-09-18", to: "2026-09-25" },
+          generatedBy: "deterministic-reporting-v1",
+          generatedAt: expect.any(String)
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it.each([
+      { role: "technician" as const, branchId: "branch-01", expectsRevenue: false },
+      { role: "manager" as const, branchId: "branch-01", expectsRevenue: true }
+    ])("keeps revenue out of the $role summary", async ({ role, branchId, expectsRevenue }) => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: `${role}-01`, role, branchId }]);
+        const { clickhouse } = dashboardExecutor();
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/summary?from=2026-09-18&to=2026-09-25");
+        const body = (await response.json()) as { summary: string };
+
+        expect(response.status).toBe(200);
+        expect(body.summary).toContain("1 รอบ");
+        // The sentence is the one place a redaction would be invisible: the
+        // number is absent rather than blank, so a baht figure here would mean
+        // the server leaked a total the grant does not cover.
+        expect(body.summary.includes("฿")).toBe(expectsRevenue);
+      } finally {
+        restore();
+      }
+    });
+
+    it("reports unavailable live state rather than claiming machines are healthy", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        // The fixture's last activity is ten days before today, so freshness
+        // resolves to unavailable. "สถานะสดพร้อมใช้งาน" here would be the
+        // fabricated-green failure the freshness states exist to prevent.
+        const { clickhouse } = dashboardExecutor();
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/summary?from=2026-09-18&to=2026-09-25");
+        const body = (await response.json()) as { summary: string };
+
+        expect(body.summary).toContain("ข้อมูลสดไม่พร้อม");
+        expect(body.summary).not.toContain("สถานะสดพร้อมใช้งาน");
+      } finally {
+        restore();
+      }
+    });
+
+    it("stays on the demo client when demo mode is on and no IRIS env var exists", async () => {
+      const previousDemoMode = process.env.LAUNDRYTWIN_DEMO_MODE;
+      const previousBase = process.env.IRIS_READ_BASE_URL;
+      const previousKey = process.env.IRIS_LAUNDRYTWIN_READ_API_KEY;
+      process.env.LAUNDRYTWIN_DEMO_MODE = "true";
+      delete process.env.IRIS_READ_BASE_URL;
+      delete process.env.IRIS_LAUNDRYTWIN_READ_API_KEY;
+
+      try {
+        const session = await createApp().request("/api/demo/session", {
+          method: "POST",
+          headers: { "x-forwarded-for": "198.51.100.77" }
+        });
+        const cookie = session.headers.get("set-cookie")?.split(";")[0];
+        expect(cookie).toBeTruthy();
+
+        const response = await createApp().request("/api/report/summary", { headers: { Cookie: cookie! } });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        // Demo totals, not the ClickHouse path. createIrisReadClient serves demo
+        // mode with no env var set, so an unset base URL must not divert it.
+        expect(body.summary).toContain("55 รอบ");
+        expect(body.availability).toBe("available");
+        expect(body.source).not.toBe("clickhouse");
+      } finally {
+        if (previousDemoMode === undefined) delete process.env.LAUNDRYTWIN_DEMO_MODE;
+        else process.env.LAUNDRYTWIN_DEMO_MODE = previousDemoMode;
+        if (previousBase === undefined) delete process.env.IRIS_READ_BASE_URL;
+        else process.env.IRIS_READ_BASE_URL = previousBase;
+        if (previousKey === undefined) delete process.env.IRIS_LAUNDRYTWIN_READ_API_KEY;
+        else process.env.IRIS_LAUNDRYTWIN_READ_API_KEY = previousKey;
+      }
+    });
+  });
 });
