@@ -6,14 +6,16 @@ sensors backed by a MySQL recorder store. It defines the available fields, their
 units, the measurement evidence, and — equally important — what each field
 **does not** mean.
 
-**Status: three pressure entities have a collector; nothing is deployed.**
-As of 2026-09-30 there is code, schema and local test evidence for loading
-`gas_pressure_a`, `gas_pressure_b` and `changeover_pressure` into
-`fact_gas_pressure_sample` (`apps/etl/src/gas.ts`, `apps/etl/src/gas-run.ts`,
-`apps/etl/src/schema.ts`). **No production table exists yet, no container is
-running, and no Home Assistant token has been provisioned** — so this is still
-not evidence of a running pipeline. There is **no API surface** and **no alert**
-for this source, and none is proposed here.
+**Status: deployed and ingesting (2026-09-30).** The three pressure channels —
+`gas_pressure_a`, `gas_pressure_b` and `changeover_pressure` — are loaded
+hourly by `laundrytwin-gas-1` on VM 117 into
+`laundrytwin_analytics.fact_gas_pressure_sample` (`apps/etl/src/gas.ts`,
+`apps/etl/src/gas-run.ts`, `apps/etl/src/schema.ts`). The first production pass
+read 884 rows over a 3-hour window with zero coerced zeros and no
+`gas_detector` entity present; production evidence and rollback steps are in
+`docs/04_traceability/ops-verification-2026-09-30-gas-collector-deploy.md`.
+There is still **no API surface** and **no alert** for this source, and none is
+proposed here.
 
 The remaining fields in this document (`gas_rate_*`, `gas_energy_total`,
 `tank_change_*_monthly`) and the `gas_detector_*` heartbeat entities are

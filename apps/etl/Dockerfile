@@ -14,6 +14,16 @@
 #   docker build -f apps/etl/Dockerfile --target weather -t laundrytwin-weather .
 #   docker build -f apps/etl/Dockerfile --target gas -t laundrytwin-gas .
 #
+# PLATFORM — add `--platform linux/amd64` when building from a non-amd64 host
+# (an Apple Silicon workstation, for instance). The deploy host is amd64 and has
+# NO binfmt emulation, so an arm64 image does not degrade gracefully: the
+# container dies instantly with
+#   exec /usr/local/bin/docker-entrypoint.sh: exec format error
+# and, because the services run `restart: unless-stopped`, that becomes a silent
+# restart loop rather than a failed deploy. Every image in the registry is
+# amd64. Observed 2026-09-30 deploying the gas collector; see
+# docs/04_traceability/ops-verification-2026-09-30-gas-collector-deploy.md §3.4.
+#
 # NOTE: the etl target MUST stay the last stage — a bare `docker build` with no
 # --target builds the final stage, so if weather or gas were last the etl image
 # would silently ship the wrong command.

@@ -204,20 +204,35 @@ into `fact_weather_sample` tagged by `tenant_id/branch_id`.
 Location targets come from `dim_branch_location` JOIN `dim_branch active=1`.
 Location schema includes province, sub_district, district (currently NULL).
 
-A **gas-pressure** collector for the `otterimju2` site exists in code
-(`apps/etl/src/gas.ts`, `apps/etl/src/gas-run.ts`, Docker target `gas`,
-compose service `gas`) and would load three Home Assistant channels into
-`fact_gas_pressure_sample` hourly. It has local test evidence — 26 unit tests,
-the DDL and its idempotency executed on a real ClickHouse engine, and a replay
-of the real 50,567-row export through the collector with zero rows dropped —
-but **it is not deployed**: there is no production table, no running container,
-and no provisioned Home Assistant token. `value_psi` is nullable and
-`unavailable` is stored as NULL, never 0 (the observed minimum is 9 psi). The
-`gas_detector_*` entities are **deliberately excluded** — they are a liveness
-heartbeat, not a leak detector. This source is additive and separate from
-usage; nothing in the Digital Twin or the cycle/revenue KPIs derives from it,
-and no alert is raised from it. Full contract and the safety boundary:
+A **gas-pressure** collector for the `otterimju2` site is **deployed** (2026-09-30)
+and runs hourly as `laundrytwin-gas-1` on VM 117, behind `profiles: ["gas"]`
+(`apps/etl/src/gas.ts`, `apps/etl/src/gas-run.ts`, Docker target `gas`, compose
+service `gas`). It loads three Home Assistant channels into
+`fact_gas_pressure_sample`. Evidence: 26 unit tests, the DDL and its idempotency
+executed on a real ClickHouse engine, a replay of the real 50,567-row export
+with zero rows dropped, and the production record in
+`docs/04_traceability/ops-verification-2026-09-30-gas-collector-deploy.md`
+(884 rows on the first pass, 0 coerced zeros, 3 distinct `entity_id`, none of
+them a `gas_detector`; an overlapping re-read merged back to the distinct set).
+`value_psi` is nullable and `unavailable` is stored as NULL, never 0 (the
+observed minimum is 9 psi). The `gas_detector_*` entities are **deliberately
+excluded** — they are a liveness heartbeat, not a leak detector. This source is
+additive and separate from usage; nothing in the Digital Twin or the
+cycle/revenue KPIs derives from it, and no alert is raised from it. Full
+contract and the safety boundary:
 `docs/03_data_contracts/ha_gas_sensor_contract.md`.
+
+**Any new table in this warehouse needs a grant step that the code cannot
+perform.** The DDL is applied by `etl_writer` itself, so creating a table grants
+that user nothing on it, and the failure only appears at the first INSERT as
+`Code: 497 … Not enough privileges`. Every new fact table needs:
+
+```sql
+GRANT INSERT, CREATE TABLE ON laundrytwin_analytics.<table> TO etl_writer;
+```
+
+`SELECT` is deliberately not granted to `etl_writer` on fact tables — no fact
+table grants it, and the collectors never read what they write.
 
 The ML baseline (`get_off_peak_windows`) uses a percentile heuristic
 over `fact_machine_usage`. The complete feature engineering guide for
