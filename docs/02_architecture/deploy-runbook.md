@@ -221,12 +221,35 @@ Two consequences worth knowing before testing:
   That does not affect a sign-in test against the Developing LIFF URL, but the
   app cannot be submitted for review until those are set.
 
-**Re-read the measurement after the change and expect `["profile","openid"]`**;
-a scope left out of that list is a scope not applied.
+**Verified 2026-09-30 in a real sign-in against production,** after the scope
+change. The chain, as measured in the browser:
 
-**Not established here:** the LINE authentication flow is not verified end to end
-against production. Per the repository's own rule, a manual sign-in in the LINE
-app is not the same as a verified login.
+```text
+liff.getContext().scope            ["openid","profile"]     (was ["profile"])
+liff.permission.getGrantedAll()    ["profile","openid"]     user consented
+liff.getIDToken()                  present
+  iss                              https://access.line.me
+  aud                              2011592166              == LINE_LOGIN_CHANNEL_IDS[0]
+POST /api/auth/liff/exchange       403 ACCESS_PENDING
+```
+
+The `aud` claim matches a listed channel ID, which is the whole point of
+`LINE_LOGIN_CHANNEL_IDS` — `parseChannelIds` tries each listed ID as `client_id`
+against `api.line.me/oauth2/v2.1/verify`, and the MINI App's developing channel
+verifies like any other.
+
+`ACCESS_PENDING` is **not** an authentication failure. The token was accepted;
+`findLiffUser` found no local identity for this LINE user, so the route recorded
+a pending request and refused. That is the designed behaviour for an unknown
+LINE account, and the web gate renders the Thai pending card for it. To finish,
+an owner must approve the request from the access-grants screen (it lists
+`liffAccessRequest` rows) — the same screen that issues branch-scoped grants.
+
+**Not established here:** no completed session yet. The flow is verified up to
+and including token verification and the pending-request response; it has not
+been observed past an approval into an authenticated dashboard, because the
+test account has no grant. Do not describe LINE login as working end to end
+until a real sign-in has landed on `/dashboard`.
 
 ## Operational notes
 
