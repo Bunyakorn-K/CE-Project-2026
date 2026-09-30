@@ -2,8 +2,9 @@
 
 > Supersedes `2026-09-25-next-session-plan.md` for anything about production,
 > the warehouse, or the deployment. Read **Read This First** before anything
-> else: the single most dangerous open item is a data-loss mechanism that is
-> **not understood**.
+> else: the cause of the 17-day warehouse hole is now **known**, and it is not
+> a copy failure — it was a rollback to a stale backup, preceded by deleting the
+> correct one.
 >
 > This session's work is committed as `e3198e4` (32 files) and is **not
 > pushed**. Every production figure below carries its measurement date. Nothing
@@ -12,29 +13,56 @@
 
 ## Read This First
 
-**We do not know why the production warehouse lost 17 days, and another restore
-could lose a different window.**
+**The root cause is resolved. The data was never deleted — it was orphaned.**
 
-Two Docker volumes exist for the same ClickHouse server UUID
-`2158102b-fd34-4a63-820d-6874da88a0bb` and they hold **disjoint** data. The live
-volume (`analytics_clickhouse-data-restored`) was missing 2026-08-31 →
-2026-09-16 entirely. The stale volume (`analytics_clickhouse-data`) held exactly
-those days. The merge on 2026-09-30 closed the hole; it did **not** explain it.
+`analytics-clickhouse-1` OOM-crash-looped **2,779 times** from 2026-09-14
+05:56 to 2026-09-17 10:10 (15 host OOM kills, `global_oom`). A 3 GiB memcap and a
+4 GiB `/swapfile` stopped the loop but did not make the live volume healthy. On
+2026-09-17 the operator:
 
-The "part was lost during the 2026-09-17 copy" explanation is **contradicted by
-evidence**:
+1. **10:16:37** — took a **correct full backup** of the live volume
+   (`docker volume create chdata-bak-20260917` + `alpine cp -a /src/. /dst/`).
+2. **10:31:55 – 10:32:03** — **deleted that backup** (`rm -rf`, `docker volume rm`).
+3. **10:32:03** — extracted `/opt/backups/pre-upgrade-20260831/clickhouse-data.tgz`
+   (cut at **2026-08-31 04:32**) into a new volume
+   `analytics_clickhouse-data-restored`, which is **still the live volume today**.
+4. **10:42:18** — switched compose to it. The original `analytics_clickhouse-data`
+   was orphaned, still holding 2026-08-31 04:32 → 2026-09-16.
 
-- The two volumes' `fact_machine_usage` **block lineages are unrelated**. This
-  was not part loss; the live lineage did not exist to lose parts in.
-- The live volume was **created 21 minutes after** the stale volume recorded its
-  last server start.
+The 17 days were **never lost from disk** — the stale volume still holds them,
+byte-identical, 7,848,770,665 bytes. The warehouse pointer was simply moved to a
+snapshot taken before those days existed.
 
-**Nobody has read the 2026-09-17 restore procedure.** Before any future restore,
-backup, volume swap, or host migration, compare the lineage of source and
-destination volumes explicitly — server UUID alone is not identity. Treat
-2026-09-30 as the recovery of a *known hole*, not a fix of a *known cause*.
+The proof is a fingerprint in the data: 2026-08-31 splits **exactly at the
+04:32 tarball cutoff** — 35 rows before it (00:10:44 → 04:28:47, never lost) and
+134 after it (04:45:47 → 21:14:24, from the 2026-09-30 merge), leaving a
+17-minute hole straddling the cutoff. The next usage row is 2026-09-17 01:55:33.
 
-Detail: `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md` §1.
+> **Correction to an earlier claim in this handoff.** The two volumes'
+> `fact_machine_usage` lineages are **not** unrelated. Both carry the same
+> Atomic table UUID `store/390/390b1d99-94e6-49df-b489-c0a3893c9cfa`; only the
+> *part names* differ, because merge boundaries differ. Comparing part names is
+> not comparing lineage. Compare **table UUID and part offset range** instead.
+
+**Still unknown:** *why* ClickHouse would not stay up on the live volume even
+with the memcap and swap. The error log the operator captured for exactly this
+(`/opt/analytics/ch-logs/`, via the throwaway `chtest3`) is now an empty
+directory. No record exists of why a 17-day-old tarball was accepted as a
+restore source.
+
+Detail, evidence and confidence levels:
+`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md` §1.
+
+> ### Standing rule
+>
+> **Another restore could lose a different window — differently.** The cause is
+> known. Detection now exists (`check_usage_continuity`, added 2026-09-30); the
+> restore-time gates do not. The specific failure was **deleting a
+> correct backup 8 seconds before extracting an older one in its place.** Before
+> any future restore, volume swap, or host migration: assert the restore source
+> is **not older** than the data it replaces, and compare source/destination
+> lineage by table UUID and part offset range — **a matching server UUID proves
+> nothing**.
 
 ## Current State
 
@@ -129,13 +157,38 @@ merge changes these numbers and nothing on disk will say so.
 
 ## Open Items
 
-### PRIORITY 1 — root cause of the data loss is unknown
+### PRIORITY 1 — root cause RESOLVED; detection CLOSED; restore-time guards still open
 
-See **Read This First**. Nobody has read the 2026-09-17 restore procedure. This
-is the highest-value thing the next session could resolve, and it is a
-read-only investigation: find whatever records the procedure, compare volume
-lineage rather than UUID, and write the answer into
-`ops-verification-2026-09-30-warehouse-data-recovery.md` §1.
+**Closed.** The 2026-09-17 procedure is read and recorded in the recovery record
+§1. It was a rollback to `pre-upgrade-20260831/clickhouse-data.tgz` after the
+correct `chdata-bak-20260917` volume was deleted.
+
+- [x] **Make the freshness DAG detect mid-range holes, not just staleness.**
+      **Done 2026-09-30.** `check_usage_continuity` now runs first in
+      `deploy/analytics/dags/laundrytwin_warehouse_freshness.py` and counts day
+      buckets of `toDate(started_at)` — the business day, deliberately not
+      `extracted_at`, which is the field that stayed fresh throughout the
+      incident. It warns rather than fails, and exempts only the
+      evidence-backed `2026-07-27` source gap. Verified against the live
+      warehouse in the real Airflow 3.3.1 image: clean on the recovered data,
+      and flags exactly 2026-09-01 … 2026-09-16 when fed the real pre-recovery
+      day set. Method and evidence: recovery record §1.6.
+
+What remains is **prevention at restore time**, not diagnosis:
+
+- [ ] **Restore-source freshness gate.** A restore must refuse a source backup
+      older than the destination it replaces. A `stat` comparison would have
+      blocked this one.
+- [ ] **Post-restore continuity assertion before any compose switch.** Compare
+      `max(extracted_at)` in the restored volume against the pre-restore value.
+      The DAG check above is a *detector* on a 5-minute cadence; this is a
+      *gate* at the moment of the swap, and the two are not substitutes.
+- [ ] **Reconcile the ETL watermark against warehouse coverage.** The watermark
+      is a forward-only source cursor on the host
+      (`/opt/laundrytwin-etl/data/etl-watermark.json`), outside the ClickHouse
+      volume, so a volume rollback is invisible to the loader by construction.
+      The contiguity check *reports* this; it does not make the loader re-read
+      the gap.
 
 ### PRIORITY 2 — the canonical cycle-KPI decision lost its most intuitive support
 
@@ -150,15 +203,69 @@ running work).
 It is simply weaker than the RTM's framing implies. The RTM and the recovery
 record already say this; do not restate it as re-confirmed.
 
-- A plausible cause, **consistent with the numbers but UNPROVEN**: the 17
-  recovered days are heavily unattributed, so they add rows to a row count
-  without adding sessions to any session-distinct count, which pulls ฿/cycle
-  upward. **The unattributed share of those 17 days specifically has never been
-  measured.** Measuring `attribution_state` / `machine_session_id` restricted to
-  2026-08-31 … 2026-09-16 would settle it.
-- Separately: the 1:1 session cardinality the decision actually rests on was
-  measured on 2026-09-29 and **never re-measured**. Read the caveat below
-  before trying to re-run the script.
+#### Both open questions below were measured on 2026-09-30 12:15–12:45 UTC
+
+Full method, SQL and per-group figures:
+`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`
+**§5A**. Read that before re-deriving anything here.
+
+**1. The unattributed-recovered-days hypothesis: CONFIRMED.**
+
+| group | rows | `machine_session_id IS NULL` | % unattributed |
+|---|---:|---:|---:|
+| **A — the 17 recovered days** (2026-08-31 … 09-16) | 2,644 | 1,922 | **72.6929%** |
+| **B — the complement** (all other dated rows) | 4,743 | 2,930 | **61.7752%** |
+| C — `started_at IS NULL` (cannot be assigned to a day) | 534 | 524 | 98.1273% |
+
+The recovered days **are** materially more unattributed than the pre-existing
+corpus — a gap of 10.92 percentage points — and they supply **95.01%** of their
+own `paid`/`finished` rows as unattributed against the complement's **66.35%**.
+
+**The mechanism is a row-MIX effect, not a PRICE effect, and that distinction
+matters.** Revenue per unattributed `paid`/`finished` row is **6,306 satang
+(฿63.06)** in the recovered days against **6,273.4 satang (฿62.73)** in the
+complement — a 0.5% difference. The two periods cost the same per cycle. What
+differs is how much of each period's row count is revenue-bearing, so blending
+a 95%-unattributed block into a 66%-unattributed corpus raises the blended
+฿/cycle.
+
+Per group, under the canonical row count: recovered days alone **฿59.92**,
+complement alone **฿41.88** (inside the band), all rows **฿48.41**. A
+counterfactual that reassigns the recovered days' rows to the complement's
+attribution mix, holding each group's own observed revenue-per-row, reads
+**฿43.05 — inside the plausible band.** The overshoot above ฿45 is fully
+accounted for by attribution mix and by nothing else measured here.
+
+**2. The 1:1 session cardinality: RE-MEASURED, still exactly 1:1.**
+
+Run by hand with `status` filtered **by name**, per the correction below;
+`apps/api/scripts/cycle-cardinality-diagnostic.ts` was neither run nor
+modified. 12:20:17 UTC: 2,544 session ids, min = max = avg = **1** rows per
+session. 12:41:59 UTC: 2,545 session ids, **0** carrying more than one status,
+**0** carrying more than one paid/finished status, max distinct statuses = 1.
+**The property the 2026-09-29 decision rests on survives the enum migration and
+the merge.**
+
+> **What this does and does not mean for the decision.** It does **not**
+> re-confirm it. The ฿/cycle agreement is now *explained* — and what it
+> explains is that the ratio reads like a plausible wash partly **because
+> unattributed rows are cheap per session**, not because a row is a wash. A
+> metric that lands in the band for that reason has not thereby been validated.
+> The decision is **weaker** than the RTM's framing implies, not stronger, and
+> should not be described as re-confirmed.
+>
+> Two things this measurement explicitly does **not** explain: the
+> 2026-07-22 → 2026-08-20 block is only **6.53%** unattributed and reads
+> **฿3.35/cycle**, which is why the corpus-wide unattributed share (67.87%) is
+> lower than the recovered days' own — that block is unexplained and is not
+> recovered data; and whether **฿63 per unattributed cycle** is a *correct*
+> wash price is untested, because this only shows the two periods agree on it.
+
+- Remember the unattributed share is a **live metric, not a constant**. It moves
+  as the ETL ingests the IRIS backlog and as recovery merges land. Any figure
+  quoted without a measurement date is stale by construction. It visibly moved
+  **during** this measurement: the §"Measured" table above read 7,908 rows at
+  11:39:11 UTC and **7,921** rows by 12:45 UTC.
 
 > **Correction to a common assumption:** `apps/api/scripts/cycle-cardinality-diagnostic.ts`
 > **will refuse to run against the production warehouse.** Its candidate
@@ -171,7 +278,8 @@ record already say this; do not restate it as re-confirmed.
 > `buildSessionSpanSummarySQL` is status-free and can be used verbatim; in
 > `buildMultiStatusSessionSQL` replace `status IN (2, 4)` with
 > `status IN ('paid','finished')`. Do not "fix" the frozen expressions; they
-> are the evidence.
+> are the evidence. **This is now done — see item 2 above; the working queries
+> are recorded in the recovery record §5A.8.**
 
 - Remember the unattributed share is a **live metric, not a constant**. It moves
   as the ETL ingests the IRIS backlog and as recovery merges land. Any figure
@@ -218,8 +326,12 @@ session:**
       plaintext in the Airflow metadata DB, i.e. a **third** copy alongside
       `/opt/analytics/.env` and `/opt/laundrytwin-etl/.env`. No repo or tofu
       resource manages it.
-- [ ] `chtest7` — an exited `clickhouse-server:26.3` container from 12 days ago
-      still mounting the 7.6 GB `analytics_clickhouse-data` volume.
+- [ ] `chtest7` — an exited `clickhouse-server:26.3` container (exit 76) still
+      mounting the 7.6 GB `analytics_clickhouse-data` volume. **Now identified:
+      created 2026-09-17 10:30:45 as the last of a series of diagnostic
+      throwaways during the OOM crash loop** (see **Read This First**). It is
+      evidence for the §1 timeline; its `docker logs` and `docker inspect` are
+      quoted there, so it can now be removed.
 - [ ] Permissions on `/opt/backups/pre-upgrade-20260831/*.tgz` — mode 0644,
       should be 0600.
 - [ ] The registry is on the same host as its only client (`10.10.0.117:5000` is
@@ -272,11 +384,22 @@ health checks imply any of it.
 - **No production, LINE, or browser E2E.** Nothing establishes that the
   Dashboard or Digital Twin renders correctly in a browser against the merged
   warehouse. The LINE authentication flow has never run end to end.
-- **The data loss is not understood** (PRIORITY 1).
+- **The data loss is now understood** (PRIORITY 1, closed 2026-09-30) — but
+  **why ClickHouse would not start on the live volume after the memcap and swap
+  remain unknown**; the error log captured for it is gone. The contiguity check
+  added on 2026-09-30 would *report* a resulting hole, but nothing prevents the
+  startup failure itself.
 - **The Airflow restart trigger is undetermined** (PRIORITY 4) — not benign.
-- **Why ฿/cycle moved from ฿42.20 to ฿48.40 is not established** (PRIORITY 2).
-  The unattributed recovered days are *consistent with* it; no per-day
-  attribution measurement was run.
+- **Why ฿/cycle moved from ฿42.20 to ฿48.40 was not established** (PRIORITY 2).
+  **RESOLVED 2026-09-30 12:45 UTC — hypothesis CONFIRMED.** It is a row-mix
+  effect: the recovered days are 72.6929% unattributed vs the complement's
+  61.7752%, at the same revenue per unattributed cycle (6,306 vs 6,273.4
+  satang). At the complement's mix the same data reads ฿43.05. See PRIORITY 2
+  and the recovery record §5A. **This weakens rather than strengthens the
+  cycle-KPI decision.**
+- **Still unexplained:** why the 2026-07-22 → 2026-08-20 block is only 6.53%
+  unattributed and reads ฿3.35/cycle, and whether ฿63 per unattributed cycle
+  is a correct wash price at all.
 - **Most §"Measured" figures have no captured output file.** They are
   re-measurable but not re-readable.
 - **`tofu apply` has never been run on this VM.** A first apply is a
@@ -428,12 +551,29 @@ The gate does not authorize the apply.
 
 ## Remaining Follow-up Work
 
-- [ ] **Read the 2026-09-17 restore procedure and establish how the live volume
-      lost 2026-08-31 → 2026-09-16.** Compare block lineage, not server UUID.
-- [ ] Measure `machine_session_id` / `attribution_state` for 2026-08-31 …
-      2026-09-16 specifically, to confirm or refute the ฿48.40 explanation
-- [ ] Re-measure 1:1 session cardinality on the migrated warehouse, by name,
-      not with the frozen diagnostic script
+- [x] ~~**Read the 2026-09-17 restore procedure and establish how the live
+      volume lost 2026-08-31 → 2026-09-16.** Compare block lineage, not server
+      UUID.~~ **CLOSED 2026-09-30** — resolved: a rollback to the 2026-08-31
+      04:32 tarball, after the correct `chdata-bak-20260917` volume was deleted
+      8 seconds earlier. The data was orphaned, never destroyed. See **Read This
+      First** and the recovery record §1. Note this also **corrects** the
+      earlier "block lineages are unrelated" claim — the Atomic table UUID is
+      identical; only part names differ.
+- [ ] Add the restore-source freshness gate and post-restore continuity
+      assertion described in PRIORITY 1 (not implemented; the detection half
+      landed on 2026-09-30, the restore-time gates did not)
+- [x] Make `laundrytwin_warehouse_freshness` detect mid-range day-bucket holes,
+      not only staleness — done 2026-09-30 as `check_usage_continuity`; see
+      recovery record §1.6
+- [x] Measure `machine_session_id` / `attribution_state` for 2026-08-31 …
+      2026-09-16 specifically, to confirm or refute the ฿48.40 explanation —
+      **DONE 2026-09-30 12:15–12:45 UTC. CONFIRMED**: 72.6929% unattributed vs
+      the complement's 61.7752%; a row-mix effect, not a price effect. See
+      PRIORITY 2 and the recovery record §5A
+- [x] Re-measure 1:1 session cardinality on the migrated warehouse, by name,
+      not with the frozen diagnostic script — **DONE 2026-09-30 12:20/12:41
+      UTC. Still exactly 1:1** (min = max = 1 rows per session; 0 sessions with
+      more than one status). Queries in the recovery record §5A.8
 - [ ] Determine the Airflow restart trigger; do not record it as benign
 - [ ] Rotate `SUPERSET_DB_PASSWORD` (compromised, in a transcript, in use)
 - [ ] Remove `ANALYTICS_READ_API_KEY` from `/opt/analytics/.env`
@@ -456,8 +596,10 @@ The gate does not authorize the apply.
 
 ## Safety Boundaries
 
-- Do not treat the 2026-09-30 recovery as a fix. It recovered a known hole; the
-  cause is unknown.
+- Do not treat the 2026-09-30 recovery as a fix. The cause is now known
+  (a rollback to a stale backup after the correct one was deleted). A detector
+  exists as of 2026-09-30, but **no gate prevents a repeat at restore time** —
+  see PRIORITY 1.
 - Do not re-confirm the cycle-KPI decision with the 2026-09-30 band. It stands
   on 2026-09-29 evidence and is now weaker, not stronger.
 - Do not record the 2026-09-30 Airflow restarts as expected or benign.

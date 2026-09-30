@@ -78,8 +78,23 @@ note. Coverage is 70 of 71 day buckets; **2026-07-27 is the only usage gap day
 and it is a genuine source gap, not an artefact.** The jump from 4,458 to 7,908
 is the 2026-09-30 recovery merge, which closed a 17-day hole (2026-08-31 →
 2026-09-16) the live warehouse was missing — see
-`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`,
-which also records an **unresolved** root cause for how that data was lost.
+`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`.
+That document now records the root cause as **resolved**: no data was deleted.
+The live volume was rolled back to a 2026-08-31 snapshot on 2026-09-17 after a
+correct backup taken 15 minutes earlier was deleted 8 seconds before the restore
+began. The 17 days were orphaned, not destroyed, and the original volume still
+holds them. Two earlier claims in that record were wrong and are corrected
+there: the two volumes share the same Atomic table UUID (a `tar -x` copy, not a
+fresh init), and part *names* differ legitimately with merge boundaries, so
+comparing part names is not comparing lineage. **Before any future restore,
+backup, volume swap, or host migration, read that record §1 — in particular the
+two still-missing restore-time guards: a restore-source freshness assertion and
+a post-restore `max(extracted_at)` continuity check before the compose switch.**
+The *detection* half is closed: `check_usage_continuity` in
+`deploy/analytics/dags/laundrytwin_warehouse_freshness.py` now runs first in the
+freshness DAG and reports day-shaped holes in `toDate(started_at)`, the business
+day, so a fresh-but-holey warehouse can no longer read as healthy. It warns
+rather than fails, and exempts only the evidence-backed `2026-07-27` source gap.
 Sufficient for baseline only; **71 days is still short of the ≥ 3 months
 (90 days) needed for Prophet/SARIMA/GBM candidates.** See
 `docs/06_ml/ml-training-data-guide.md` §5 for data requirements.

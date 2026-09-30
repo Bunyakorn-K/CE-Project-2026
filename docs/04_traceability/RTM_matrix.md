@@ -182,13 +182,38 @@ measured **2026-09-30 11:39:11 UTC** over **7,908** non-synthetic rows spanning
   widened with the recovered backlog: only 1,589 of 6,666 cycles (23.84%) carry
   a session id, so **76% of cycles have no session-level evidence**.
 
-  **Why ฿/cycle rose from ฿42.20 to ฿48.40 is not established.** The recovered
-  17 days are heavily unattributed, which is *consistent with* the rise — rows
-  with no session id add to a row count but to no session-distinct count, which
-  pulls the row-count ratio up. That is a **plausible cause, not a proven one**:
-  it would need a per-day `attribution_state` / `machine_session_id` breakdown
-  restricted to 2026-08-31…2026-09-16, and **no such measurement has been
-  run**. Do not restate the cause as a finding.
+  **Why ฿/cycle rose from ฿42.20 to ฿48.40 — MEASURED 2026-09-30 12:15–12:45
+  UTC, hypothesis CONFIRMED** (recovery record **§5A**). The recovered 17 days
+  are **72.6929%** unattributed against the pre-existing corpus's **61.7752%**,
+  and they supply **95.01%** of their own `paid`/`finished` rows as
+  unattributed against the complement's **66.35%**. Per group under the
+  canonical row count: recovered days alone **฿59.92**, complement alone
+  **฿41.88**, all rows **฿48.41**.
+
+  The mechanism is a **row-mix effect, not a price effect**: revenue per
+  unattributed `paid`/`finished` row is **6,306 satang** in the recovered days
+  against **6,273.4** in the complement — a 0.5% difference. The two periods
+  cost the same per cycle; what differs is how much of each period's row count
+  is revenue-bearing. A counterfactual that reassigns the recovered days' rows
+  to the complement's attribution mix, holding each group's own
+  revenue-per-row, reads **฿43.05 — inside the plausible band**, so
+  attribution mix accounts for the overshoot and nothing else measured here
+  does.
+
+  > **This does not re-confirm the decision; it weakens it.** The ฿/cycle
+  > agreement is now *explained*, and what it explains is that the ratio reads
+  > like a plausible wash partly **because unattributed rows are cheap per
+  > session** — not because a row is a wash. A metric that lands in the band
+  > for that reason has not thereby been validated. The 2026-09-29 decision
+  > stands on its own evidence and the **ranking is unchanged**; do not
+  > describe this measurement as strengthening it.
+  >
+  > Two things remain **unexplained** and are not claimed: why
+  > 2026-07-22 → 2026-08-20 is only **6.53%** unattributed and reads
+  > **฿3.35/cycle** (it is not recovered data, and it is why the corpus-wide
+  > unattributed share is as low as 67.87%); and whether **฿63 per
+  > unattributed cycle** is a *correct* wash price at all — this measurement
+  > shows the two periods agree on it, not that it is right.
 - **`status` breakdown** (measured 2026-09-30 11:39:11 UTC): `pending_payment` 2,
   `paid` 262, `admitted` 28, `running` 972, `finished` 6,404, `cancelled` 240.
   533 rows have a NULL `started_at`. The canonical cycle KPI
@@ -216,9 +241,13 @@ measured **2026-09-30 11:39:11 UTC** over **7,908** non-synthetic rows spanning
   `countDistinct(machine_session_id)` would be identical over the attributed
   subset. The row count is a strict superset.
   (Cardinality measured 2026-09-29: 1,609 session ids, 0 spanning more than one
-  row, 0 carrying more than one `status`. The 1:1 shape was **not re-measured**
-  on 2026-09-30; the 2026-09-30 `countDistinct(machine_session_id)` figure of
-  2,539 is consistent with it but does not re-prove it.)
+  row, 0 carrying more than one `status`. **Re-measured 2026-09-30
+  12:20:17 / 12:41:59 UTC, by hand with `status` filtered by name, on the
+  migrated and merged warehouse: 2,544 session ids with min = max = avg = 1
+  rows per session, and 0 of 2,545 session ids carrying more than one `status`
+  (max distinct statuses = 1). The 1:1 shape survives the enum migration and
+  the merge. See the recovery record §5A.5; the script itself was not run or
+  modified, because it refuses to run against a migrated column by design.)
 - **It aligns the dashboard with the analytics layer.** `DAILY_SQL` already
   used `countIf(status IN ('finished','paid'))`. This removes a divergence
   rather than creating one.
@@ -237,7 +266,11 @@ measured **2026-09-30 11:39:11 UTC** over **7,908** non-synthetic rows spanning
 > above. The decision is therefore **weaker than the 2026-09-29 record implies**,
 > resting on the first two bullets plus the data-contract authorisation, not on
 > price plausibility. The 1:1 cardinality shape behind bullet 2 was measured
-> only on 2026-09-29 and has not been re-measured since.
+> only on 2026-09-29, and has since been **re-measured on 2026-09-30
+> 12:20/12:41 UTC and still holds** (recovery record §5A.5). So the two
+> price-independent legs of the decision are intact, and the price leg is not
+> merely absent but **explained away** — see the measurement above, which finds
+> the band agreement is a by-product of attribution mix.
 
 #### The attribution gap stays visible
 

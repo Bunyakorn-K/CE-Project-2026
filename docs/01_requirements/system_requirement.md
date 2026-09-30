@@ -19,7 +19,7 @@
 
 ---
 
-## Implementation status (verified 2026-09-14)
+## Implementation status (verified 2026-09-14; R06 re-checked 2026-09-30)
 
 The requirement text above is the source of truth; this table records what the
 deployed implementation actually covers today, with evidence. Rows keep their
@@ -32,7 +32,7 @@ original wording even where implementation took a different verified path.
 | R03 | ✅ Implemented | ClickHouse aggregates + revenue/cycles/utilization API + Superset charts (`apps/api/src/analytics/*`, integer satang, traceable to source via source_event_id). |
 | R04 | ✅ Implemented | `access-policy.ts` + `analytics/scope.ts`; cross-branch and revenue-isolation denial tests green. |
 | R05 | ✅ Implemented | `alert-engine.ts`: idempotent per (alert, recipient), cooldown per `branch:rule:severity`, LINE push, audit. |
-| R06 | 🟡 Alert arm only | The notification arm (R05 engine) can deliver the alert, but the low-gas **trend evaluation** still needs a verified `gas_pressure` register from upstream (no such register in the current IRIS contract) — blocked externally. |
+| R06 | 🟡 Alert arm only | The notification arm (R05 engine) can deliver the alert, but the low-gas **trend evaluation** is still incomplete. A verified **external** `gas_pressure` source now exists and was measured 2026-09-30 — Home Assistant psi sensors for LPG tanks A/B at `otterimju2` (`docs/03_data_contracts/ha_gas_sensor_contract.md`) — so the *field* is no longer the open question. Still open: the IRIS-contract blocker (no `gas_pressure` **register**; this is a third-party source, not IRIS), the trend-evaluation logic with `temperature` and dryer `state`, ingestion, and a 7-day retention ceiling on the source. **Not unblocked.** Pressure here is not a leak detector and the source is not a life-safety system. |
 | R07 | ❌ Blocked upstream | Coin-box estimation and reset need an explicitly mapped `coinbox_open` event; upstream still has unresolved `paid`/coin-box semantics (see `docs/03_data_contracts/` and test_cases.md US-03 note). Not implementable with verified evidence today. |
 | R08 | ✅ Implemented locally | Allow-listed MCP analytics server (6 tools, bearer auth, no arbitrary SQL) + LINE bot + AI console (`/admin/ai`); RBAC branch-scope enforced server-side. Complete prompt/tool-call/result audit remains a target. The five-tool LibreChat E2E run on 2026-09-14 is historical evidence; the current six-tool registry and signed scope path have local code/test evidence only. |
 | R09 | ✅ Baseline shipped 2026-09-14 | Off-peak window recommendation. MCP tool `get_off_peak_windows` (percentile baseline, Asia/Bangkok local-hour buckets, minCycles noise guard, rules in meta) — evidence `ops-verification-2026-09-14-r09-offpeak.md`. Model candidates (Prophet/ARIMA) deferred until ≥ 3 months of history (`docs/06_ml/algorithm-comparison.md`). |
