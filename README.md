@@ -108,8 +108,12 @@ is documented in
 The active web router currently includes branch/date filters, nullable revenue,
 source/freshness/availability states, analytics series and tables, alert
 evidence and acknowledgement, owner-only access grants/admin tools, AI settings
-and history, owner-only Playground, legal navigation, and LIFF error retry.
-Screenshot/browser QA is still pending.
+and history, owner-only Playground, legal navigation, and LIFF error retry. It
+also surfaces the executive summary, the R09 off-peak ranking and the F-12
+weather correlation, which were previously reachable only through LINE or
+MCP. Manual browser QA of the router was performed on 2026-09-28; the
+committed Playwright suite covers the shell layout and a set of rendered
+honesty labels, but there is no production, LINE, or browser E2E.
 
 The current application never sends machine commands, writes payment data,
 or exposes upstream credentials to the browser. Current MCP analytics exposes
@@ -270,7 +274,7 @@ Local automated evidence on **2026-09-30: 417 tests green** (API 277, web 53,
 ETL 87). The count is maintained in one place only — see
 [Verification in `AGENTS.md`](AGENTS.md#verification) for the current figure and
 its history.
-The separate Playwright layout suite is 11 tests and is not part of `pnpm test`.
+The separate Playwright suite is 20 tests and is not part of `pnpm test`.
 Node 24.x is used (see `.nvmrc`). `pnpm --filter @laundrytwin/api check`, web
 check/test/build, and ETL test pass. Manual browser QA of the active router was
 performed on 2026-09-28 and found real defects, but it is manual, Chromium-only,
