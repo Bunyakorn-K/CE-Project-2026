@@ -398,6 +398,54 @@ one. Any production deployment, production migration, live telemetry ingestion,
 machine command, or payment write requires a separate explicit user request,
 the recorded rollback ref, and the post-change smoke checks above.
 
+## Access request — approved 2026-10-01 (`ด.ช.นน`, owner)
+
+A LIFF access request had been pending since 2026-10-01 15:08 UTC for
+`U284d77fa27c1bf0be58fe91ad71618d3` (display name `ด.ช.นน`). Until it was
+approved, the browser showed the "ส่งคำขอเข้าใช้งานแล้ว" card instead of the
+dashboard.
+
+**It could not be approved through the admin UI.** The only two `owner` grants
+in the app database belong to `Demo Owner` accounts, and the VM runs
+`LAUNDRYTWIN_DEMO_MODE=false`, so `POST /api/demo/session` returns 404 and no
+one can sign in to reach `/admin`. This is a bootstrap-ordering trap worth
+knowing about: until a real owner exists, the access-request queue can only be
+drained out of band.
+
+Approved with `apps/api/scripts/approve-liff-access.mjs`, run inside the API
+container. The script replicates `approveLiffAccessRequest` from
+`apps/api/src/access-store.ts` because the container ships only
+`dist/index.mjs`, where that function is bundled but not exported.
+
+```bash
+scp apps/api/scripts/approve-liff-access.mjs uunw@10.10.0.117:/tmp/
+ssh -J notnotik-pve uunw@10.10.0.117
+sudo docker cp /tmp/approve-liff-access.mjs laundrytwin-api-1:/app/approve-liff-access.mjs
+sudo docker exec -u 0 laundrytwin-api-1 node /app/approve-liff-access.mjs \
+  <requestId> owner - <actorUserId>
+```
+
+`owner` takes `-` for the branch because it is tenant-wide; `manager` and
+`technician` each take exactly one `branchId`. The actor must hold a live
+`owner` grant — here it was the `Demo Owner` account
+`67d0791d-58aa-4998-858a-ddad75d876e3`, because no human owner existed yet. That
+actor is recorded in `audit_log.action = 'access_request.approved'`, so the
+trail shows a demo account approving the first real owner. That is what
+happened, and it is worth knowing when auditing.
+
+Result: created user `891fca30-a7f2-4f28-9bc6-1dc0fb69e12c`, a tenant-wide
+`owner` grant `441da252-b7ec-4a5b-bb12-938dab62dfd2`, the `liff_identity` row,
+and the audit entry — all read back and confirmed. App SQLite backed up first to
+`/opt/backups/pre-approve-20260930T175021Z/laundrytwin.sqlite` (192 KB,
+`integrity_check=ok`, row-counted against the source).
+
+**The approved account has still not been seen completing a LINE sign-in.** The
+grant removes the pending card by construction — the exchange finds a user with
+a grant instead of returning 403 `ACCESS_PENDING` — but the LINE login flow
+remains unverified end to end. To revoke, delete the grant via
+`POST /api/admin/grants/:id/revoke` once a human owner can sign in, or mark it
+revoked directly.
+
 ## Deploy record — 2026-10-01, web only (`33a84cd`)
 
 Applied the LIFF-gate legal-route bypass to production. Web only; the API image
