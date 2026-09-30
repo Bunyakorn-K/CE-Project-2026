@@ -32,6 +32,15 @@ Read these documents before changing behavior or data models:
   defines the ML feature schema, training pipeline, and modeling plan.
 - [`apps/web/PRODUCT.md`](apps/web/PRODUCT.md) records the web product context,
   users, workflows, constraints, and Thai-first principles.
+- [`docs/07_handoffs/2026-09-30-handoff-priorities.md`](docs/07_handoffs/2026-09-30-handoff-priorities.md)
+  ranks the work that is **left**, with the evidence record named per item.
+  Start here to pick something up.
+
+**Start here if you are new to this repository:** read this file, then the
+handoff above, then the evidence records it points at. The operational history
+of this project is unusually load-bearing — several current facts exist only
+because an incident was investigated in detail, and re-deriving them from the
+code alone will produce a wrong answer.
 
 ## Current implementation status
 
@@ -43,7 +52,10 @@ Read these documents before changing behavior or data models:
 || Explicit, labeled demo mode | Implemented; requires an explicit demo session cookie and is preview-only, not a production fallback |
 || Read-only IRIS reporting integration | Client implemented; upstream API required |
 || Direct ClickHouse dashboard and Digital Twin | Implemented; server-side branch scope, strict dates, bind parameters, nullable revenue redaction, active inventory, usage-derived freshness, and unknown-state preservation have local code/test evidence; production E2E pending |
-|| Analytics warehouse (ETL → ClickHouse) | Implemented + deployed (usage, temperature, weather) |
+|| Analytics warehouse (ETL → ClickHouse) | Implemented + deployed (usage, temperature, weather, **gas pressure**) |
+| Gas-pressure collection (`otterimju2`) | Implemented + deployed; 3 Home Assistant channels → `fact_gas_pressure_sample`. Additive only: nothing in the Digital Twin or the cycle/revenue KPIs reads it, and no alert is raised from it. Pressure alone is not a leak detector and is not a safety system. Queries: `docs/03_data_contracts/gas-pressure-queries.sql` |
+| Warehouse de-duplication (`fact_temperature_sample`) | Applied 2026-09-30 — 3,762,139 → 2,258,219 rows, losslessly, engine is now `ReplacingMergeTree` so re-reads converge |
+| Warehouse backup | **None automated.** There is no cron, timer, or `system.backup_schedule`; every backup was taken by hand before a specific change. Roughly the first two months of temperature history cannot be reloaded from IRIS, so that data has one home only. See `docs/07_handoffs/2026-09-30-handoff-priorities.md` |
 || Superset BI dashboard | Implemented + deployed (metadata on Postgres) |
 || Airflow freshness DAGs | Implemented + deployed (per-role services on Postgres) |
 || MCP analytics tools (6, allow-listed) | Implemented; `MCP_ACCESS_TOKEN` is required, `MCP_ALLOW_REVENUE` is explicit false by default, and LINE scope is server-derived and signed |
@@ -53,7 +65,7 @@ Read these documents before changing behavior or data models:
 || Batch normalized usage/temperature storage | Implemented through IRIS-to-ClickHouse ETL |
 || Complete Digital Twin and alert engine from CE requirements | Partially implemented (alert acknowledgement is local to LaundryTwin) |
 || ML off-peak recommendation (baseline) | Implemented (`get_off_peak_windows` MCP tool, percentile heuristic) |
-|| ML training data & feature engineering | Documented (`docs/06_ml/ml-training-data-guide.md`) |
+|| ML training data & feature engineering | Documented (`docs/06_ml/ml-training-data-guide.md`). **71 days of usage data is short of the ≥90 days the Prophet/SARIMA/GBM candidates need** — sufficient for the percentile baseline only |
 
 ## Current application architecture
 
@@ -72,7 +84,17 @@ LaundryTwin Hono API    └─ MCP server (analytics, allow-listed tools)
         |
         v
 ClickHouse (warehouse) <- ETL <- IRIS Postgres (read-only)
+        ^
+        |
+        +-- weather collector  (TMD NWP forecast, hourly)
+        +-- gas collector      (Home Assistant, otterimju2, hourly)
 ```
+
+The warehouse holds `fact_machine_usage`, `fact_temperature_sample`,
+`fact_weather_sample`, `fact_gas_pressure_sample`, and
+`dim_branch_location`. The gas table is **additive and standalone**: it has no
+machine, session, or usage key, so it cannot be joined to usage on a machine
+identity and nothing in the app reads it yet.
 
 Deployment topology, DNS, and troubleshooting live in
 [`docs/02_architecture/deploy-runbook.md`](docs/02_architecture/deploy-runbook.md).
@@ -109,7 +131,7 @@ Twin may share visual primitives but must retain distinct operational meaning.
 ```text
 apps/api/                 Hono API, auth/RBAC, reporting, analytics MCP server, LINE bot, AI console
 apps/web/                 React/Vite LINE LIFF application (includes /playground route)
-apps/etl/                 Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather)
+apps/etl/                 Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather) + gas collector
 apps/playground/          (merged into web — see apps/web /playground)
 deploy/                   Container deployment config (per-app Dockerfiles, compose, tofu, nginx)
 deploy/analytics/         Analytics compose (clickhouse, superset, airflow, postgres, redis, mcp)
@@ -119,6 +141,7 @@ docs/02_architecture/     Target data model and Mermaid workflow diagrams
 docs/03_data_contracts/   MQTT/Modbus data rules and register evidence
 docs/04_traceability/     Requirements Traceability Matrix + ops verification records
 docs/06_ml/               ML algorithm comparison + ML training data & feature engineering guide
+docs/07_handoffs/         Ranked remaining work + superseded session plans
 docs/integration/         Current IRIS read-only integration contract
 ```
 
@@ -219,8 +242,11 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on **2026-09-30: 384 tests green** — API 270, web 53,
-ETL 61 (supersedes 227 green / API 152 / web 38 / ETL 37, measured 2026-09-28).
+Local automated evidence on **2026-09-30: 417 tests green** — API 277, web 53,
+ETL 87 (supersedes 413 / API 273 / web 53 / ETL 87, 384 / API 270 / web 53 /
+ETL 61, and 227 green / API 152 / web 38 / ETL 37, all measured 2026-09-30
+earlier or 2026-09-28; web had fallen to 1 after the dead-code deletion removed
+`dashboard-metrics.test.ts`).
 The separate Playwright layout suite is 11 tests and is not part of `pnpm test`.
 Node 24.x is used (see `.nvmrc`). `pnpm --filter @laundrytwin/api check`, web
 check/test/build, and ETL test pass. Manual browser QA of the active router was
