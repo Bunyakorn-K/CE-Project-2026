@@ -700,4 +700,120 @@ describe("LaundryTwin API", () => {
       }
     });
   });
+
+  // The second half of the same Digital Twin pair. A branch name rendering with
+  // no machines under it is the failure this route had: it also gated only on
+  // the dev bypass, so production answered 503 after the branch list succeeded.
+  // This route had no test of any kind before this one.
+  describe("live snapshot route", () => {
+    const IRIS_KEYS = ["IRIS_READ_BASE_URL", "IRIS_LAUNDRYTWIN_READ_API_KEY", "LAUNDRYTWIN_DEMO_MODE"] as const;
+
+    function withoutIrisReadSource(): () => void {
+      const saved = new Map(IRIS_KEYS.map((key) => [key, process.env[key]]));
+      for (const key of IRIS_KEYS) delete process.env[key];
+      return () => {
+        for (const [key, value] of saved) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+    }
+
+    /** One branch with one machine whose last activity is recent enough to be fresh. */
+    function liveExecutor(options: { lastActiveAt: string | null }): ClickHouseExecutor {
+      return vi.fn(async (sql: string, params?: Record<string, unknown>) => {
+        const branchId = String(params?.branchId ?? "");
+        if (sql.includes("dim_branch") && !sql.includes("fact_machine_usage")) {
+          return [{ branch_id: "branch-01", branch_name: "สาขาทดสอบ", timezone: "Asia/Bangkok", active: "1" }];
+        }
+        return [
+          {
+            tenant_id: "t-01",
+            machine_id: "machine-01",
+            branch_id: "branch-01",
+            machine_code: "W01",
+            machine_kind: "washer",
+            branch_name: "สาขาทดสอบ",
+            status: "running",
+            last_active_at: options.lastActiveAt,
+            cycle_count: "3"
+          }
+        ];
+      }) as unknown as ClickHouseExecutor;
+    }
+
+    it("denies a zero-grant principal before any source is called", async () => {
+      authenticate([]);
+      const clickhouse = vi.fn();
+      const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+      const response = await app.request("/api/report/live?branchId=branch-01");
+
+      expect(response.status).toBe(403);
+      expect(clickhouse).not.toHaveBeenCalled();
+    });
+
+    it("answers from ClickHouse when no IRIS read source is configured", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const app = createApp({
+          analyticsDeps: { clickhouse: liveExecutor({ lastActiveAt: new Date().toISOString() }) }
+        });
+
+        const response = await app.request("/api/report/live?branchId=branch-01");
+
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          live: { source: string; branchId: string; machines: { id: string; freshness: string }[] };
+        };
+        expect(body.live.source).toBe("clickhouse");
+        expect(body.live.branchId).toBe("branch-01");
+        expect(body.live.machines).toHaveLength(1);
+        expect(body.live.machines[0]?.freshness).toBe("fresh");
+      } finally {
+        restore();
+      }
+    });
+
+    it("marks usage-derived state unavailable rather than reporting it as live", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        // No recent usage. The snapshot must say so instead of rendering the
+        // machine as healthy -- that is the fabricated-green failure the
+        // freshness states exist to prevent.
+        const app = createApp({ analyticsDeps: { clickhouse: liveExecutor({ lastActiveAt: null }) } });
+
+        const response = await app.request("/api/report/live?branchId=branch-01");
+
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          live: { machines: { freshness: string; reason?: string; coverage: { liveState: { available: boolean } } }[] };
+        };
+        const machine = body.live.machines[0];
+        expect(machine?.freshness).toBe("unavailable");
+        expect(machine?.reason).toBeTruthy();
+        expect(machine?.coverage.liveState.available).toBe(false);
+      } finally {
+        restore();
+      }
+    });
+
+    it("refuses a branch outside the principal grant before querying", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "tech-01", role: "technician", branchId: "branch-01" }]);
+        const clickhouse = vi.fn();
+        const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+        const response = await app.request("/api/report/live?branchId=branch-02");
+
+        expect(response.status).toBe(403);
+        expect(clickhouse).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
+  });
 });

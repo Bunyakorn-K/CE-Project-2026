@@ -318,9 +318,15 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (branchId instanceof Response) return branchId;
 
     try {
-      const live = isDevelopmentAuthBypassEnabled()
-        ? await queryClickHouseLiveSnapshot(clickhouse, branchId)
-        : await iris.getLiveSnapshot(branchId);
+      // Same ClickHouse-first rule as the summary and branch list: the Digital
+      // Twin reads branches and live state together, so gating only one of them
+      // on the dev bypass rendered a page that could name a branch and then
+      // show nothing for it. requireSingleBranch already scoped branchId to the
+      // principal's own grant, so this cannot widen the read.
+      const live =
+        isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured())
+          ? await queryClickHouseLiveSnapshot(clickhouse, branchId)
+          : await iris.getLiveSnapshot(branchId);
       return c.json({ live });
     } catch (error) {
       return irisError(c, error);
