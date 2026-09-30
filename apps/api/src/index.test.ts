@@ -613,4 +613,91 @@ describe("LaundryTwin API", () => {
       }
     });
   });
+
+  // The Digital Twin loads its branch list from this route and its machines
+  // from the next one. Gating the branch list on the dev bypass alone left the
+  // ClickHouse-only production deployment with a 503 here, so the whole page
+  // was empty even though the warehouse had every branch in it. These cover the
+  // fallback and, more importantly, that it stays branch-scoped.
+  describe("branch list route", () => {
+    const IRIS_KEYS = ["IRIS_READ_BASE_URL", "IRIS_LAUNDRYTWIN_READ_API_KEY", "LAUNDRYTWIN_DEMO_MODE"] as const;
+
+    function withoutIrisReadSource(): () => void {
+      const saved = new Map(IRIS_KEYS.map((key) => [key, process.env[key]]));
+      for (const key of IRIS_KEYS) delete process.env[key];
+      return () => {
+        for (const [key, value] of saved) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+    }
+
+    /** Answers the dim_branch projection with two branches, one per call site. */
+    function branchesExecutor(): ClickHouseExecutor {
+      return vi.fn(async (_sql: string, params?: Record<string, unknown>) => {
+        const branchId = String(params?.branchId ?? "");
+        if (branchId && branchId !== "branch-01") return [];
+        return [
+          {
+            branch_id: "branch-01",
+            branch_name: "สาขาทดสอบ",
+            timezone: "Asia/Bangkok",
+            active: "1"
+          }
+        ];
+      }) as unknown as ClickHouseExecutor;
+    }
+
+    it("denies a zero-grant principal before any source is called", async () => {
+      authenticate([]);
+      const clickhouse = vi.fn();
+      const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+      const response = await app.request("/api/report/branches");
+
+      expect(response.status).toBe(403);
+      expect(clickhouse).not.toHaveBeenCalled();
+    });
+
+    it("answers from ClickHouse when no IRIS read source is configured", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const app = createApp({ analyticsDeps: { clickhouse: branchesExecutor() } });
+
+        const response = await app.request("/api/report/branches");
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          contractVersion: "clickhouse",
+          source: "clickhouse",
+          fetchedAt: expect.any(String),
+          branches: [{ id: "branch-01", name: "สาขาทดสอบ", timezone: "Asia/Bangkok", status: "active" }]
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("asks the warehouse only for a branch-scoped principal's own branch", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "tech-01", role: "technician", branchId: "branch-01" }]);
+        const clickhouse = branchesExecutor();
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/branches");
+
+        expect(response.status).toBe(200);
+        // The unfiltered query is the one that would leak another branch's name
+        // and timezone to a technician who has no grant for it.
+        for (const call of (clickhouse as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+          expect(call[1]).toMatchObject({ branchId: "branch-01" });
+        }
+      } finally {
+        restore();
+      }
+    });
+  });
 });

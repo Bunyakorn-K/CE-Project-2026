@@ -224,7 +224,12 @@ export function createApp(dependencies: AppDependencies = {}) {
     if (principal instanceof Response) return principal;
 
     try {
-      if (isDevelopmentAuthBypassEnabled()) {
+      // Same rule as the summary route: this has to answer from whichever
+      // source the rest of the report answers from, or the branch list the
+      // Digital Twin renders disagrees with the machines it then loads.
+      // Gating on the dev bypass alone left the one ClickHouse-only deployment
+      // with a working dashboard and no branches at all.
+      if (isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured())) {
         const allowedBranchIds = grantedReportBranchIds(principal);
         const branches = allowedBranchIds
           ? (await Promise.all(allowedBranchIds.map((branchId) => queryBranches(clickhouse, branchId)))).flat()
