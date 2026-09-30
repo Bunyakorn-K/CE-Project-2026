@@ -2,6 +2,7 @@ import type { AccessScope } from "./identity";
 import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
 import { agenticAnswer } from "../llm-client";
+import { branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
 
 export type ConversationContext = {
   userText: string;
@@ -15,20 +16,19 @@ export type ConversationDeps = {
   fetchImpl?: typeof fetch;
 };
 
-function buildSystemPrompt(ctx: ConversationContext): string {
+function buildSystemPrompt(ctx: ConversationContext, ownerPrompt: string, toolNames: readonly string[]): string {
+  // The wildcard scope means tenant-wide, so the human label wins; otherwise
+  // prefer the caller's resolved branch name and fall back to the raw ids.
   const branches = ctx.scope.branchIds.includes("*")
-    ? "ทุกสาขา"
-    : ctx.branchContext || ctx.scope.branchIds.join(", ");
-  return [
-    "คุณคือผู้ช่วยข้อมูลของระบบ LaundryTwin สำหรับผู้จัดการหรือเจ้าของร้านซักรีด",
-    `ผู้ใช้มีสิทธิ์: ${ctx.roleLabel}`,
-    `สาขาที่เข้าถึงได้: ${branches}`,
-    "ตอบเป็นภาษาไทย กระชับ และอ้างอิงข้อมูลจากเครื่องมือ (tools) เท่านั้น",
-    "ถ้าข้อมูลที่ได้เป็นข้อมูลจำลอง (dataSource เป็น synthetic หรือ mixed) ให้บอกผู้ใช้อย่างชัดเจนว่าเป็นข้อมูลจำลอง",
-    "ตัวเลขเงินในข้อมูลเป็นสตางค์ (satang) ให้แปลงเป็นบาทก่อนแสดง",
-    "ถ้าผู้ใช้ถามสิ่งที่ไม่มีข้อมูล ให้ตอบตรงๆ ว่าหาไม่เจอ อย่าเดาตัวเลข",
-    "ถ้าผู้ใช้ขอข้อมูลรายได้แต่สิทธิ์ไม่ถึง ให้บอกว่าไม่มีสิทธิ์ดูข้อมูลรายได้"
-  ].join("\n");
+    ? branchLabel(["*"])
+    : ctx.branchContext || branchLabel(ctx.scope.branchIds);
+  return buildAssistantSystemPrompt({
+    ownerPrompt,
+    roleLabel: ctx.roleLabel,
+    branches,
+    toolNames,
+    canViewRevenue: ctx.scope.canViewRevenue
+  });
 }
 
 type ChatMessage = {
@@ -64,7 +64,7 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
   return agenticAnswer(settings.baseUrl, settings.apiKey, settings.model, {
-    instructions: buildSystemPrompt(ctx),
+    instructions: buildSystemPrompt(ctx, settings.systemPrompt, tools.map((tool) => tool.name)),
     input: ctx.userText,
     tools: tools.map((tool) => ({
       name: tool.name,

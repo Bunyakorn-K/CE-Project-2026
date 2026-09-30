@@ -16,6 +16,8 @@ import {
 } from "./ai-settings";
 import { randomUUID } from "node:crypto";
 import { plainChat } from "./llm-client";
+import { branchLabel, renderSystemPrompt } from "./llm-prompt";
+import { roleLabel, scopeForPrincipal } from "./bot/identity";
 
 type AppEnv = { Variables: { principal: Principal | null } };
 
@@ -109,11 +111,19 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     addChatMessage({ threadId, userId: owner.user.id, role: "user", content: parsed.data.message, model: settings.model });
 
     try {
+      // The console is a plain chat completion: it passes no tools to the SDK,
+      // so {{tools}} renders an explicit "none" rather than a catalogue the
+      // model would then claim to have used.
+      const instructions = renderSystemPrompt(settings.systemPrompt, {
+        roleLabel: roleLabel(owner),
+        branches: branchLabel(scopeForPrincipal(owner).branchIds),
+        toolNames: []
+      });
       const reply = await plainChat(
         settings.baseUrl,
         settings.apiKey,
         settings.model,
-        settings.systemPrompt,
+        instructions,
         parsed.data.message,
         { temperature: settings.temperature }
       );

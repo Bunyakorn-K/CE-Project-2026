@@ -3,6 +3,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import { authAtom } from "../../lib/atoms/auth";
+import { isOwner as hasOwnerGrant } from "../../lib/access";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminLayout
@@ -23,7 +24,7 @@ function AdminLayout() {
     return <div className="flex min-h-screen items-center justify-center text-default-500">Loading…</div>;
   }
 
-  const isOwner = user.grants.some((g) => g.role === "owner");
+  const isOwner = hasOwnerGrant(user);
   if (!isOwner) {
     window.location.href = "/dashboard";
     return null;

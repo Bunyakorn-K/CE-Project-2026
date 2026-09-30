@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { atom, useAtom } from "jotai";
+import { isOwner } from "../access";
 
 export type AuthUser = {
   id: string;
@@ -18,7 +19,7 @@ export function useAuth() {
     user,
     setUser,
     signOut: () => setUser(null),
-    isOwner: user?.grants.some((g) => g.role === "owner") ?? false
+    isOwner: isOwner(user)
   };
 }
 

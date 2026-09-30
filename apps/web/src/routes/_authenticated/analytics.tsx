@@ -5,6 +5,7 @@ import { useAtom } from "jotai";
 import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
+import { canViewRevenue as revenueAllowed } from "../../lib/access";
 import { temperatureSummary, type TemperatureTruncation } from "../../lib/temperature-view";
 
 export const Route = createFileRoute("/_authenticated/analytics")({
@@ -118,7 +119,7 @@ function AnalyticsPage() {
   const [branchId, setBranchId] = useState("");
   const [range, setRange] = useState(recentRange);
   const validRange = Boolean(range.from && range.to && range.from <= range.to);
-  const canViewRevenue = user?.grants.some((grant) => grant.role === "owner" || grant.role === "manager") ?? false;
+  const canViewRevenue = revenueAllowed(user);
 
   const branchesQuery = useQuery({
     queryKey: ["report", "branches", "analytics-filters"],

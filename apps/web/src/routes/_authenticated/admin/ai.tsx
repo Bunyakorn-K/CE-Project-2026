@@ -5,6 +5,7 @@ import { useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../../lib/api/client";
 import { authAtom } from "../../../lib/atoms/auth";
+import { isOwner as hasOwnerGrant } from "../../../lib/access";
 
 export const Route = createFileRoute("/_authenticated/admin/ai")({
   component: AiConsolePage
@@ -24,7 +25,7 @@ const EMPTY_FORM: FormState = { baseUrl: "", apiKey: "", model: "", systemPrompt
 
 function AiConsolePage() {
   const [user] = useAtom(authAtom);
-  const isOwner = user?.grants.some((grant) => grant.role === "owner") ?? false;
+  const isOwner = hasOwnerGrant(user);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [hydrated, setHydrated] = useState(false);
@@ -171,10 +172,11 @@ function AiConsolePage() {
 
       <Card variant="transparent" className="surface-card admin-section">
         <Card.Content>
-          <div className="section-heading"><h2>System prompt</h2><span>รองรับ role, branches และ tools เป็นข้อความเทมเพลต</span></div>
+          <div className="section-heading"><h2>System prompt</h2><span>ใช้ทั้งหน้านี้และแชท LINE ของผู้ช่วย</span></div>
           <label className="sr-only" htmlFor="ai-system-prompt">System prompt</label>
           <textarea id="ai-system-prompt" className="field-control field-textarea" value={form.systemPrompt} onChange={(event) => setForm((current) => ({ ...current, systemPrompt: event.target.value }))} placeholder="คุณคือผู้ช่วยข้อมูลของระบบ LaundryTwin" />
-          <p className="kpi-detail">ตัวแปรเทมเพลตที่มีในระบบ: <code>{"{{role}}"}</code> <code>{"{{branches}}"}</code> <code>{"{{tools}}"}</code></p>
+          <p className="kpi-detail">ตัวแปรเทมเพลต: <code>{"{{role}}"}</code> <code>{"{{branches}}"}</code> <code>{"{{tools}}"}</code> — เซิร์ฟเวอร์แทนค่าให้จากสิทธิ์ของผู้ใช้จริงเสมอ ประกอบด้วย <code>{"{{tools}}"}</code> ในแชท LINE จะเป็นเครื่องมือวิเคราะห์ที่ส่งให้จริง ส่วนหน้านี้เป็น plain chat จึงไม่มีเครื่องมือ</p>
+          <p className="kpi-detail">ท้าย prompt ระบบจะเติมกฎของระบบ (อย่าเดาตัวเลข, เงินเป็นสตางค์, ปฏิเสธเมื่อไม่มีสิทธิ์ดูรายได้) ต่อท้ายให้อัตโนมัติ แก้ไขส่วนนี้ไม่ได้</p>
         </Card.Content>
       </Card>
 

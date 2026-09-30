@@ -10,7 +10,6 @@
     "test:layout": "playwright test"
   },
   "dependencies": {
-    "@casl/ability": "^7.0.1",
     "@heroui/react": "^3.2.2",
     "@heroui/styles": "^3.2.2",
     "@line/liff": "^2.27.2",

@@ -4,6 +4,7 @@ import { useAtom } from "jotai";
 import { useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
+import { isOwner as hasOwnerGrant } from "../../lib/access";
 import { branchScopeState, branchScopeView } from "../../lib/branch-scope";
 
 export const Route = createFileRoute("/_authenticated/playground")({
@@ -46,7 +47,7 @@ async function fetchJson<T>(path: string, fallback: string): Promise<T> {
 
 function PlaygroundPage() {
   const [user] = useAtom(authAtom);
-  const isOwner = user?.grants.some((grant) => grant.role === "owner") ?? false;
+  const isOwner = hasOwnerGrant(user);
   const [tab, setTab] = useState<Tab>("health");
   const [check, setCheck] = useState<CheckKey>("cycles");
   const [branchId, setBranchId] = useState("");

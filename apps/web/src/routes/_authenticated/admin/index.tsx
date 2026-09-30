@@ -5,6 +5,7 @@ import { useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../../lib/api/client";
 import { authAtom } from "../../../lib/atoms/auth";
+import { isOwner as hasOwnerGrant } from "../../../lib/access";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminHome
@@ -34,7 +35,7 @@ function roleLabel(role: Role): string {
 
 export function AdminHome() {
   const [user] = useAtom(authAtom);
-  const isOwner = user?.grants.some((grant) => grant.role === "owner") ?? false;
+  const isOwner = hasOwnerGrant(user);
   const queryClient = useQueryClient();
 
   const branchesQuery = useQuery({
