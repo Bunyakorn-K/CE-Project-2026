@@ -175,6 +175,20 @@ list can be read it says so instead of guessing. That distinction exists because
 an unreadable list and an empty list must not produce the same conclusion — one
 is a config fix, the other is a consent fix.
 
+**Measured 2026-09-30, from the production site's own LIFF SDK** (read in an
+external Chromium, `liff.getContext()`), this is the state that produced the
+missing-ID-token error:
+
+```json
+{ "liffId": "2011592166-uToRdTwS",
+  "scope":  ["profile"] }
+```
+
+So `VITE_LIFF_ID` was baked into the image correctly and the SDK (2.22.0) loaded
+from `static.line-scdn.net` without console errors — the app scope set was the
+only thing missing. **After adding `openid`, re-read this and expect
+`["profile","openid"]`**; a scope left out of that list is a scope not applied.
+
 **Not established here:** the LINE authentication flow is not verified end to end
 against production. Per the repository's own rule, a manual sign-in in the LINE
 app is not the same as a verified login.
