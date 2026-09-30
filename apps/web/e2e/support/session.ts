@@ -53,14 +53,54 @@ const RESPONSES: Record<string, unknown> = {
   "/api/admin/grants": { grants: GRANTS }
 };
 
-export async function installStubbedSession(page: Page): Promise<void> {
+/** A technician session: one branch, no revenue. Used to assert that the page
+ *  states the permission outcome instead of quietly rendering an empty chart. */
+export const TECHNICIAN_SESSION = {
+  user: {
+    id: "development-technician",
+    name: "Development Tech",
+    email: "development.tech@laundrytwin.local"
+  },
+  source: "development",
+  grants: [{ id: "development-technician-grant", role: "technician", branchId: "branch-fixture" }]
+};
+
+export type StubbedSession = "owner" | "technician";
+
+export type StubbedOptions = {
+  /** Session principal; defaults to the tenant-wide owner. */
+  session?: StubbedSession;
+  /** Extra `/api/*` responses, keyed by pathname. Overrides the defaults. */
+  responses?: Record<string, unknown>;
+  /** Status for a path in `responses`; defaults to 200. */
+  statuses?: Record<string, number>;
+};
+
+/**
+ * Install the fixture router. `analytics.pw.ts` uses `responses` to serve real
+ * analytics payloads so the honesty labels can be asserted against a rendered
+ * page rather than a unit helper.
+ */
+export async function installStubbedSession(page: Page, options: StubbedOptions = {}): Promise<void> {
+  const session = options.session === "technician" ? TECHNICIAN_SESSION : DEVELOPMENT_OWNER_SESSION;
+  const table: Record<string, unknown> = {
+    ...RESPONSES,
+    "/api/me": session,
+    ...(options.responses ?? {})
+  };
+
   await page.route("**/api/**", async (route) => {
-    const { pathname } = new URL(route.request().url());
-    if (pathname in RESPONSES) {
+    const url = new URL(route.request().url());
+    // Exact path+query first, then the bare pathname. The analytics page picks
+    // its own date range rather than reading one from the URL, so a fixture
+    // keyed on a query string would never match a real request.
+    const key = url.pathname + url.search in table ? url.pathname + url.search : url.pathname;
+    if (key in table) {
+      const status = options.statuses?.[key] ?? 200;
       await route.fulfill({
-        status: 200,
+        status,
         contentType: "application/json",
-        body: JSON.stringify(RESPONSES[pathname])
+        body: JSON.stringify(table[key])
       });
       return;
     }

@@ -352,14 +352,14 @@ function AnalyticsPage() {
 
       <Card variant="transparent" className="surface-card analytics-section">
         <Card.Content>
-          <div className="section-heading"><h2>ช่วงเวลาที่ไม่หนามเนน</h2><span>สรุปจากสำเร็วงวันที่เลือกแล้ว ไม่ใช้นกันหมอ</span></div>
+          <div className="section-heading"><h2>ช่วงเวลาที่ไม่หนาแน่น</h2><span>สรุปจากช่วงวันที่ที่เลือกแล้ว ไม่ใช่การทำนาย</span></div>
           {offPeakQuery.isLoading ? (
             <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดช่วงเวลา</div>
           ) : offPeakQuery.isError ? (
             <div className="error-message" role="alert">ไม่สามารถโหลดช่วงเวลาได้: {offPeakQuery.error.message}</div>
           ) : offPeakQuery.data && (
             <AnalyticsResult query={offPeakQuery} empty={offPeakEmptyReason(offPeakQuery.data.meta.rules as unknown as OffPeakRules | undefined)}>
-              <DataTable headers={["อันดัน", "ช่วงเวลา", "สาขา", "รอบชัก", "เวลาใช้งาน"]}>
+              <DataTable headers={["อันดับ", "วัน", "ช่วงเวลา", "รอบซัก", "เวลาใช้งาน"]}>
                 {offPeakQuery.data.data.map((row) => (
                   <tr key={`${row.branchId}-${row.dayOfWeek}-${row.hourOfDay}`}>
                     <td className="numeric-cell">{row.rank}</td>
@@ -377,14 +377,14 @@ function AnalyticsPage() {
 
       <Card variant="transparent" className="surface-card analytics-section">
         <Card.Content>
-          <div className="section-heading"><h2>อากาศและรอบชัก</h2><span>คัมสรับความ ไม่ใช้฀นวิไพที่มีจากมีเกือนไพร้วมของอากาศ</span></div>
+          <div className="section-heading"><h2>อากาศและรอบซัก</h2><span>ความสัมพันธ์เท่านั้น ไม่ใช่การทำนาย และตรวจสอบที่มาของข้อมูลอากาศไม่ได้</span></div>
           {weatherQuery.isLoading ? (
             <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดข้อมูลอากาศ</div>
           ) : weatherQuery.isError ? (
             <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลอากาศได้: {weatherQuery.error.message}</div>
           ) : weatherQuery.data && (
-            <AnalyticsResult query={weatherQuery} empty="ไม่มีข้อมูลอากาศทั้งไท้ช่วงวันที่เลือก">
-              <DataTable headers={["วันที่", "สาขา", "รอบชัก", "อุณหมดียเฉล", "ค่าระวมกาล", "ประสำภวยเงิน", "ไม่มีค่า"]}>
+            <AnalyticsResult query={weatherQuery} empty="ไม่มีข้อมูลอากาศในช่วงวันที่ที่เลือก">
+              <DataTable headers={["วันที่", "สาขา", "รอบซัก", "อุณหภูมิเฉลี่ย", "ความชื้น", "ปริมาณฝน", "ไม่มีค่า"]}>
                 {weatherQuery.data.data.slice(-12).reverse().map((row) => (
                   <tr key={`${row.branchName}-${row.date}`}>
                     <td>{formatDate(row.date)}</td>
