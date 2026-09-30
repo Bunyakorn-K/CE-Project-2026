@@ -300,9 +300,10 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-09-30: 413 tests green** — API 273, web 53,
-ETL 87 (supersedes 384 / API 270 / web 53 / ETL 61 earlier the same day, and
-227 green / API 152 / web 38 / ETL 37, measured 2026-09-28;
+Local automated evidence on **2026-09-30: 417 tests green** — API 277, web 53,
+ETL 87 (supersedes 413 / API 273 / web 53 / ETL 87, and 384 / API 270 / web 53 /
+ETL 61 earlier the same day, and 227 green / API 152 / web 38 / ETL 37,
+measured 2026-09-28;
 web had fallen to 1 after the dead-code deletion removed
 `dashboard-metrics.test.ts`). The separate Playwright layout suite is 11 tests
 and is **not** part of `pnpm test`. Node 24.x is used (see `.nvmrc`); no

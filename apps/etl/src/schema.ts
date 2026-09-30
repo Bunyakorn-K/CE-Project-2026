@@ -5,11 +5,13 @@
 // `CREATE TABLE IF NOT EXISTS` at runtime that could diverge from a live table;
 // the ETL assumes the schema below (and validated extra enum members) is present.
 //
-// Idempotency: fact_machine_usage is ReplacingMergeTree versioned by the source
-// row's own updated_at, so a re-insert converges to one row.
-// fact_temperature_sample is a plain MergeTree, so re-inserting a temperature
-// row leaves a second copy — the ETL watermark must never re-read a window it
-// has already loaded. Money stays integer satang; temperature_f is the raw
+// Idempotency: every fact table is a ReplacingMergeTree, so a re-insert
+// converges to one row — fact_machine_usage by the source row's own
+// updated_at, fact_temperature_sample by extracted_at, fact_weather_sample by
+// the observation timestamp, fact_gas_pressure_sample by ingested_at.
+// fact_temperature_sample was a plain MergeTree until 2026-09-30; see the note
+// on FACT_TEMPERATURE_COLUMNS for what that cost.
+// Money stays integer satang; temperature_f is the raw
 // integer from the source and temperature_c the derived Celsius. Missing data
 // stays NULL — we never fabricate a value.
 //
@@ -135,6 +137,27 @@ const FACT_USAGE_COLUMNS: Column[] = [
   { name: "extracted_at", ch: "DateTime64(3)" },
 ];
 
+// Temperature samples mirrored from IRIS `machine_temperature_sample`.
+//
+// Idempotency (changed 2026-09-30): this was a plain `MergeTree`, which gave
+// the pipeline NO protection against a re-read — the ETL inserted first and
+// advanced the watermark second, so a run that died in between re-inserted
+// everything from the old cursor on the next cycle. That is not theoretical:
+// 1,503,920 duplicate sort keys accumulated this way, and the worst single
+// sample was written 82 times across 82 separate `extracted_at` values spread
+// over 6h49m — exactly the number of 5-minute ETL cycles in that window.
+//
+// Versioned by `extracted_at` on the existing sort key, so a re-read converges
+// to one row and the latest extraction wins. This is the same shape as every
+// other fact table here; the plain engine was the outlier, and the "backup"
+// layer the ETL relied on was only the watermark, with nothing behind it.
+//
+// The duplicates were measurable as *harmless to the measurement* and *not
+// harmless to a reader*: every copy of a key was byte-identical except
+// `extracted_at`, but the analytics curve query did not deduplicate, so the
+// same reading appeared twice on the chart and inflated the reported
+// rows-in-range total. See docs/04_traceability/RTM_matrix.md and
+// docs/03_data_contracts/data_contracts.md.
 const FACT_TEMPERATURE_COLUMNS: Column[] = [
   { name: "tenant_id", ch: "UUID" },
   { name: "branch_id", ch: "UUID" },
@@ -245,9 +268,10 @@ export const CREATE_TABLES: string[] = [
   ddl(
     "fact_temperature_sample",
     FACT_TEMPERATURE_COLUMNS,
-    "MergeTree",
+    "ReplacingMergeTree",
     "(tenant_id, branch_id, occurred_at, event_id)",
-    "toYYYYMM(occurred_at)"
+    "toYYYYMM(occurred_at)",
+    "extracted_at"
   ),
   ddl(
     "fact_weather_sample",

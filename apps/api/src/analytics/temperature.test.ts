@@ -244,3 +244,45 @@ describe("temperature curve endpoint", () => {
     expect(clickhouse).not.toHaveBeenCalled();
   });
 });
+
+// The curve query is the only reader of fact_temperature_sample in the app, and
+// it renders raw samples straight onto the chart. Until 2026-09-30 the table was
+// a plain MergeTree carrying 1,503,920 duplicate sort keys, and this query had
+// no FINAL on it. Measured on 2026-09-30 over 2026-09-22..26: it returned 35,486
+// rows for 34,169 distinct readings, so 1,317 readings were drawn twice and the
+// rows-in-range figure in `meta.truncation` was inflated by the same amount.
+//
+// The engine change is what makes the query fix possible, not a nicety: run
+// against the old plain-MergeTree table, `... AS s FINAL` is refused outright
+// with `Code: 181 DB::Exception: Storage MergeTree doesn't support FINAL
+// (ILLEGAL_FINAL)`. FINAL alone could never have deduplicated that table.
+describe("CURVE_SQL deduplication", () => {
+  it("reads fact_temperature_sample with FINAL", () => {
+    expect(CURVE_SQL).toMatch(/FROM\s+fact_temperature_sample\s+AS\s+s\s+FINAL/);
+  });
+
+  it("puts FINAL after the alias, which is the only order ClickHouse accepts", () => {
+    // `FROM t FINAL AS s` parses as a table named `t` with a stray FINAL and an
+    // alias in the wrong slot: the server answers
+    //   Syntax error ... Expected alias cannot be here. (SYNTAX_ERROR)
+    // The first version of this test only regex-matched the token and passed
+    // against SQL the server would not run. Assert the whole clause instead.
+    expect(CURVE_SQL).not.toMatch(/fact_temperature_sample\s+FINAL\s+AS\s+s/);
+  });
+
+  it("does not re-introduce an unversioned read of the temperature table", () => {
+    // Guards the specific regression: tidying the SQL back to a bare
+    // `FROM fact_temperature_sample AS s` would silently restore the double
+    // drawing, and every test above would still pass, because they feed the
+    // handler pre-deduplicated fixtures.
+    const reads = CURVE_SQL.match(/FROM\s+fact_temperature_sample[^)\n]*/g) ?? [];
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) {
+      expect(read).toMatch(/\bFINAL\b/);
+    }
+  });
+
+  it("keeps FINAL on dim_machine too", () => {
+    expect(CURVE_SQL).toMatch(/dim_machine\s+AS\s+m\s+FINAL/);
+  });
+});

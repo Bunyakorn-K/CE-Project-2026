@@ -6,11 +6,18 @@
 //   - Primary: incremental whose watermark (usage.created_at,
 //     temperature.occurred_at) only advances AFTER a batch commits. A retry of
 //     a failed batch re-reads the same window.
-//   - Backup: fact_machine_usage is ReplacingMergeTree keyed by source_event_id
-//     and converges on re-insert. fact_temperature_sample is a plain MergeTree
-//     ordered by (tenant_id, branch_id, occurred_at, event_id), so re-reading a
-//     temperature row inserts a second copy: the temperature read must not
-//     re-read a window it has already loaded.
+//   - Backup: every fact table is a ReplacingMergeTree versioned by its source
+//     freshness column (fact_machine_usage by source_event_id,
+//     fact_temperature_sample by extracted_at, fact_weather_sample by
+//     timestamp, fact_gas_pressure_sample by ingested_at), so a re-read
+//     converges to one row instead of inserting a second copy.
+//
+//     The temperature table was a plain MergeTree until 2026-09-30 and had no
+//     backup layer at all — the watermark was the only thing standing between a
+//     re-read and a permanent duplicate. It failed: 1,503,920 duplicate sort
+//     keys, one sample written 82 times. The watermark must still advance only
+//     after the insert commits; the table engine is what makes the re-read
+//     harmless when it does not.
 //
 // Diagnosability (2026-09-29): every phase logs start/finish with its elapsed
 // time and each temperature/usage batch logs its own progress, and a phase that

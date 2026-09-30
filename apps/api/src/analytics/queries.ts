@@ -218,7 +218,7 @@ FROM (
       phase,
       countIf(event_id LIKE 'synthetic:%') OVER () AS synthCount,
       count() OVER () AS totalCount
-    FROM fact_temperature_sample AS s
+    FROM fact_temperature_sample AS s FINAL
     INNER JOIN dim_machine AS m FINAL ON (s.tenant_id = m.tenant_id AND s.machine_id = toString(m.machine_id))
     WHERE occurred_at >= {from:String} AND occurred_at < plus(toDate({to:String}), 1)
       AND ({branchId:String} = '' OR toString(s.branch_id) = {branchId:String})
