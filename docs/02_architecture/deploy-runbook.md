@@ -517,6 +517,88 @@ pre-deploy image had no immutable ref to record — a moving tag makes "what was
 deployed before this" unanswerable at rollback time. The API is already pinned
 (`deploy-39cc632-20260929`) and should stay that way.
 
+## Deploy record — 2026-10-01, API from `main` (`d56220d` → `93b03cf` → `170b527`)
+
+Deploying the API from `main` was explicitly requested. It carried 36 commits
+that had never run in production. The review before deploying found no schema,
+auth, or data-layer change — `git diff 39cc632..main -- apps/api/src/schema.ts
+apps/api/src/db.ts` is empty — and 320 API tests green. The risk was not in the
+review but in what the smoke test then found.
+
+**The whole batch shared one root cause.** Production runs ClickHouse-only, but
+four report routes still decided their source with `isDevelopmentAuthBypassEnabled()`
+alone. Commit `8b2d7e8` had already fixed `/api/report/summary` by adding
+`|| (!isDemoModeEnabled() && !isIrisReadConfigured())`; the same gap survived in
+the routes around it. Each was found only by loading the real page:
+
+| Route | Symptom in production | Fixed in |
+| :--- | :--- | :--- |
+| `/api/report/branches` | 503 — Digital Twin rendered no branches at all | `ec60130` |
+| `/api/report/live` | 503 — a branch name with nothing under it | `93b03cf` |
+| `/api/report/alerts` | 503 — Analytics page | `170b527` |
+
+The rule all four now share: answer from the warehouse whenever IRIS cannot
+answer. Demo mode stays on the IRIS client, because `createIrisReadClient` serves
+it with no IRIS env var set. Auth was never the issue — every one of these
+returned 401 unauthenticated both before and after, and each fix kept the
+existing `requireReportPrincipal` / `requireSingleBranch` scoping.
+
+The alerts case is not the same kind of bug and is worth stating separately. The
+warehouse has **no alert fact source**, and the honest "unavailable, and here is
+why" answer was already written — it was simply unreachable behind the dev-bypass
+gate. A 503 tells the operator the source is broken; the warehouse is fine, the
+table does not exist. Absent and broken must not read the same.
+
+`/api/report/events` has the same gate and is **still unfixed**. Nothing in
+`apps/web` calls it, and unlike alerts it has no ClickHouse branch written at
+all, so fixing it means inventing a contract rather than exposing an existing
+one. Left alone deliberately.
+
+### Verified in a real browser, not just by status code
+
+Over TLS at `https://laundrytwin.duckdns.org` as a signed-in LINE user:
+
+- **Digital Twin** — `/machines` rendered all four machines with branch
+  `e9b98f78` and honest states: no machine claimed healthy while showing no
+  usage evidence.
+- **Dashboard** — `/api/report/dashboard` and `/api/report/summary` both 200 with
+  real figures (846 cycles, ฿42,960, 23 machines, 2 branches) and the unattributed
+  share stated in Thai: 670 of 846 cycles (79%) have no `machine_session_id`.
+- **Analytics** — the two endpoints that 404'd (`off-peak`, `weather/usage`) now
+  200, alongside the four that already did.
+
+Test counts moved 320 → 330 API and 92 → 96 web. Every new test was checked to
+fail against the old gate before being accepted, since a test that passes either
+way proves nothing. `/api/report/live` had **no test of any kind** before this.
+
+### The Thai-first defect the audit also found
+
+Every Digital Twin card showed "No recent usage evidence is available for this
+machine" — the server's freshness `reason` rendered verbatim on a Thai-first
+page, directly under a Thai status pill. `freshnessMeta` moved into
+`apps/web/src/lib/machine-status.ts` beside `machineStatusMeta`, which already
+solves this exact problem for the status vocabulary, and each known freshness
+state got a Thai reason. An unrecognized freshness stays unknown and falls back
+to the server's own reason rather than guessing a cause.
+
+### Rolling back
+
+`170b527` deploys API and web together (both files changed). Roll back to the
+previous API, which is the last commit with only the API-side fixes:
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^API_IMAGE=.*#API_IMAGE=10.10.0.117:5000/laundrytwin-api:deploy-93b03cf-20261001#' .env
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-33a84cd-20261001#' .env
+sudo docker compose up -d --no-deps api web
+```
+
+Both earlier tags are retained in the registry. Rolling the API back to
+`deploy-93b03cf-20261001` restores branches and live state; rolling back to
+`deploy-39cc632-20260929` restores the pre-session state, in which the Digital
+Twin is empty and Analytics shows two 404s.
+
 ## ETL incident 2026-09-25 — the four-day silent hang
 
 `laundrytwin-etl-1` stopped loading at 2026-09-25 12:21 UTC and produced no
