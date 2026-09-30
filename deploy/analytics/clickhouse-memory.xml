@@ -1,0 +1,4 @@
+<clickhouse>
+    <!-- Cap server RAM: 10GB box shared with Airflow/Superset, no-memory-cap caused host OOM kills (2026-09-16) -> 502s -->
+    <max_server_memory_usage>3221225472</max_server_memory_usage>
+</clickhouse>

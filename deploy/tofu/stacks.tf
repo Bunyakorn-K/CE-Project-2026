@@ -13,8 +13,15 @@ resource "null_resource" "analytics_stack" {
   provisioner "local-exec" {
     command = <<-EOT
       set -euo pipefail
-      sudo rsync -a --delete --exclude ".env" --exclude "*.before-*" --exclude "dags-disabled" \
-        "${local.app_dir}/deploy/analytics/" "${local.analytics_dir}/"
+      # --delete makes /opt/analytics a clone of the repo, so the sync prints a
+      # full itemised dry-run diff and refuses to run unless every path it would
+      # delete is listed in the committed allowlist. `set -e` above means a
+      # refusal aborts here, before the .env is installed and before
+      # `docker compose up -d`, so nothing is changed by a refused apply.
+      # Read the printed diff; it is the list of what the apply loses.
+      sudo bash "${path.module}/scripts/analytics-rsync.sh" \
+        "${local.app_dir}/deploy/analytics/" "${local.analytics_dir}/" \
+        "${path.module}/analytics-rsync.excludes" "${path.module}/analytics-delete-allowlist.txt"
       sudo install -m 0600 "${path.module}/rendered/analytics.env" "${local.analytics_dir}/.env"
       cd "${local.analytics_dir}"
       sudo docker compose pull --ignore-pull-failures 2>/dev/null || true

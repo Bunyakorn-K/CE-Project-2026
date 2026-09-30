@@ -240,8 +240,9 @@ The temperature read paginated on `(ingested_at, seq, event_id)`. In IRIS
 | Indexed on `occurred_at` (migration `0030`), **no index on `ingested_at` in any of the 203 migrations** | The keyset could not be served by an index. |
 | ~210 rows per cycle per dryer, **no retention** (IRIS's rotate cron covers `machine_event` only; `0030` deferred this table to a follow-up that never happened) | The scan grew monotonically, so a run that worked slowly eventually stopped finishing at all. |
 
-`machine_usage` was exonerated and is unchanged: at 4,458 rows over 9 weeks its
-keyset is trivial. (It has no index on `created_at` either — only
+`machine_usage` was exonerated and is unchanged: at 7,908 rows over 71 calendar
+days (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC) its keyset is
+trivial. (It has no index on `created_at` either — only
 `(branch_id, created_at)`, `(machine_id)`, `(member_id)` — which is a comment,
 not a defect, at that size.)
 
@@ -306,11 +307,19 @@ a development machine, and the local warehouse cannot stand in for it: the
 synthetic `fact_temperature_sample` there has 8,867 rows whose `ingested_at`
 never deviates from `occurred_at` (max observed lag 6 s), so a keyset on either
 column selects the same rows and both query shapes read the same 3,594 rows.
+**Those two figures describe the LOCAL synthetic warehouse only** and must not be
+compared with the production warehouse, which holds **3,760,465 rows** spanning
+2026-05-26 15:51:50.633 → 2026-09-29 11:37:18.725 (measured 2026-09-30
+11:39:11 UTC) — and which carries **1,503,920 duplicate sort keys** over
+2,256,545 distinct `(tenant_id, branch_id, occurred_at, event_id)` tuples,
+because the table is a plain `MergeTree` with no de-duplication. See
+`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`.
 
 Whoever holds the `reader` credential (see the credential table below) should
 run the old and the new statement against the real
-`machine_temperature_sample` (~3.5M rows, 2026-05-26 → 2026-09-25 as of
-2026-09-25) for a comparable window, and record `read_rows` / `read_bytes` /
+`machine_temperature_sample` in **IRIS Postgres** (~3.5M rows,
+2026-05-26 → 2026-09-25, as of 2026-09-25 — **not re-measured on 2026-09-30**)
+for a comparable window, and record `read_rows` / `read_bytes` /
 elapsed for each plus `EXPLAIN (ANALYZE, BUFFERS)` showing the plan no longer
 visits every partition:
 
@@ -401,15 +410,23 @@ nothing about IRIS.
 The following are deliberately absent from the repo and must be obtained out of
 band. Do not add them to this document or to any tracked file.
 
-1. **The `reader` password value.** It exists only on VM 117 — in
-   `/opt/laundrytwin/.env` and `/opt/analytics/.env` (both installed mode 0600
-   from the untracked `clickhouse_reader_password` Tofu variable) and, per the
-   `Caddy config` section above, in the git-ignored
-   `/opt/analytics/clickhouse-reader.local.xml`. Retrieve it over the
-   documented SSH access and export it into the shell for the run; do not paste
-   it into a ticket, a commit, or a shell history that is shared. The repo ships
-   only the placeholder `deploy/analytics/clickhouse-reader.xml`, which takes
-   the password `from_env`.
+1. **The `reader` password value.** It exists only on VM 117, in the git-ignored
+   `/opt/analytics/clickhouse-reader.local.xml` that ClickHouse authenticates
+   `reader` against today (per the `Caddy config` section above), and as the
+   bcrypt hash in the Pi Caddyfile. It is **not** a Tofu-managed value yet —
+   Tofu has never been applied to this host, so `/opt/analytics/.env` has no
+   `CLICKHOUSE_READER_PASSWORD` key (verified 2026-09-30 by reading key names
+   only, no value), and its `CLICKHOUSE_PASSWORD` is the **admin** secret: a
+   different credential with broader reach. Never take the value from
+   `/opt/analytics/.env` for `clickhouse_reader_password`; that is how an admin
+   credential silently becomes the public reader login. The first apply puts the
+   same value into `/opt/laundrytwin/.env` as the API's `CLICKHOUSE_PASSWORD` and
+   into `/opt/analytics/.env` as `CLICKHOUSE_READER_PASSWORD`. Retrieve the
+   plaintext over the documented SSH access and export it into the shell for the
+   run; do not paste it into a ticket, a commit, or a shell history that is
+   shared. The repo ships only the placeholder
+   `deploy/analytics/clickhouse-reader.xml`, which takes the password
+   `from_env`.
 2. **A reachable hostname for the HTTP interface from the operator's machine.**
    The runbook documents the ZeroTier address `172.30.191.48`, the public
    hostname `clickhouse.laundrytwin.duckdns.org`, and the `8123:8123` host
@@ -430,11 +447,21 @@ band. Do not add them to this document or to any tracked file.
 ### After the run
 
 Read the output against the finding already recorded in
-`docs/04_traceability/RTM_matrix.md` ("Canonical cycle definition"). A run that
-reproduces `1 row per session`, `0 multi-status sessions`, and a `฿/cycle` near
-฿40–45 for the row count confirms the decision. A run that does **not** is new
-evidence: the attribution gap upstream may have changed, and the finding needs
-re-deciding on the new numbers rather than being assumed still valid.
+`docs/04_traceability/RTM_matrix.md` ("Canonical cycle definition"). Compare
+the **ranking** of the four definitions, not a single ฿/cycle value. A run that
+reproduces `1 row per session` and `0 multi-status sessions` **and** keeps the
+row count closest to a real wash while the session-distinct counts stay several
+times above it reproduces the decision. A run that does **not** is
+new evidence: the attribution gap upstream may have changed, and the finding
+needs re-deciding on the new numbers rather than being assumed still valid.
+
+> **Do not use "฿/cycle is in ฿40–45" as the pass condition.** It passed on
+> 2026-09-29 (฿42.20) and the decision was taken there, but the same query on
+> the post-merge corpus reads **฿48.40** (measured 2026-09-30 11:39:11 UTC),
+> above the band, on the canonical row count. That figure moves with the
+> unattributed share as the ETL ingests the IRIS backlog and as merges land, so
+> it is a weak gate. The cardinality result is the stable one. Quote any ฿/cycle
+> value with its measurement date.
 
 The diagnostic itself deliberately changes no query, type, label, or KPI, so no
 number in the product moves as a result of running it.

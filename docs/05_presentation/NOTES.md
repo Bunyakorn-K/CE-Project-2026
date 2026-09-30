@@ -8,7 +8,7 @@ slides, keyboard/scroll navigation, and browser print-to-PDF. The PowerPoint
 source is `docs/05_presentation/build_pptx.py`; do not run the generator unless
 explicitly requested.
 
-## Current implementation facts (2026-09-25)
+## Current implementation facts (re-confirmed 2026-09-30)
 
 - Product: **LaundryTwin**, a Smart Laundry Management and Analytics Platform.
 - The active web router includes branch/date filters, nullable revenue,
@@ -19,10 +19,12 @@ explicitly requested.
   320-1920 width sweep, against a locally seeded ClickHouse) and found and
   fixed real defects. It is still manual, Chromium-only, and leaves no
   committed visual baseline. LINE/browser E2E is not verified.
-- Local automated evidence is 227 tests: API 152, web 38, ETL 37 (re-run
-  2026-09-28). A separate Playwright layout suite adds 10 more tests outside
+- Local automated evidence is 384 tests: API 270, web 53, ETL 61 (re-run
+  2026-09-30; supersedes 227 / 152 / 38 / 37 re-run 2026-09-28). A separate
+  Playwright layout suite adds 11 more tests outside
   `pnpm test`. The API check,
-  web check/test/build, and ETL test pass. That re-run used Node.js 24.21.0 and
+  web check/test/build, and ETL test pass. That re-run used a Node.js 24.x
+  release within the `.nvmrc` range and
   pnpm 10.33.4, both within what the project targets. The Node 24.x range lives
   in `.nvmrc`, which CI reads via `node-version-file`; the pnpm version is exact
   and corepack-enforced by `packageManager: "pnpm@10.33.4"`. No `package.json`

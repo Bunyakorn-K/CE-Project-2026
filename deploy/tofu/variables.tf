@@ -170,9 +170,18 @@ variable "clickhouse_password" {
 }
 
 variable "clickhouse_reader_password" {
-  type      = string
-  sensitive = true
-  nullable  = false
+  description = <<-EOT
+    The EXISTING reader plaintext, not a new one. It is the password ClickHouse
+    actually authenticates `reader` with, it is what the API container gets as
+    CLICKHOUSE_PASSWORD, and its bcrypt hash is the `basic_auth` credential for
+    clickhouse.laundrytwin.duckdns.org in the Caddyfile on the Pi. A freshly
+    generated value passes validate and breaks only the public route (401) while
+    the API keeps working. Setting a different value is a rotation and must be
+    done with the Pi Caddyfile in the same change.
+  EOT
+  type        = string
+  sensitive   = true
+  nullable    = false
 }
 
 variable "clickhouse_database" {
@@ -232,6 +241,21 @@ variable "airflow_db_password" {
   type      = string
   sensitive = true
   nullable  = false
+}
+
+variable "superset_db_password" {
+  description = <<-EOT
+    Password of the least-privilege `superset_app` Postgres role that
+    SUPERSET_DATABASE_URI connects as. Must be the value already in
+    /opt/analytics/.env: this apply delivers the key to compose, it does not
+    rotate the role's password in Postgres, so a newly generated string yields a
+    clean plan, a clean apply, and a Superset that cannot reach its own metadata
+    database. Nothing in this repository or in tofu creates the role or its
+    grants; see deploy/analytics/compose.yaml.
+  EOT
+  type        = string
+  sensitive   = true
+  nullable    = false
 }
 
 variable "superset_secret_key" {

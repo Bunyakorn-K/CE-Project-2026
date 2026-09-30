@@ -144,8 +144,16 @@ services:
         hard: 262144
         soft: 262144
     volumes:
-    - clickhouse-data:/var/lib/clickhouse
+    # The warehouse lives in an EXTERNAL volume created by hand on the host
+    # (see the top-level `volumes:` block). Mounting the compose-managed
+    # `clickhouse-data` name instead comes up as an empty warehouse, which reads
+    # as total data loss on a warehouse that is in fact intact.
+    - clickhouse-data-restored:/var/lib/clickhouse
     - ./clickhouse-listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+    # 3 GiB server RAM cap. Without it ClickHouse competes with Airflow and
+    # Superset for the 10 GB host and the kernel OOM killer took the whole box
+    # down (2026-09-16) -> 502s on every proxied app.
+    - ./clickhouse-memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
     - ./clickhouse-alias-settings.xml:/etc/clickhouse-server/users.d/alias-settings.xml:ro
     - ./clickhouse-admin-networks.xml:/etc/clickhouse-server/users.d/admin-networks.xml:ro
     - ./clickhouse-reader.xml:/etc/clickhouse-server/users.d/reader.xml:ro
@@ -180,7 +188,18 @@ services:
       SERVER_WORKER_AMOUNT: '2'
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
-      SUPERSET_DATABASE_URI: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@analytics-postgres-1:5432/superset
+      # Superset connects to its own `superset` database as the least-privilege
+      # `superset_app` role, not as the Airflow superuser `airflow`. `airflow` is
+      # a superuser: it owns the Airflow metadata database, can create roles, and
+      # can read the ETL connection strings, none of which Superset needs.
+      # Nothing in this repository or in tofu creates the `superset` database or
+      # the `superset_app` role - the `postgres` service above only initialises
+      # `airflow`/`airflow`, so a new host needs both created by hand before
+      # this URI can connect. bootstrap-superset.sh step 0 runs `superset db
+      # upgrade` (Alembic) as whichever role this URI names, so that role must
+      # own the `superset` database or hold CREATE/ALTER on its schema. The
+      # grants that actually exist on any given host are not recorded here.
+      SUPERSET_DATABASE_URI: postgresql+psycopg2://superset_app:${SUPERSET_DB_PASSWORD}@analytics-postgres-1:5432/superset
     depends_on:
       postgres:
         condition: service_healthy
@@ -201,6 +220,31 @@ services:
     - ./superset_config.py:/app/superset_config.py:ro
 volumes:
   airflow-data: null
-  clickhouse-data: null
   postgres-airflow-data: null
   superset-home: null
+  # The live warehouse volume, created by hand on the host (2026-09). Declared
+  # external so compose adopts it instead of creating a fresh empty one; on a
+  # NEW host it must be created first
+  # (`docker volume create analytics_clickhouse-data-restored`) or `up` fails.
+  clickhouse-data-restored:
+    external: true
+    name: analytics_clickhouse-data-restored
+  # `clickhouse-data` is deliberately absent: nothing mounts it, and re-attaching
+  # the compose-managed name comes up as an empty warehouse. The volume
+  # `analytics_clickhouse-data` nevertheless still exists on the VM.
+  #
+  # DO NOT remove or prune it without an explicit, recorded decision. It held
+  # data missing from the live warehouse - the 2026-08-31 -> 2026-09-16 window
+  # (~2,617 usage rows, ~205,857 temperature rows) - and a data-recovery merge on
+  # 2026-09-30 inserted that window into `analytics_clickhouse-data-restored`.
+  # The volume is therefore no longer the only copy, but it is NOT disposable
+  # either: the merge inserted a de-duplicated set, this volume still carries
+  # pre-existing duplicate rows that were deliberately not merged, and nothing
+  # has verified the two are equivalent. Staged source files and the rollback
+  # recipe are in /opt/backups/pre-merge-20260930/ on the VM.
+  #
+  # Do not use docs/04_traceability/ops-incident-2026-09-14-clickhouse-lock.md as
+  # a volume procedure. It is a crash-loop writeup from when this volume WAS the
+  # production warehouse, and its fix block runs
+  # `docker run -v analytics_clickhouse-data:/data ... rm -f /data/status`, which
+  # writes to this volume.

@@ -25,6 +25,14 @@
 // ฿125.42-per-"cycle" versus ฿42.20-per-row result that the decision rests on,
 // and would make the script stop being able to reproduce it.
 //
+// A re-run today will NOT reproduce the ฿42.20. Measured 2026-09-30 11:39:11
+// UTC, after the warehouse recovery merge: the same four expressions give
+// ฿203.05, ฿127.08, ฿48.40, and ฿42.51 over 7,908 rows. The canonical row count
+// is now ABOVE the plausible ฿40–45 band, so do not treat a ฿/cycle near ฿40–45
+// as this script's pass condition — the ranking and the 1-row-per-session result
+// are what reproduce. See docs/04_traceability/RTM_matrix.md
+// ("Canonical cycle definition").
+//
 // `machine_session_id` still has no entry in
 // docs/03_data_contracts/data_contracts.md, so the repo documents no meaning
 // for it, and the seed script deliberately allows up to

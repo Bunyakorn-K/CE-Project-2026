@@ -96,15 +96,49 @@ locals {
   #
   # CLICKHOUSE_READER_PASSWORD must be here too: compose.yaml passes it into
   # the clickhouse container, where the committed clickhouse-reader.xml
-  # resolves it with <password from_env=.../>. Omitting it is what forced a
-  # hand-written clickhouse-reader.local.xml carrying a literal password into
-  # /opt/analytics - a secret in a hand-created file outside git.
+  # resolves it with <password from_env=.../>.
+  #
+  # WARNING: var.clickhouse_reader_password MUST be set to the reader plaintext
+  # that is already in use, not a freshly generated value. It is the same secret
+  # in three places: this env file, the API container's CLICKHOUSE_PASSWORD
+  # (app_env above), and the Caddyfile `basic_auth` for
+  # clickhouse.laundrytwin.duckdns.org on the Pi, which holds a bcrypt hash of
+  # it. A wrong value renders cleanly, passes `tofu validate`, is accepted by
+  # `nullable = false`, and then breaks only the PUBLIC ClickHouse route with a
+  # 401 while the API keeps working - a failure that looks like a Caddy problem.
+  # Changing it rotates the public credential on both hops and must be done
+  # deliberately, with the new hash in the Pi Caddyfile at the same time.
+  #
+  # Verified 2026-09-30: /opt/analytics/.env does NOT currently carry
+  # CLICKHOUSE_READER_PASSWORD (key-name check only, no value read), so this apply
+  # ADDS the key and the reader login is not yet driven by it. The hand-written
+  # /opt/analytics/clickhouse-reader.local.xml, which holds a literal password no
+  # audit or secret scan can see, is the override the deployed host is using while
+  # that key is missing - confirm it is still there before removing it. The
+  # analytics sync would delete it (`--delete`), and that is gated by
+  # deploy/tofu/analytics-delete-allowlist.txt: until the allowlist carries the
+  # path, the sync refuses rather than deletes.
+  #
+  # SUPERSET_DB_PASSWORD is the password of the least-privilege `superset_app`
+  # Postgres role that compose.yaml points SUPERSET_DATABASE_URI at. It was
+  # already in the live .env while absent from this template, so an apply
+  # against the pre-fix locals.tf would have DELETED the key and left Superset
+  # unable to reach its own metadata database. It must also be the value
+  # already in /opt/analytics/.env - see the warning in variables.tf.
+  #
+  # Verified 2026-09-30, also by key-name check only: the live
+  # /opt/analytics/.env still carries ANALYTICS_READ_API_KEY, which this template
+  # does not produce. `install -m 0600` replaces the whole file, so the next apply
+  # DELETES that key. Nothing in this repository reads it, and
+  # apps/api/src/deploy-config.test.ts fails if it is reintroduced, so the
+  # deletion is intended - but it is a real change to a live file, not a no-op.
   analytics_env = trimspace(<<-EOT
     CLICKHOUSE_USER=admin
     CLICKHOUSE_PASSWORD=${var.clickhouse_password}
     CLICKHOUSE_READER_PASSWORD=${var.clickhouse_reader_password}
     AIRFLOW_ADMIN_PASSWORD=${var.airflow_admin_password}
     AIRFLOW_DB_PASSWORD=${var.airflow_db_password}
+    SUPERSET_DB_PASSWORD=${var.superset_db_password}
     SUPERSET_SECRET_KEY=${var.superset_secret_key}
   EOT
   )

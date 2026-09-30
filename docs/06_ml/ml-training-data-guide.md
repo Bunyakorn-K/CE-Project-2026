@@ -18,7 +18,7 @@ We train models to predict **off-peak usage windows** (hour-of-day × day-of-wee
 | **Phase C — Model candidate** | Prophet / SARIMA / Gradient Boosting | ≥ 3 months continuous data | ⏳ Future |
 | **Phase D — Promotion effect** | A/B measurement | Operations buy-in | ⏳ Future |
 
-**Current data reality:** 4,458 non-synthetic usage rows spanning 2026-07-22 → 2026-09-25 — **9 weeks**, not the "~4.8k rows / ~1 week" this document previously claimed (corrected 2026-09-29; the ~4.8k figure dated from 2026-09-07 and the ~1 week figure was never right). Nine weeks is still **far too little for robust time-series modeling**, and it is thinner than the raw row count suggests: 63.91% of those rows carry no `machine_session_id`, and `paid` appears on only 257 of them. Any model fitted today would overfit. State data volume in every output.
+**Current data reality:** **7,908 non-synthetic usage rows** spanning 2026-07-22 → 2026-09-30 — **71 calendar days**, measured 2026-09-30 11:39:11 UTC on the real warehouse. This supersedes the 4,458 rows over 9 weeks (2026-07-22 → 2026-09-25, measured 2026-09-29), which itself superseded the "~4.8k rows / ~1 week" this document previously claimed (the ~4.8k figure dated from 2026-09-07 and the ~1 week figure was never right). The jump is the 2026-09-30 recovery merge, which closed a 17-day hole (2026-08-31 → 2026-09-16) the live warehouse was missing — see `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`. **71 days is still short of the ≥ 3 months (90 days) a Phase C model candidate requires**, and the data is thinner than the raw row count suggests: **67.8933% of those rows carry no `machine_session_id`** (5,369 of 7,908), and `paid` appears on only 262 of them. Any model fitted today would overfit. State data volume in every output.
 
 ---
 
@@ -50,16 +50,22 @@ We train models to predict **off-peak usage windows** (hour-of-day × day-of-wee
 A `fact_machine_usage` row is **one machine usage event**, not a session. The
 earlier claim in this document — "Every row in `fact_machine_usage` represents
 one machine session" — was **wrong about the real data** and was corrected on
-2026-09-29. What is actually measured, on 4,458 non-synthetic rows spanning
-2026-07-22 → 2026-09-25:
+2026-09-29. What is actually measured, on **7,908 non-synthetic rows spanning
+2026-07-22 → 2026-09-30** (measured 2026-09-30 11:39:11 UTC):
 
 - One real `machine_session_id` spans **exactly one row** and carries exactly
-  one `status` (0 session ids over more than one row; max 1 distinct status).
-  So for a row that *has* a session id, counting rows and counting sessions are
+  one `status` (measured 2026-09-29 over 4,458 rows: 0 session ids over more
+  than one row; max 1 distinct status). The 1:1 shape was **not re-measured**
+  on 2026-09-30, so treat it as dated evidence rather than a re-verified fact.
+  For a row that *has* a session id, counting rows and counting sessions are
   the same measurement.
-- **63.91% of rows (2,849 of 4,458) have a NULL `machine_session_id`**, and
-  that null set is exactly `attribution_state = 'pending_attribution'`. There
-  are 1,609 session ids in total, so "sessions" and "rows" are not the same
+- **67.8933% of rows (5,369 of 7,908) have a NULL `machine_session_id`**
+  (measured 2026-09-30 11:39:11 UTC; it was 63.91% of 4,458 rows on 2026-09-29,
+  and the share rises as the ETL ingests the IRIS backlog), and that null set is
+  essentially the `attribution_state = 'pending_attribution'` set (2,540 `exact`
+  vs 5,368 `pending_attribution`, 67.8806%, on 2026-09-30). There are 2,539
+  distinct session ids in total (`uniqExactIf(..., status IN ('paid',
+  'finished'))` is 1,589), so "sessions" and "rows" are not the same
   population.
 - `machine_session_id` is a nullable pass-through from IRIS with **no documented
   meaning** upstream. Do not treat a row without one as a different kind of
@@ -92,7 +98,10 @@ key or a filter in any of them.
    `nullIf(..., 0)` and carry `Nullable(Float64)`, and let the training pipeline
    decide the imputation explicitly.
 2. **`paid` is rare and thinly attributed.** On the real warehouse `paid` (2)
-   appears on 257 rows, and only **6** of those carry a `machine_session_id`. A
+   appears on 257 rows, of which only **6** carry a `machine_session_id`
+   (measured 2026-09-29 over 4,458 rows). The `paid` row count is **262** as of
+   2026-09-30 11:39:11 UTC over 7,908 rows; the session-id subset of those rows
+   was **not re-measured**, so the 6-of-257 figure stands as dated. A
    branch-day with a handful of `paid` rows therefore has both a small
    numerator and no session evidence at all.
 3. **`paid` vs `finished` are provably distinct, and `paid` is a stall state**
@@ -285,9 +294,9 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 | Model | Minimum data | Recommended data | Current status |
 |---|---|---|---|
 | Heuristic baseline | None | Any | ✅ Done |
-| ARIMA / SARIMA | 90 days daily | 180+ days | ⏳ 9 weeks (2026-07-22 → 2026-09-25) |
-| Prophet | 90 days daily | 365+ days | ⏳ 9 weeks |
-| Gradient Boosting | 90 days + features | 365+ days | ⏳ 9 weeks |
+| ARIMA / SARIMA | 90 days daily | 180+ days | ⏳ **71 days** (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC) — 19 days short of the 90-day minimum |
+| Prophet | 90 days daily | 365+ days | ⏳ **71 days** (same measurement) — 19 days short of the 90-day minimum |
+| Gradient Boosting | 90 days + features | 365+ days | ⏳ **71 days** (same measurement) — 19 days short of the 90-day minimum |
 
 ---
 
@@ -382,8 +391,9 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 ### 9.1 Data limitations
 
 - **Province duplication:** TMD hourly returns byte-identical temp/rh/rain for all Thai provinces in the same collection window. Per-province weather curves need a location-specific source (lat/lon + station code).
-- **Sample size:** 4,458 non-synthetic usage rows over 9 weeks (2026-07-22 → 2026-09-25). Any model fitted today would overfit. The figure supersedes the earlier "~4.8k rows as of 2026-09-07" in this document and in `AGENTS.md`, `README.md`, and `docs/06_ml/algorithm-comparison.md` (all corrected 2026-09-29).
-- **Attribution:** 63.91% of usage rows carry no `machine_session_id`. `cycle_count` is a row count by decision, but a row count is not a count of *identified* sessions, and no feature here may treat it as one.
+- **Sample size:** **7,908 non-synthetic usage rows over 71 calendar days** (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC). Any model fitted today would overfit, and 71 days remains short of the 90-day minimum above. The figure supersedes 4,458 rows over 9 weeks (measured 2026-09-29) and, before that, the "~4.8k rows as of 2026-09-07" in this document and in `AGENTS.md`, `README.md`, and `docs/06_ml/algorithm-comparison.md` (all corrected 2026-09-29, refreshed 2026-09-30).
+- **Attribution:** **67.8933% of usage rows carry no `machine_session_id`** (5,369 of 7,908, measured 2026-09-30 11:39:11 UTC). `cycle_count` is a row count by decision, but a row count is not a count of *identified* sessions, and no feature here may treat it as one. This share is a live metric — it rises as the ETL ingests the IRIS backlog and as recovery merges land — so it must always be quoted with its measurement date.
+- **Coverage:** 70 of 71 day buckets are populated. **2026-07-27 is the only usage gap day and it is a genuine source gap, not a merge artefact.** A missing day in a training series is a real discontinuity, not a zero.
 - **Weather-source limitation:** TMD NWP is a forecast, not observations. Correlation ≠ causation.
 
 ### 9.2 R12 compliance

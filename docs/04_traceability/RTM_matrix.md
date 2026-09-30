@@ -64,9 +64,25 @@ Sources: `apps/api/src/report/clickhouse-report.ts` (`buildDashboardSQL`,
 
 `apps/api/scripts/cycle-cardinality-diagnostic.ts` — read-only, SELECT-only,
 env-driven, and it refuses to report a verdict when `fact_machine_usage` holds
-no non-synthetic rows, so seed data can never be mistaken for a finding. Run
-against the **real** production warehouse on **2026-09-29** over 4,458
-non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
+no non-synthetic rows, so seed data can never be mistaken for a finding.
+
+> **The decision was taken on the 2026-09-29 measurement, and that measurement
+> stands as the evidence for it.** The figures recorded below under
+> "2026-09-29" are the ones the decision was made on, on a corpus that did sit
+> inside the plausible ฿40–45 band. A later re-measurement (2026-09-30, after
+> the warehouse recovery merge) is recorded in the next block. It **does not
+> re-confirm the decision**: on the larger corpus the row count reads ฿48.40,
+> *above* the band. It also does not invalidate the decision, does not replace
+> the 2026-09-29 numbers as its basis, and does not change the **ranking**, in
+> which the row count is still the only defensible one of the four. Read the
+> 2026-09-30 band as new evidence on a different corpus, not as a verdict.
+> Every figure carries its own measurement date, because the unattributed
+> share, the row count, and the ฿/cycle ratio all move as the ETL ingests the
+> IRIS backlog and as recovery merges land.
+
+**2026-09-29 — the measurement the decision rests on.** Run against the **real**
+production warehouse on **2026-09-29** over 4,458 non-synthetic rows spanning
+**2026-07-22 → 2026-09-25 (9 weeks)**:
 
 1. **Cardinality is 1:1.** 1,609 session ids; min = max = 1 rows per session;
    0 session ids spanning more than one row; 0 session ids carrying more than
@@ -74,8 +90,25 @@ non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
    sessions are the same measurement, and the two families of definition could
    only differ through *missing* attribution.
 2. **Attribution is mostly missing.** 63.91% of rows (2,849 of 4,458) have a
-   NULL `machine_session_id`, and that null set is exactly
+   NULL `machine_session_id`, and that null set corresponds to
    `attribution_state = 'pending_attribution'` (2,850 pending vs 1,610 exact).
+
+   > **The word "exactly" was not supported here and has been removed.** Two
+   > arithmetic gaps sit in these figures and neither was explained when this
+   > block was written on 2026-09-29: the NULL count (2,849) is **one row
+   > short** of the `pending_attribution` count (2,850), and the two
+   > `attribution_state` counts sum to **4,460 against a 4,458-row corpus** —
+   > a two-row surplus. The one-row gap has the same shape as the
+   > 5,146-row measurement reconciled below (a row with `machine_session_id`
+   > populated but `attribution_state` still `pending_attribution`), so the
+   > columns are demonstrably independent. The two-row surplus is a **separate,
+   > unreconciled** discrepancy: it implies the `attribution_state` breakdown was
+   > read at a different moment, or over a slightly different row set, than the
+   > 4,458 corpus figure. **That has not been re-measured and no cause is
+   > claimed.** Treat the two columns as near-but-not-identical, and do not use
+   > this block to argue the correspondence is exact. The 2026-09-30 measurement
+   > has the same one-row gap (5,369 vs 5,368) but its counts do sum correctly
+   > (5,368 + 2,540 = 7,908).
 
 > **The unattributed share is a live metric, not a constant.** It rises as the
 > ETL ingests the IRIS backlog, because backlog rows are the historical ones
@@ -99,14 +132,93 @@ non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
    cycles and showed no signal that the data was incomplete.** That is the
    defect this decision fixes.
 
+**2026-09-30 — current measurement, taken after the warehouse recovery merge**
+(`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`;
+measured **2026-09-30 11:39:11 UTC** over **7,908** non-synthetic rows spanning
+**2026-07-22 → 2026-09-30 (71 calendar days)**):
+
+- **Volume and shape.** 7,908 rows; `countDistinct(tenant_id, branch_id,
+  usage_id)` is also 7,908, so the `ReplacingMergeTree` key is 1:1 and the merge
+  introduced no key collision. 7,911 rows raw (non-`FINAL`), so 3 rows in the
+  live table are replaceable duplicates. (Whether those 3 relate to the merge's
+  27 recorded overlaps was not established.)
+- **Attribution.** **67.8933% of rows (5,369 of 7,908) have a NULL
+  `machine_session_id`**, measured twice (11:35:11Z and 11:39:11Z) with an
+  identical result. `attribution_state` breaks down as 2,540 `exact` vs 5,368
+  `pending_attribution` (67.8806%); the one-row difference between 5,369 and
+  5,368 is the same `machine_session_id`-populated /
+  `pending_attribution`-set inconsistency noted above, so the share stays
+  approximate. `countDistinct(machine_session_id)` is 2,539 and
+  `uniqExactIf(machine_session_id, status IN ('paid','finished'))` is 1,589.
+- **Price band, re-measured.** Revenue is 33,617,000 satang (฿336,170) over all
+  rows and **32,265,000 satang (฿322,650) over `status IN ('paid','finished')`**.
+  The first three rows below divide the paid/finished numerator; the unfiltered
+  `count()` row divides the **all-rows** numerator, because an unfiltered row
+  count has to be divided by all rows' revenue to be a like-for-like ฿/row.
+
+  | definition | count | numerator | ฿/cycle | plausible? |
+  |---|---|---|---:|---|
+  | `uniqExactIf(machine_session_id, status IN ('paid','finished'))` | 1,589 | ฿322,650 paid/finished | ฿203.05 | no — ~4.5× a real wash |
+  | `countDistinct(machine_session_id)`, no status filter | 2,539 | ฿322,650 paid/finished | ฿127.08 | no — ~2.9× a real wash |
+  | **`countIf(status IN ('paid','finished'))` — row count** | **6,666** | ฿322,650 paid/finished | **฿48.40** | **just above the ฿40–45 band** |
+  | `count()`, no filter | 7,908 | **฿336,170 all rows** | ฿42.51 | inside the band, but **not a cycle count** |
+
+  **The band does not hold on this corpus, and this is recorded as the opposite
+  of a confirmation.** The row-count definition now reads **฿48.40/cycle,
+  above the plausible ฿40–45 range** for a Thai self-service wash. The only
+  definition landing inside the band is the unfiltered `count()`, which this
+  document has already rejected as a cycle count because it sweeps in
+  cancelled, admitted, and running work. The decision is unchanged, and it
+  rests on the 2026-09-29 evidence above, which was collected on a corpus that
+  did sit inside the band; the 2026-09-30 numbers neither re-confirm nor refute
+  it, because the corpus underneath it changed.
+
+  What the refreshed numbers **do** support is the **ranking**. The row count
+  remains the closest of the four to a real wash, and the two session-distinct
+  definitions remain implausible at roughly **3× to 5×** a ฿40–45 wash
+  (฿127.08 and ฿203.05) — far enough out that no plausible Thai wash price makes
+  either of them the better answer, so the choice among the four is unchanged.
+  The gap has also
+  widened with the recovered backlog: only 1,589 of 6,666 cycles (23.84%) carry
+  a session id, so **76% of cycles have no session-level evidence**.
+
+  **Why ฿/cycle rose from ฿42.20 to ฿48.40 is not established.** The recovered
+  17 days are heavily unattributed, which is *consistent with* the rise — rows
+  with no session id add to a row count but to no session-distinct count, which
+  pulls the row-count ratio up. That is a **plausible cause, not a proven one**:
+  it would need a per-day `attribution_state` / `machine_session_id` breakdown
+  restricted to 2026-08-31…2026-09-16, and **no such measurement has been
+  run**. Do not restate the cause as a finding.
+- **`status` breakdown** (measured 2026-09-30 11:39:11 UTC): `pending_payment` 2,
+  `paid` 262, `admitted` 28, `running` 972, `finished` 6,404, `cancelled` 240.
+  533 rows have a NULL `started_at`. The canonical cycle KPI
+  `countIf(status IN ('paid','finished'))` is **6,666** on this measurement.
+  **Whether those 262 `paid` rows carry a `machine_session_id` was not
+  re-measured** — the 6-of-257 figure below is a 2026-09-29 measurement and is
+  not superseded, it is simply not refreshed.
+- **Coverage.** 70 distinct day buckets across the 71 calendar days
+  2026-07-22…2026-09-30; every one of the 17 days 2026-08-31…2026-09-16 now
+  has rows. 2026-07-27 is the only usage gap day and is a genuine source gap.
+  The 2026-09-30 merge recovered a 17-day hole in the live warehouse; its
+  **root cause is still unresolved**, and another restore could lose a different
+  window.
+
 #### Why rows, and not sessions
 
 - **It is the only definition that counts every session.** A session-distinct
   count discards the 2,849 unattributed rows, and those rows are real usage.
+  (Measured 2026-09-29 over 4,458 rows; **5,369 of 7,908 rows** on the
+  2026-09-30 measurement — on that corpus only 1,589 of the 6,666 canonical
+  cycles carry a session id, so a session-distinct count discards the large
+  majority of them.)
 - **The cardinality measurement means nothing is lost by counting rows.** One
   session id is exactly one row, so `countIf(...)` and
   `countDistinct(machine_session_id)` would be identical over the attributed
   subset. The row count is a strict superset.
+  (Cardinality measured 2026-09-29: 1,609 session ids, 0 spanning more than one
+  row, 0 carrying more than one `status`. The 1:1 shape was **not re-measured**
+  on 2026-09-30; the 2026-09-30 `countDistinct(machine_session_id)` figure of
+  2,539 is consistent with it but does not re-prove it.)
 - **It aligns the dashboard with the analytics layer.** `DAILY_SQL` already
   used `countIf(status IN ('finished','paid'))`. This removes a divergence
   rather than creating one.
@@ -116,6 +228,16 @@ non-synthetic rows spanning **2026-07-22 → 2026-09-25 (9 weeks)**:
   separately correct, separately tested, and separately verified. Only the
   spelling moved, from `IN (2, 4)` to `IN ('paid', 'finished')`, because the
   enum was renumbered to the IRIS lifecycle order.
+
+> **The price band is not load-bearing for this decision.** The first three
+> bullets stand on the cardinality measurement and the superset property, both
+> of which are independent of any ฿/cycle arithmetic. The ฿/cycle band was the
+> most intuitive support on 2026-09-29 (฿42.20) and it no longer supplies that
+> support on 2026-09-30 (฿48.40, above the band) — see the re-measured band
+> above. The decision is therefore **weaker than the 2026-09-29 record implies**,
+> resting on the first two bullets plus the data-contract authorisation, not on
+> price plausibility. The 1:1 cardinality shape behind bullet 2 was measured
+> only on 2026-09-29 and has not been re-measured since.
 
 #### The attribution gap stays visible
 
@@ -138,22 +260,32 @@ with it.
 - `docs/06_ml/ml-training-data-guide.md` claimed "Every row in
   `fact_machine_usage` represents one machine session". That is **wrong about
   the real data** and is corrected rather than deleted: a row is one usage
-  event, one session id spans exactly one row, and 65.25% of rows carry no
-  session id at all (measured 2026-09-29 over 5,146 rows; see the live-metric
-  note above — the 63.91% figure recorded earlier in the day was over 4,458
-  rows and is a point-in-time measurement, not a property of the data).
+  event, one session id spans exactly one row, and 67.8933% of rows carry no
+  session id at all (5,369 of 7,908, measured 2026-09-30 11:39:11 UTC; it was
+  65.25% of 5,146 rows on 2026-09-29 and 63.91% of 4,458 rows earlier that day
+  — see the live-metric note above; each is a point-in-time measurement, not a
+  property of the data).
 - `paid_ratio` was documented as a bare `Float64`. On real data it is
   **undefined, not zero**, when a branch-day has no `paid` and no `finished`
-  row, and `paid` appears on only 257 rows of which **6** carry a session id.
-  It is now `Nullable(Float64)` with `nullIf(..., 0)`.
+  row, and `paid` appeared on only 257 rows of which **6** carry a session id
+  (measured 2026-09-29). The `paid` row count is **262** as of 2026-09-30
+  11:39:11 UTC; the session-id subset of those rows was **not re-measured**, so
+  the 6-of-257 figure stands as dated and unrefreshed. It is now
+  `Nullable(Float64)` with `nullIf(..., 0)`.
 - "~4.8k usage rows (~1 week)" was wrong in four places
   (`AGENTS.md`, `README.md`, `docs/06_ml/ml-training-data-guide.md`,
-  `docs/06_ml/algorithm-comparison.md`). The warehouse holds 4,458 non-synthetic
-  rows over 9 weeks. Still far too little for time-series modelling.
+  `docs/06_ml/algorithm-comparison.md`). The warehouse held 4,458 non-synthetic
+  rows over 9 weeks (measured 2026-09-29) and holds **7,908 rows over 71
+  calendar days** (measured 2026-09-30 11:39:11 UTC, after the recovery merge).
+  Still far too little for time-series modelling — 71 days is short of the
+  90 days a Prophet/SARIMA/GBM candidate requires.
 - `machine_session_id` had no entry in
   `docs/03_data_contracts/data_contracts.md` at all. It has one now, recording
-  only what is evidenced: nullable, pass-through from IRIS, present on ~36% of
-  real rows, exactly correlated with `attribution_state = 'pending_attribution'`,
+  only what is evidenced: nullable, pass-through from IRIS, **absent on
+  67.8933% of real rows** (5,369 of 7,908, measured 2026-09-30 11:39:11 UTC),
+  corresponding to (but **not provably identical to**) the
+  `attribution_state = 'pending_attribution'` set — 5,368 pending against 5,369
+  NULL, so the two columns are independent; see the reconciliation note above,
   one row per session where present, upstream attribution semantics
   **unresolved**.
 

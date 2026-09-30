@@ -1,0 +1,33 @@
+# rsync protections for deploy/analytics -> /opt/analytics.
+#
+# Read by deploy/tofu/scripts/analytics-rsync.sh through rsync --exclude-from.
+# Blank lines and whole-line `#` comments are ignored (GNU rsync man page for
+# --exclude-from; verified against macOS openrsync too). Patterns have no rule
+# prefix, so every rule here is an exclude - which means each protected path is
+# exempt from --delete as well as from being overwritten.
+#
+# Keep the final newline. A last pattern on an unterminated final line is dropped
+# by openrsync (macOS), which silently un-protects the path.
+#
+# THIS FILE IS THE COMPLETE PROTECTED SET. Add a pattern here when a path in
+# /opt/analytics must survive a sync, with a reason. Deletions the sync is
+# expected to make belong in analytics-delete-allowlist.txt instead; the script
+# prints and checks that list before it deletes anything.
+#
+# .env           installed 0600 by null_resource.install_envs (stacks.tf also
+#                reinstalls it right after the sync) and holds the analytics
+#                secrets. Syncing the repo's .env over it would be a leak.
+# *.before-*     hand-made "what was here before this change" copies. The
+#                pattern is `.before-`, not `*bak-*`: a filter pattern with no
+#                `/` in it matches trailing path components only and `*` does
+#                not cross `/`, so `*.before-*` cannot match `compose.yaml.bak-`.
+# *.bak-*        those same copies under the other name used on the host.
+#                Verified locally: with only `*.before-*` present, rsync lists
+#                every compose.yaml.bak-* in the destination as `*deleting`.
+# dags-disabled  Airflow DAGs the operator disabled by moving them aside. The
+#                `dags` directory itself IS synced, so only the moved subtree
+#                must be hidden.
+.env
+*.before-*
+*.bak-*
+dags-disabled

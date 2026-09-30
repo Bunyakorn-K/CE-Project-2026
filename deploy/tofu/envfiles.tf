@@ -64,6 +64,13 @@ resource "null_resource" "install_envs" {
     analytics_dir = local.analytics_dir
     registry_dir  = var.registry_dir
     repo_ref      = var.app_repo_ref
+    # Without this, editing a template rewrites rendered/*.env but never re-runs
+    # the `install -m 0600` below, while null_resource.analytics_stack (which
+    # hashes the same values) DOES re-run and replaces compose.yaml, so the apply
+    # looks successful and the recreated containers read the previous file.
+    # Hashed for the same reason as the stack triggers: state gets a digest, not
+    # another copy of the plaintext.
+    env_hash = sha256("${local.app_env}${local.etl_env}${local.weather_env}${local.analytics_env}")
   }
   provisioner "local-exec" {
     command = <<-EOT

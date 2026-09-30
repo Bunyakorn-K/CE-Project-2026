@@ -58,16 +58,39 @@ ORDER BY branch_name`;
  * `uniqExactIf(machine_session_id, status IN (2, 4))` before that.
  *
  * Why rows and not sessions: `machine_session_id` is `Nullable(String)` and is
- * NULL on 63.91% of real usage rows (2,849 of 4,458, 2026-07-22 → 2026-09-25),
- * so a distinct-session count silently dropped two thirds of the work — the
- * real warehouse's ฿16,480,000 revenue over 1,314 such "cycles" is ฿125.42
- * each, about three times a real Thai wash, while the same revenue over 3,905
- * rows is ฿42.20. The cardinality diagnostic
+ * NULL on 67.8933% of real usage rows (5,369 of 7,908, measured 2026-09-30
+ * 11:39:11 UTC), so a distinct-session count silently drops the unattributed
+ * majority of the work. On the 2026-09-29 measurement the same gap read
+ * 63.91% (2,849 of 4,458, 2026-07-22 → 2026-09-25): the real warehouse's
+ * ฿16,480,000 revenue over 1,314 such "cycles" is ฿125.42 each, about three
+ * times a real Thai wash, while the same revenue over 3,905 rows is ฿42.20 —
+ * inside the plausible ฿40–45 band for a Thai wash, and the evidence the
+ * 2026-09-29 decision rests on.
+ *
+ * Re-measured 2026-09-30 11:39:11 UTC over 7,908 rows, after the warehouse
+ * recovery merge: ฿322,650 of paid/finished revenue is ฿203.05 over the 1,589
+ * session-distinct cycles and ฿48.40 over the 6,666 rows. So the refreshed
+ * figure is ABOVE the ฿40–45 band, and this no longer re-confirms the decision
+ * on price plausibility. The decision is unchanged and the ranking is unchanged
+ * — the row count is still the closest of the four, and the session-distinct
+ * alternatives are still off by roughly 3× to 5× — but the
+ * argument that actually carries the decision is the cardinality one below,
+ * not the price band. The unattributed recovered days are a plausible cause of
+ * the rise (rows without a session id add to a row count and to no
+ * session-distinct count), and that cause is NOT proven; it would need a
+ * per-day attribution breakdown for 2026-08-31…2026-09-16, which has not been
+ * run. The cardinality diagnostic
  * (`apps/api/scripts/cycle-cardinality-diagnostic.ts`) measured that one real
  * session id spans exactly one row and exactly one status, so for attributed
  * rows the two definitions are identical; the divergence was entirely the
- * missing attribution. `status IN ('paid', 'finished')` is a data-contract
+ * missing attribution. That shape was measured 2026-09-29 and has NOT been
+ * re-measured since. `status IN ('paid', 'finished')` is a data-contract
  * decision (docs/03_data_contracts/data_contracts.md) and is unchanged.
+ *
+ * The unattributed share is a live metric, not a constant: it moves as the ETL
+ * ingests the IRIS backlog and as recovery merges land. Never quote it without a
+ * measurement date. Figures here are recorded in
+ * docs/04_traceability/RTM_matrix.md ("Canonical cycle definition").
  *
  * BY NAME, not by number. This was `status IN (2, 4)`, which was only correct
  * while the Enum8 read 'running'=3, 'finished'=4. `status` is now numbered by
@@ -177,8 +200,10 @@ export type MachineInfo = {
  *  `countedRows` is the denominator the KPI is computed over, and
  *  `attributedRows` is how many of those rows carry the field. The difference
  *  is a real, measured gap, not a rounding artifact: on the production
- *  warehouse 63.91% of usage rows have no session id, so a reader who is not
- *  told this will read a row count as a fully attributed session count. */
+ *  warehouse 67.8933% of usage rows have no session id (5,369 of 7,908,
+ *  measured 2026-09-30 11:39:11 UTC; 63.91% of 4,458 rows on 2026-09-29), so a
+ *  reader who is not told this will read a row count as a fully attributed
+ *  session count. */
 export type CycleAttribution = {
   countedRows: number;
   attributedRows: number;

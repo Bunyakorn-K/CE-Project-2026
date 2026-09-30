@@ -70,11 +70,18 @@ current product authority.
 | Superset bootstrap (#42) | Done (2026-09-13) | `deploy/analytics/bootstrap-superset.sh` |
 | Airflow Postgres (#42) | Done (2026-09-13) | `docs/04_traceability/ops-verification-2026-09-13-airflow-superset.md` |
 
-Data volume is 4,458 non-synthetic usage rows over **9 weeks**
-(2026-07-22 → 2026-09-25, measured 2026-09-29 by
-`apps/api/scripts/cycle-cardinality-diagnostic.ts`; this supersedes the earlier
-"~4.8k rows (~1 week)" note). Sufficient for baseline only;
-≥ 3 months needed for Prophet/SARIMA/GBM candidates. See
+Data volume is **7,908 non-synthetic usage rows** spanning **71 calendar days**
+(2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC on the real
+warehouse). This supersedes 4,458 rows over 9 weeks (2026-07-22 → 2026-09-25,
+measured 2026-09-29), which itself superseded the earlier "~4.8k rows (~1 week)"
+note. Coverage is 70 of 71 day buckets; **2026-07-27 is the only usage gap day
+and it is a genuine source gap, not an artefact.** The jump from 4,458 to 7,908
+is the 2026-09-30 recovery merge, which closed a 17-day hole (2026-08-31 →
+2026-09-16) the live warehouse was missing — see
+`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`,
+which also records an **unresolved** root cause for how that data was lost.
+Sufficient for baseline only; **71 days is still short of the ≥ 3 months
+(90 days) needed for Prophet/SARIMA/GBM candidates.** See
 `docs/06_ml/ml-training-data-guide.md` §5 for data requirements.
 
 ## Current production caveats
@@ -95,13 +102,14 @@ and `DESCRIBE TABLE fact_machine_usage` now matches `apps/etl/src/schema.ts`.
 Do not re-run it; the script refuses an already-migrated column by design. The
 `proj_by_time` projection must be dropped for the swap and rebuilt after it, and
 the ETL must be held still for the window — see
-`deploy/etl/hold-etl-for-warehouse-migration.sh`. Because **65.25%** of real
-usage rows carry no `machine_session_id` (measured 2026-09-29 over 5,146 rows),
-the dashboard response carries `cycleAttribution` and the web dashboard states
-the unattributed share in Thai; a cycle count must never be presented as fully
-attributed. **That share is a live metric, not a constant** — it rises as the ETL
-ingests the IRIS backlog, and any figure quoted without a measurement date is
-stale. This is
+`deploy/etl/hold-etl-for-warehouse-migration.sh`. Because **67.8933%** of real
+usage rows carry no `machine_session_id` (5,369 of 7,908, measured 2026-09-30
+11:39:11 UTC; it was 65.25% of 5,146 rows on 2026-09-29 and 63.91% of 4,458 rows
+earlier that day), the dashboard response carries `cycleAttribution` and the web
+dashboard states the unattributed share in Thai; a cycle count must never be
+presented as fully attributed. **That share is a live metric, not a constant** —
+it moves as the ETL ingests the IRIS backlog and as recovery merges land, and
+any figure quoted without a measurement date is stale. This is
 code/test evidence, not production E2E. The LINE
 authentication flow is not yet verified end to end. Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded
@@ -246,16 +254,17 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on 2026-09-28: **227 tests green** — API 152, web 38,
-ETL 37 (web had fallen to 1 after the dead-code deletion removed
-`dashboard-metrics.test.ts`; it is now 38). That run used Node 24.21.0, which is
-within the supported 24.x line; no `package.json` declares `engines` and the
-Dockerfiles build from the floating `node:24-bookworm-slim` tag, so nothing local
-enforces a narrower Node version. `pnpm --filter @laundrytwin/api check`, web
-check/test/build, and ETL test pass. Manual browser QA of the active router was
-also performed on 2026-09-28; it remains manual, Chromium-only, and leaves no
-committed visual baseline. This does not establish production, LINE, or browser
-E2E.
+Local automated evidence on **2026-09-30: 384 tests green** — API 270, web 53,
+ETL 61 (supersedes 227 green / API 152 / web 38 / ETL 37, measured 2026-09-28;
+web had fallen to 1 after the dead-code deletion removed
+`dashboard-metrics.test.ts`). The separate Playwright layout suite is 11 tests
+and is **not** part of `pnpm test`. Node 24.x is used (see `.nvmrc`); no
+`package.json` declares `engines` and the Dockerfiles build from the floating
+`node:24-bookworm-slim` tag, so nothing local enforces a narrower Node version.
+`pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL test pass.
+Manual browser QA of the active router was performed on 2026-09-28; it remains
+manual, Chromium-only, and leaves no committed visual baseline. This does not
+establish production, LINE, or browser E2E.
 
 ```bash
 pnpm test

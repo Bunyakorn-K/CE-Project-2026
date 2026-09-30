@@ -4,11 +4,24 @@
 (US-06, R09 — Phase 2), with a development plan and evaluation metrics. This
 is a research/planning document; no ML model ships in the MVP.
 
-**Data reality check (2026-09-06):** the warehouse holds ~4.3k usage rows over
-a short period (a few days of real data + demo). That is **far too little for
-a robust time-series model** — the honest recommendation below therefore
-starts with a rule-based baseline and treats statistical models as candidates
-to revisit once ≥ 3 months of history exist.
+**Data reality check (2026-09-30, current):** the warehouse holds **7,908
+non-synthetic usage rows over 71 calendar days** (2026-07-22 → 2026-09-30;
+measured 2026-09-30 11:39:11 UTC on the real warehouse, after the recovery
+merge — see `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`).
+That is **still far too little for a robust time-series model** — 71 days is
+short of the 90 days a Prophet/SARIMA/GBM candidate needs — so the honest
+recommendation below starts with a rule-based baseline and treats statistical
+models as candidates to revisit once ≥ 3 months of history exist. **67.8933%**
+of rows carry no `machine_session_id` (5,369 of 7,908, same measurement), so a
+row count is not a count of identified sessions.
+
+> **Superseded figures, kept for history — do not quote as current.** This
+> document originally read "~4.3k usage rows over a short period (a few days of
+> real data + demo)" (measured 2026-09-06), which superseded the "~4.8k rows
+> (≈1 week)" note. 4,458 rows over 9 weeks followed on 2026-09-29. Each was
+> correct on its own date and each was superseded; the figure above is current,
+> and every quoted volume in this file must carry a measurement date because
+> recovery merges move it.
 
 **Feature engineering guide:** see `docs/06_ml/ml-training-data-guide.md` for
 the complete feature schema, training data pipeline, and model training plan.
@@ -74,10 +87,25 @@ decisions, not just accuracy scores.
 
 ## 5. Risks / honest notes
 
-- 4,458 non-synthetic usage rows over 9 weeks (2026-07-22 → 2026-09-25; measured
-  2026-09-29 — this supersedes the earlier "4.3k rows ≈ 1 week" in this file):
-  any model fitted today would overfit. State data volume in every output (the
-  envelope already carries `totalRows`).
+- **7,908 non-synthetic usage rows over 71 calendar days** (2026-07-22 →
+  2026-09-30; measured 2026-09-30 11:39:11 UTC on the real warehouse). This
+  supersedes 4,458 rows over 9 weeks (measured 2026-09-29), which superseded the
+  2026-09-06 "~4.3k rows" note now parked under **Superseded figures** at the
+  top of this file. The jump is the 2026-09-30
+  warehouse recovery merge, which closed a 17-day hole
+  (2026-08-31 → 2026-09-16) the live warehouse was missing; its root cause is
+  still unresolved (`docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`).
+  **71 days is still short of the 90 days a Prophet/SARIMA/GBM candidate
+  needs**, so any model fitted today would overfit. **67.8933%** of rows carry
+  no `machine_session_id` (5,369 of 7,908, same measurement), so a row count is
+  not a count of identified sessions. State data volume and its measurement date
+  in every output (the envelope already carries `totalRows`).
+- **The recovered days are mostly unattributed**, which matters for any
+  training set built from them: the 17 recovered days contribute 2,644 rows
+  that carry revenue but, for the large majority, no session identifier. The
+  unattributed share of those specific days **has not been measured** — do not
+  assume the corpus-wide 67.8933% applies to them, and do not build a
+  session-keyed feature over the recovered window without measuring it first.
 - Weather correlation (F-12/#34) is descriptive; do not chain it into a
   demand forecast without validation.
 - No customer PII is used; bucket aggregates only.

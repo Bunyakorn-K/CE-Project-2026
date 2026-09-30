@@ -5,9 +5,20 @@ line_channel_access_token = "CHANGE_ME"
 line_channel_secret       = "CHANGE_ME"
 clickhouse_password       = "CHANGE_ME"          # ClickHouse admin (ETL/weather write path)
 clickhouse_reader_password = "CHANGE_ME"         # ClickHouse reader (API/analytics read path)
+# clickhouse_reader_password must be the plaintext ALREADY IN USE, not a new
+# random value: it is also the `basic_auth` secret for
+# clickhouse.laundrytwin.duckdns.org in the Caddyfile on the Pi (stored there as
+# a bcrypt hash). A wrong value passes validate and breaks only that public route
+# with a 401, while the API keeps working. Changing it rotates the credential on
+# both hops - do that with the Pi Caddyfile, deliberately.
 pg_connection_string      = "postgres://user:pass@host:5432/db"
 airflow_admin_password    = "CHANGE_ME"
 airflow_db_password       = "CHANGE_ME"
+# superset_db_password must be the value already in /opt/analytics/.env; this
+# apply does not rotate the role's password in Postgres. A fresh random string
+# gives a clean plan and a clean apply, and a Superset that cannot reach its own
+# metadata database.
+superset_db_password      = "CHANGE_ME"
 superset_secret_key       = "CHANGE_ME"
 
 # Required in practice, defaulted to "" so a first plan can run:

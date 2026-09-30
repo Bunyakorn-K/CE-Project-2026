@@ -90,6 +90,8 @@ shutil.move(out, src)
 print('injected ClickHouse password into seed')
 PY
 # flask shell is a line-by-line REPL, so every statement is a one-liner.
+# Database is superset.models.core.Database in Superset 6.x (still there); only
+# the dataset model moved, and the step 4 block below documents where it went.
 docker exec -i -e SUPERSET_ADMIN_USER="$ADMIN_USER" "$CONTAINER" superset shell <<'PY'
 import os, zipfile, re
 from flask import g
@@ -109,11 +111,17 @@ docker exec "$CONTAINER" superset import-dashboards -p /tmp/seed-dashboards.zip 
 log "4/4 verify metadata"
 # flask shell is a line-by-line REPL: multi-line blocks fail with
 # IndentationError/NameError silently. Use one-line comprehensions only.
+# The dataset model is superset.connectors.sqla.models.SqlaTable, imported here
+# as Table so the query below keeps its name. It is NOT importable from
+# superset.models.core (that module's `Table` is the SQL-parsing dataclass from
+# superset.sql.parse, not an ORM model) and superset.models.table does not exist
+# in the 6.1.0 image. Database is still superset.models.core.Database.
 docker exec -i "$CONTAINER" superset shell <<'PY'
 from superset.extensions import db
 from superset.models.dashboard import Dashboard
 from superset.models.slice import Slice
-from superset.models.core import Database, Table
+from superset.connectors.sqla.models import SqlaTable as Table
+from superset.models.core import Database
 dash = db.session.query(Dashboard).filter(Dashboard.dashboard_title != '[ untitled dashboard ]').count()
 charts = db.session.query(Slice).count()
 dsets = db.session.query(Table).filter(Table.table_name.in_(['usage_enriched', 'temp_enriched'])).count()

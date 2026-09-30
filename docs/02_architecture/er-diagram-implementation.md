@@ -236,10 +236,14 @@ Notes:
   `attribution_machine_session_id` (`apps/etl/src/postgres.ts:141`,
   `apps/etl/src/transform.ts:194`). Its cardinality was measured on 2026-09-29
   against the real warehouse (4,458 non-synthetic rows, 2026-07-22 → 2026-09-25):
-  **one row per session and one status per session**, with the id **absent on
-  63.91% of rows**, exactly the `attribution_state = 'pending_attribution'`
-  set. No counter uses it to count cycles — the canonical cycle count is the row
-  count `countIf(status IN ('paid', 'finished'))` — and it is used only to report how much of
+  **one row per session and one status per session**, with the id absent on
+  63.91% of rows. Its **share of NULL rows was re-measured 2026-09-30 11:39:11
+  UTC** over 7,908 non-synthetic rows spanning 2026-07-22 → 2026-09-30, after the
+  warehouse recovery merge: **67.8933%** (5,369 rows), essentially the
+  `attribution_state = 'pending_attribution'` set. The 1:1 session cardinality
+  was **not re-measured** on 2026-09-30. No counter uses it to count cycles —
+  the canonical cycle count is the row count
+  `countIf(status IN ('paid', 'finished'))` — and it is used only to report how much of
   that count carries session-level evidence (`dashboard.cycleAttribution`). Its
   upstream meaning remains **unresolved**; no meaning is asserted here. See
   "Canonical cycle definition" in `docs/04_traceability/RTM_matrix.md` and

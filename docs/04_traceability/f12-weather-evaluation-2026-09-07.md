@@ -5,6 +5,14 @@
 
 **Schema extension (2026-09-22):** `dim_branch_location` and `fact_weather_sample` both gained `sub_district Nullable(String)` and `district Nullable(String)` columns for future per-position weather data. Currently `NULL`. Collector loop changed from 5-min to hourly (`sleep 3600`).
 
+> **Superseded on 2026-09-30** for two current-state claims. The
+> `fact_weather_sample` key is now `(tenant_id, branch_id, timestamp)`, not
+> `(province, timestamp)` — collection became per registered branch on
+> 2026-09-10 (`apps/etl/src/schema.ts`). The measurements below are
+> point-in-time evidence for this file's own date and are left intact.
+> See `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`
+> for the current warehouse figures.
+
 ## What is deployed (evidence)
 
 | Piece | Evidence |

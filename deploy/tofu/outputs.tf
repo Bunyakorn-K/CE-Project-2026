@@ -44,7 +44,11 @@ output "notes" {
   description = "Operational notes for this deployment."
   value = join("\n", [
     "ClickHouse is pinned to 26.3 LTS: 26.6+ requires AVX2 and crashes with SIGILL on CPUs like VM 117 (AMD FX-8350).",
-    "Superset metadata DB initializes empty on a fresh host: import/recreate the dashboard, datasets and admin user.",
+    "The analytics stack is synced from the CHECKED-OUT repo tree (app_checkout does fetch + checkout + reset --hard origin/${var.app_repo_ref}), never from a local working tree. Changes that are not merged AND pushed are inert here, and an apply run with a branch name instead of a commit sha re-deploys whatever the branch last pointed at. Review the rsync deletion gate's dry-run diff against post-merge origin/main.",
+    "The analytics sync refuses to delete any path not listed in analytics-delete-allowlist.txt. That list is empty on purpose: expect the first real apply to stop there, print the paths it wanted to delete, and be reviewed before any line is added.",
+    "clickhouse_reader_password and superset_db_password must be the values ALREADY in use (Pi Caddyfile basic_auth hash; existing superset_app role). This apply delivers them, it does not rotate the underlying credential.",
+    "/opt/analytics/.env is replaced with install -m 0600, so a key missing from locals.tf is a key the apply deletes. ANALYTICS_READ_API_KEY is still on the live file and no code path reads it, so the first apply drops it.",
+    "Superset metadata DB starts empty on a fresh host and nothing in this repository creates the `superset` database or the `superset_app` role: create both by hand, then run bootstrap-superset.sh.",
     "Airflow initializes a fresh metadata DB; the laundrytwin_warehouse_freshness DAG ships in deploy/analytics/dags.",
     "Rollback is: cd into both install dirs, docker compose down, git checkout the previous ref, docker compose up -d.",
     "The registry files in ${var.registry_dir} are installed but the container is NOT started or recreated by tofu, so an apply cannot interrupt a running deploy path. Start it with: docker compose -f ${var.registry_dir}/compose.yaml up -d",

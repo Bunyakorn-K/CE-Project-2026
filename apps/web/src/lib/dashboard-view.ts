@@ -201,10 +201,14 @@ export type CycleAttributionView =
 /**
  * Renders how much of the cycle count rests on a `machine_session_id`.
  *
- * The cycle KPI counts usage rows. On the real warehouse 63.91% of usage rows
- * carry no session id at all, so the total is a correct count of work done and
- * an incomplete count of *identified* sessions. Saying so next to the number is
- * the difference between a measurement and a claim.
+ * The cycle KPI counts usage rows. On the real warehouse 67.8933% of usage rows
+ * carry no session id at all (5,369 of 7,908, measured 2026-09-30 11:39:11 UTC;
+ * 63.91% of 4,458 rows on 2026-09-29), so the total is a correct count of work
+ * done and an incomplete count of *identified* sessions. Saying so next to the
+ * number is the difference between a measurement and a claim. The share is a
+ * live metric — it rises as the ETL ingests the IRIS backlog and as recovery
+ * merges land — so it must be read with its measurement date, never as a
+ * constant of the data.
  *
  * `unknown` is a real state, not a failure case: the demo/IRIS projection has no
  * such field, so the gap is unmeasurable there and must not be rendered as

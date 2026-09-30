@@ -8,7 +8,10 @@ no vendor quotes were obtained; verify before procurement.
 AMD FX-8350, 8 cores, ~125 W TDP), compose stacks under `/opt`
 (laundrytwin, analytics, arcane, librechat), internal docker registry on the
 same VM, ZeroTier overlay, duckdns domain, LINE Official Account (Messaging
-API). Data volumes (2026-09-06): 4.3k usages, 3.49M temperature samples;
+API). Data volumes (2026-09-06): 4.3k usages, 3.49M temperature samples —
+left as recorded for this document's own date. Current figures
+(2026-09-30 11:39:11 UTC): 7,908 usage rows, 3,760,465 temperature rows;
+see `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`.
 freshness DAG runs every 5 min.
 
 ## 1. Self-hosted baseline (current)

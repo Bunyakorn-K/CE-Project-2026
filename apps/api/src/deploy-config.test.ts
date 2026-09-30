@@ -150,6 +150,20 @@ describe("tofu env contract", () => {
     expect(refs.filter((ref) => !produced.has(ref))).toEqual([]);
   });
 
+  it("re-installs the env files when a template changes", () => {
+    // `install_envs` re-ran only when a directory or the repo ref changed, so
+    // editing a template rewrote rendered/*.env and nothing delivered it - while
+    // the stack resource, which hashes the same values, DID re-run and recreated
+    // the containers. The apply looked successful and the containers read the
+    // previous file.
+    const block = envfiles.match(/resource "null_resource" "install_envs" \{([\s\S]*?)\n  provisioner/)![1];
+
+    expect(block).toMatch(/env_hash\s*=\s*sha256\(/);
+    for (const template of ["app_env", "etl_env", "weather_env", "analytics_env"]) {
+      expect(block).toContain(`local.${template}`);
+    }
+  });
+
   it("delivers the keys whose absence breaks a running service", () => {
     const produced = new Set([...templates.values()].flatMap(envKeys));
 
@@ -188,7 +202,9 @@ describe("tofu env contract", () => {
 
   it("does not reintroduce the stale secrets no code path reads", () => {
     // ANALYTICS_READ_API_KEY and OPENROUTER_API_KEY survived a rename. No
-    // source in apps/ reads either; they were deleted from the live .env.
+    // source in apps/ reads either. The first tofu apply has not run yet, so
+    // ANALYTICS_READ_API_KEY is still a key on the live /opt/analytics/.env
+    // (checked 2026-09-30 by key name) and the apply is what will delete it.
     // Comment lines are stripped so the removal stays documented, but a live
     // assignment - in a heredoc or a variable block - fails here.
     const corpus = [locals, variables, tfvarsExample, appCompose, analyticsCompose]
@@ -299,6 +315,120 @@ describe("exposed services are authenticated", () => {
   it("never disables the inspector auth anywhere in the repository", () => {
     for (const file of ["deploy/analytics/compose.yaml", "compose.yaml", "deploy/arcane/compose.yaml"]) {
       expect(read(file)).not.toMatch(/DANGEROUSLY_OMIT_AUTH:\s*'?true'?/);
+    }
+  });
+});
+
+describe("the analytics compose file matches the running host", () => {
+  // All three guards below exist because the repo silently drifted from
+  // /opt/analytics/compose.yaml on the VM, and nothing in the repository
+  // noticed. Each asserts a fact only the live file had.
+  const clickhouseBlock = analyticsCompose.slice(
+    analyticsCompose.indexOf("  clickhouse:"),
+    analyticsCompose.indexOf("  mcp-inspector:")
+  );
+
+  it("mounts the committed server RAM cap", () => {
+    // An uncapped ClickHouse grew until the kernel OOM killer took the 10 GB
+    // host down (2026-09-16) and every proxied app returned 502. The cap is a
+    // config.d file, so a compose file that does not mount it runs an uncapped
+    // server no matter what the rest of the stack looks like.
+    expect(clickhouseBlock).toMatch(
+      /\.\/clickhouse-memory\.xml:\/etc\/clickhouse-server\/config\.d\/memory\.xml:ro/
+    );
+    const cap = read("deploy/analytics/clickhouse-memory.xml");
+    expect(cap).toMatch(/<max_server_memory_usage>3221225472<\/max_server_memory_usage>/);
+  });
+
+  it("mounts the external restored warehouse volume, not the managed one", () => {
+    // The live warehouse is the hand-created external volume
+    // analytics_clickhouse-data-restored. Re-attaching the compose-managed
+    // clickhouse-data name comes up as an empty warehouse, which reads as total
+    // data loss on a warehouse that is in fact intact.
+    expect(clickhouseBlock).toMatch(/- clickhouse-data-restored:\/var\/lib\/clickhouse/);
+    expect(clickhouseBlock).not.toMatch(/- clickhouse-data:\/var\/lib\/clickhouse/);
+    expect(analyticsCompose).toMatch(
+      /clickhouse-data-restored:\s*\n\s*external: true\s*\n\s*name: analytics_clickhouse-data-restored/
+    );
+  });
+
+  it("points Superset at the least-privilege Postgres role, not the Airflow superuser", () => {
+    // `airflow` is a Postgres superuser that also owns the Airflow metadata
+    // database. Superset only needs DML on its own `superset` database.
+    const line = analyticsCompose
+      .split("\n")
+      .find((l) => l.trim().startsWith("SUPERSET_DATABASE_URI:"))!;
+    expect(line).toContain("postgresql+psycopg2://superset_app:${SUPERSET_DB_PASSWORD}@");
+    expect(line).not.toContain("://airflow:");
+  });
+});
+
+describe("the analytics sync cannot lose an unlisted file", () => {
+  const excludes = read("deploy/tofu/analytics-rsync.excludes");
+  const allowlist = read("deploy/tofu/analytics-delete-allowlist.txt");
+  const gate = read("deploy/tofu/scripts/analytics-rsync.sh");
+
+  it("routes the sync through the gate, not a bare --delete", () => {
+    // The sync used to be `rsync -a --delete` with three inline excludes and no
+    // preview: nothing printed what would be deleted, so "apply only after
+    // diffing and seeing nothing is lost" was a habit, not a mechanism.
+    expect(stacks).not.toMatch(/rsync -a --delete/);
+    expect(stacks).toMatch(/analytics-rsync\.sh/);
+    expect(stacks).toMatch(/analytics-delete-allowlist\.txt/);
+  });
+
+  it("prints the dry-run diff and refuses an unlisted deletion", () => {
+    // Same flags in both passes, so the printed deletions are the real ones; and
+    // the refusal exits non-zero, which under `set -e` aborts the apply before
+    // the .env install and before `docker compose up -d`.
+    expect(gate).toMatch(/--dry-run/);
+    expect(gate).toMatch(/-a --delete --itemize-changes/);
+    expect(gate).toMatch(/\^\\\*deleting/);
+    expect(gate).toMatch(/REFUSED/);
+    expect(gate).toMatch(/exit 1/);
+  });
+
+  it("protects the paths the operator keeps by hand", () => {
+    const patterns = excludes.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+    // `*.bak-*` is the pattern the inline excludes were missing: an rsync pattern
+    // with no `/` matches trailing path components only and `*` does not cross
+    // `/`, so `*.before-*` cannot match compose.yaml.bak-*. Verified with
+    // `rsync -ani --delete`, where the old set listed all five .bak- files as
+    // `*deleting`.
+    expect(patterns).toEqual(expect.arrayContaining([".env", "*.before-*", "*.bak-*", "dags-disabled"]));
+    // openrsync silently drops an unterminated final pattern, un-protecting the
+    // last entry. The trailing newline is load-bearing.
+    expect(excludes.endsWith("\n")).toBe(true);
+  });
+
+  it("holds no deletion allowlist entries yet", () => {
+    // Nothing in /opt/analytics was enumerated when this was written, so the
+    // first real apply must stop at the gate. An entry added without the
+    // corresponding evidence is the thing this list exists to prevent.
+    const entries = allowlist.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+    expect(entries).toEqual([]);
+  });
+});
+
+describe("credentials that already exist outside this repository", () => {
+  it("warns that the two pre-existing secrets must be supplied unchanged", () => {
+    // Both render cleanly whatever the value is, pass `tofu validate`, and then
+    // fail somewhere that reads like a different component: the Pi Caddyfile
+    // answers 401 for the public ClickHouse route while the API keeps working,
+    // or Superset cannot reach its own metadata DB. Nothing in an apply fails.
+    const lines = tfvarsExample.split("\n");
+    for (const name of ["clickhouse_reader_password", "superset_db_password"]) {
+      const declaration = variables.match(new RegExp(`variable "${name}" \\{([\\s\\S]*?)\\n\\}`))![1];
+      expect(declaration).toMatch(/description = <<-EOT/);
+      expect(declaration.toLowerCase()).toMatch(/already|existing/);
+
+      // The file an operator actually copies has to carry the same warning,
+      // immediately around the assignment they are about to fill in.
+      const at = lines.findIndex((l) => l.startsWith(name));
+      expect(at).toBeGreaterThan(0);
+      const nearby = lines.slice(Math.max(0, at - 4), at + 8).join("\n");
+      expect(nearby).toContain(name);
+      expect(nearby).toMatch(/must be|already/i);
     }
   });
 });

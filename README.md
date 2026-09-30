@@ -128,9 +128,11 @@ See `docs/06_ml/ml-training-data-guide.md` for the complete feature
 engineering schema, training data pipeline, and model training plan.
 The warehouse (`laundrytwin_analytics` on VM 117) holds `fact_machine_usage`,
 `fact_weather_sample`, `fact_temperature_sample`, `dim_branch`, and
-`dim_branch_location`. Current data volume (4,458 non-synthetic usage rows over
-9 weeks, 2026-07-22 → 2026-09-25, measured 2026-09-29) is
-far too little for robust time-series modeling — the honest baseline
+`dim_branch_location`. Current data volume (**7,908 non-synthetic usage rows**
+over **71 calendar days**, 2026-07-22 → 2026-09-30, measured 2026-09-30
+11:39:11 UTC) is
+far too little for robust time-series modeling — 71 days is still short of the
+90 days a Prophet/SARIMA/GBM candidate needs, so the honest baseline
 is the percentile heuristic (`get_off_peak_windows` MCP tool).
 
 ## Run locally
@@ -217,10 +219,10 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on 2026-09-28: **227 tests green** — API 152, web 38,
-ETL 37 (web had fallen to 1 after the dead-code deletion removed
-`dashboard-metrics.test.ts`; it is now 38). That run used Node 24.21.0, which is
-within the supported 24.x line. `pnpm --filter @laundrytwin/api check`, web
+Local automated evidence on **2026-09-30: 384 tests green** — API 270, web 53,
+ETL 61 (supersedes 227 green / API 152 / web 38 / ETL 37, measured 2026-09-28).
+The separate Playwright layout suite is 11 tests and is not part of `pnpm test`.
+Node 24.x is used (see `.nvmrc`). `pnpm --filter @laundrytwin/api check`, web
 check/test/build, and ETL test pass. Manual browser QA of the active router was
 performed on 2026-09-28 and found real defects, but it is manual, Chromium-only,
 and leaves no committed visual baseline. This does not establish production, LINE,

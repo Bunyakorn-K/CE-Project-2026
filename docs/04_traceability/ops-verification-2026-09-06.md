@@ -3,6 +3,14 @@
 Verified live against `uunw@172.30.191.48` (host `laundrytwin`). All commands
 ran with evidence captured at the time of verification.
 
+> **Superseded on 2026-09-30** for two current-state claims. The
+> `fact_weather_sample` key is now `(tenant_id, branch_id, timestamp)`, not
+> `(province, timestamp)` — collection became per registered branch on
+> 2026-09-10 (`apps/etl/src/schema.ts`). The measurements below are
+> point-in-time evidence for this file's own date and are left intact.
+> See `docs/04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md`
+> for the current warehouse figures.
+
 ## Airflow (#32) — resolved
 
 **Symptom (health endpoint, pre-fix):** `triggerer: unhealthy` and

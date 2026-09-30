@@ -118,12 +118,21 @@ describe("machine floor report", () => {
   // docs/04_traceability/RTM_matrix.md "Canonical cycle definition").
   //
   // `machine_session_id` is nullable and NULL on 63.91% of real usage rows
-  // (2,849 of 4,458), so a distinct-session count silently drops two thirds of
-  // the work: the real warehouse's revenue divided by uniqExactIf gave
-  // ฿125.42/cycle, about three times a real Thai wash, while the row count
-  // gave ฿42.20. The measured cardinality makes them equivalent for attributed
-  // rows — one session id is exactly one row, always — so counting rows counts
-  // every session and loses nothing that had evidence.
+  // (2,849 of 4,458, measured 2026-09-29 over 2026-07-22 → 2026-09-25), so a
+  // distinct-session count silently drops two thirds of the work: the real
+  // warehouse's revenue divided by uniqExactIf gave ฿125.42/cycle, about three
+  // times a real Thai wash, while the row count gave ฿42.20. Those are the
+  // figures the 2026-09-29 decision rests on. Re-measured 2026-09-30 11:39:11
+  // UTC over 7,908 rows: NULL share 67.8933% (5,369), ฿203.05 over 1,589
+  // session-distinct cycles vs ฿48.40 over 6,666 rows — the row-count figure
+  // is now ABOVE the plausible ฿40–45 band, so the refreshed price band does
+  // not re-confirm the decision; the ranking is unchanged and the cardinality
+  // argument below is what carries it. The measured cardinality makes rows and
+  // sessions equivalent for attributed rows — one session id is exactly one
+  // row — so counting rows counts every session and loses nothing that had
+  // evidence. That 1:1 shape was measured 2026-09-29 and not re-measured
+  // since. Every figure here is a point-in-time measurement of a live metric;
+  // never quote one without its date.
   it("counts cycles as usage rows in the paid/finished statuses, not distinct session ids", () => {
     const sql = buildDashboardSQL();
 

@@ -1,0 +1,28 @@
+# Paths in /opt/analytics that the deploy/analytics sync IS EXPECTED TO DELETE.
+#
+# deploy/tofu/scripts/analytics-rsync.sh runs the real sync with `--delete`, so
+# this is the only thing standing between the sync and a hand-made file that
+# exists on the host and in no branch. Before deleting anything the script runs
+# the same sync as a dry run, prints every `*deleting` path, and refuses to sync
+# if any of them is not listed here. Review this file the way you review code:
+# one path, one reason.
+#
+# One path per line, relative to /opt/analytics. Blank lines and `#` comments are
+# ignored. A path matches itself only - no globs - so an entry can never quietly
+# cover a subtree. Adding a line is the deliberate act; leaving one out makes the
+# apply stop with the path printed, which is the intended behaviour on a host
+# that holds files this repository knows nothing about.
+#
+# --- none yet ---
+# This list has not been built against VM 117, so it is deliberately empty: no
+# file in /opt/analytics was enumerated for it (only the .env key names were
+# checked). Expect the first real apply to STOP at the gate and print the paths
+# it wanted to delete. Read each one, decide, then add it here with a reason.
+# That pause is the gate working.
+#
+# The entry most likely to be justified is `clickhouse-reader.local.xml`: the
+# committed compose file does not mount it, so it is a hand-created file whose
+# literal reader password is superseded by clickhouse-reader.xml reading
+# <password from_env="CLICKHOUSE_READER_PASSWORD"/>. Do not add it before
+# var.clickhouse_reader_password has been set to the plaintext that is actually
+# in use - see the warning in deploy/tofu/locals.tf.
