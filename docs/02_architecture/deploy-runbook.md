@@ -338,7 +338,19 @@ until a real sign-in has landed on `/dashboard`.
   heartbeats). Metadata lives on `analytics-postgres-1` (db `airflow`), and
   Superset metadata on the same Postgres (db `superset`).
 - **SSH access:**
-  - VM 117: `ssh uunw@172.30.191.48` (key-based, `sudo` passwordless).
+  - VM 117: `ssh uunw@172.30.191.48` (key-based, `sudo` passwordless). This
+    address is only reachable over the ZeroTier overlay.
+  - **VM 117 from a host without ZeroTier** (measured 2026-10-01): the VM is
+    also reachable on its LAN address `10.10.0.117`, and a host that can route
+    to that LAN can jump in:
+    ```bash
+    ssh -J notnotik-pve uunw@10.10.0.117
+    ```
+    The `-J` is load-bearing. Running the inner `ssh` *on* the jump host
+    instead presents the jump host's keys, not yours, and fails with
+    `Permission denied (publickey)` even though the route and port are open.
+    Confirm identity with `hostname` (expect `laundrytwin`) before assuming a
+    bare TCP connect means you reached the VM.
   - Pi: SSH is open on 192.168.88.10 but requires the Pi's authorized key —
     ask the machine owner for access before changing the Caddyfile.
 
@@ -385,6 +397,77 @@ This gate documents how a production change is made; it does not authorize
 one. Any production deployment, production migration, live telemetry ingestion,
 machine command, or payment write requires a separate explicit user request,
 the recorded rollback ref, and the post-change smoke checks above.
+
+## Deploy record — 2026-10-01, web only (`33a84cd`)
+
+Applied the LIFF-gate legal-route bypass to production. Web only; the API image
+was not rebuilt, so no data or schema change was involved.
+
+| Field | Value |
+| :--- | :--- |
+| Deployed ref | `33a84cd7883c5507bc5728b2da8287b33e4923b0` (`fix(web): keep the legal documents readable behind the LIFF gate`) |
+| Image | `10.10.0.117:5000/laundrytwin-web:deploy-33a84cd-20261001`, digest `sha256:d4649eb1…` |
+| Rollback ref | `10.10.0.117:5000/laundrytwin-web:latest` as it was **before** this deploy — image `sha256:b2ad47f1…`, repo digest `10.10.0.117:5000/laundrytwin-web@sha256:3025d9c6…`. Note that `:latest` has since been moved; the previous `latest` is also retained as `deploy-29c45c0-20260929`. |
+| Scope | `docker compose up -d --no-deps web`. API, ETL, weather, gas, and the whole analytics stack were left running and were not recreated. Volume count before and after: 17. |
+| App DB backup | `/opt/backups/pre-webdeploy-20261001T171800Z/laundrytwin.sqlite`, 192 KB, `integrity_check=ok`, 15 tables, 2 users, 2 access grants, read back and row-counted against the source. |
+
+The build ran on the VM from a clean `git clone` at the exact commit, with
+`--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`. That build arg is the only
+place the LIFF ID enters the web image — it is **not** in `/opt/laundrytwin/.env`
+(only `*_IMAGE` variables are), so a web image built without it ships a bundle
+where the gate is permanently a no-op and every route looks ungated.
+
+**Back up the app SQLite with the online backup API, not `cp`.** The data is in
+a `-wal` sidecar of about 1.4 MB; `cp` of the `.sqlite` file yields a 4 KB file
+that looks plausible and is missing every uncommitted row. `better-sqlite3`'s
+`db.backup(dest)` copies pages under a read lock and must be run from inside the
+API container as root, writing to the `/data` mount (`/opt/laundrytwin/data`) —
+`/opt/backups` is not mounted there — and the result is then moved into place on
+the host. The path inside the container is `/data/laundrytwin.sqlite`, not
+`/app/data/…`.
+
+### Post-deploy smoke, as measured
+
+Internal, on the VM: `/health` returned 200 on 8787, 8080, and 8088; the web
+root returned 200; the served `index.html` referenced the new
+`assets/index-BOs-dHS6.js`, and that bundle was confirmed to contain both the
+bypass code and the LIFF ID. `/api/me`, `/api/report/dashboard`,
+`/api/report/branches`, and `/api/twin` all returned 401 unauthenticated, and
+`/api/auth/liff/exchange` still rejected a forged ID token with
+`LIFF_VERIFICATION_FAILED`.
+
+Public, over TLS in a real browser at `https://laundrytwin.duckdns.org`:
+`/privacy` rendered the full 1382-character policy and `/terms` the full
+1007-character terms document, with no pending card and no gate error;
+`/dashboard` still redirected to `/login`, so the gate is intact on product
+routes. A client-side `/privacy` → `/login` → `/terms` round trip was confirmed
+to be a genuine router navigation and not a page reload (a `window` marker set
+before the first hop survived), which is the behaviour the `useSyncExternalStore`
+subscription exists to provide.
+
+**What this does not establish.** The browser used here was not signed in to
+LINE, so every visit took the `!liff.isLoggedIn()` early return. The specific
+production case the fix targets — a user who *is* signed in and whose token
+exchange returns 403 `ACCESS_PENDING` — was verified against a stubbed LIFF SDK
+locally before the deploy, and the deploy confirms the correct bundle is being
+served. It is not an end-to-end LINE verification, and the strict date
+validation, branch scoping, and logout-revocation checks in the gate above were
+not re-run because each needs an authenticated session with a branch grant.
+
+### Rolling back
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-29c45c0-20260929#' .env
+sudo docker compose up -d --no-deps web
+```
+
+Prefer an explicit `deploy-<sha>-<date>` tag over `:latest` for the running
+web service. `WEB_IMAGE` was previously left on `:latest`, which is why the
+pre-deploy image had no immutable ref to record — a moving tag makes "what was
+deployed before this" unanswerable at rollback time. The API is already pinned
+(`deploy-39cc632-20260929`) and should stay that way.
 
 ## ETL incident 2026-09-25 — the four-day silent hang
 
