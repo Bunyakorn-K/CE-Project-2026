@@ -215,11 +215,14 @@ Two consequences worth knowing before testing:
   re-open the app to see the consent screen again; until then
   `permission.getGrantedAll()` still lacks `openid` and the page asks them to
   re-consent.
-- The MINI App is still `Unverified`, and its Review and Published endpoint URLs
-  both still point at LINE's placeholder pages rather than
-  `https://laundrytwin.duckdns.org`. Only Developing is pointed at production.
-  That does not affect a sign-in test against the Developing LIFF URL, but the
-  app cannot be submitted for review until those are set.
+- The MINI App is still `Unverified`. All three endpoint URLs — Developing,
+  Review, and Published — now point at `https://laundrytwin.duckdns.org`; the
+  Review and Published rows previously held LINE's placeholder pages, which
+  would have sent reviewers to a static asset instead of the app. This means a
+  LINE reviewer exercising the Review LIFF URL reaches production and sees real
+  ClickHouse data, which is the normal and intended arrangement for a review
+  submission. Privacy policy URL is still unset on Basic settings and is a
+  separate review requirement.
 
 **Verified 2026-09-30 in a real sign-in against production,** after the scope
 change. The chain, as measured in the browser:
