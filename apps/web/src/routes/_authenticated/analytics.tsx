@@ -3,6 +3,7 @@ import { Card } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { useState } from "react";
+import { alertUnavailableReason } from "../../lib/alerts-view";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { authAtom } from "../../lib/atoms/auth";
 import { canViewRevenue as revenueAllowed } from "../../lib/access";
@@ -409,7 +410,9 @@ function AnalyticsPage() {
         </div>
         {alertsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดการแจ้งเตือน</div>}
         {alertsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดการแจ้งเตือนได้: {alertsQuery.error.message}</div>}
-        {alertsQuery.data && alertsQuery.data.availability === "unavailable" && <div className="state-message">{alertsQuery.data.reason ?? "แหล่งข้อมูลการแจ้งเตือนยังไม่พร้อมใช้งาน"}</div>}
+        {alertsQuery.data && alertsQuery.data.availability === "unavailable" && (
+          <div className="state-message">{alertUnavailableReason(alertsQuery.data)}</div>
+        )}
         {alertsQuery.data && alertsQuery.data.availability !== "unavailable" && alertsQuery.data.alerts.length === 0 && <div className="state-message">ไม่มีการแจ้งเตือนในช่วงเวลานี้</div>}
         {alertsQuery.data && alertsQuery.data.availability !== "unavailable" && (
           <div className="data-context evidence-strip" aria-live="polite">
