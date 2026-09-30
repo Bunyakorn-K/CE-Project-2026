@@ -34,6 +34,28 @@ mcp_access_token         = "CHANGE_ME"
 # then paste the whole "user:hash" line. See deploy/registry/README.md.
 registry_htpasswd_entry  = "laundrytwin:CHANGE_ME"
 
+# --- Gas collector (Home Assistant -> fact_gas_pressure_sample) -------------
+#
+# The compose service is behind `profiles: ["gas"]`, so this stack is inert
+# until you build the image and enable the profile. These values still have to
+# be real before the FIRST plan: ha_token and the two UUIDs have no defaults
+# and no null value, so a plan without them fails here rather than rendering an
+# empty credential that later surfaces as a 401.
+#
+# ha_token: a Home Assistant long-lived access token, created on the shop's HA
+# profile page. It is a real credential for a real shop account.
+ha_base_url             = "http://otterimju2.meepiangroup.com:8123"
+ha_token                = "CHANGE_ME"
+# MUST exist in dim_branch or the facts will not join to anything.
+# This binding is an ops decision, not a discovered fact — see the variable
+# description and docs/03_data_contracts/ha_gas_sensor_contract.md.
+gas_tenant_id           = "9069c13d-f590-402e-a200-08fe26bde21c"
+gas_branch_id           = "5e9611c1-6380-4d58-8ec7-ba4fb8fe4369"
+gas_branch_slug         = "otterimju2"
+# Hours re-read per hourly pass. Home Assistant purges at 7 days, so a value
+# above 7 warns rather than recovering anything.
+gas_lookback_hours      = 3
+
 # Optional overrides (defaults shown):
 app_repo_url           = "https://github.com/Bunyakorn-K/CE-Project-2026.git"
 app_repo_ref           = "main"
@@ -62,11 +84,15 @@ api_image_tag          = "latest"
 web_image_tag          = "latest"
 etl_image_tag          = "latest"
 weather_image_tag      = "latest"
+gas_image_tag          = "latest"
 
 # Per-service env file paths. weather_env_file must not point at the ETL env
 # file: the collector reads TMD + ClickHouse, never IRIS Postgres.
 etl_env_file           = "/opt/laundrytwin-etl/.env"
 weather_env_file       = "/opt/laundrytwin/weather.env"
+# gas_env_file must not point at the ETL env file either: the gas collector
+# reads Home Assistant + ClickHouse, never IRIS Postgres.
+gas_env_file           = "/opt/laundrytwin/gas.env"
 
 etl_watermark_path     = "/data/watermark.json"
 etl_since_fallback_days = 30

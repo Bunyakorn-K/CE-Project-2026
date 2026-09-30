@@ -26,6 +26,7 @@ locals {
   web_image     = "${var.registry_url}/laundrytwin-web:${var.web_image_tag}"
   etl_image     = "${var.registry_url}/laundrytwin-etl:${var.etl_image_tag}"
   weather_image = "${var.registry_url}/laundrytwin-weather:${var.weather_image_tag}"
+  gas_image     = "${var.registry_url}/laundrytwin-gas:${var.gas_image_tag}"
 
   # API container: /opt/laundrytwin/.env
   app_env = trimspace(<<-EOT
@@ -54,6 +55,8 @@ locals {
     WEATHER_IMAGE=${local.weather_image}
     ETL_ENV_FILE=${var.etl_env_file}
     WEATHER_ENV_FILE=${var.weather_env_file}
+    GAS_IMAGE=${local.gas_image}
+    GAS_ENV_FILE=${var.gas_env_file}
   EOT
   )
 
@@ -78,6 +81,31 @@ locals {
   # ClickHouse, never IRIS Postgres.
   weather_env = trimspace(<<-EOT
     TMD_API_KEY=${var.tmd_api_key}
+    CLICKHOUSE_URL=${var.clickhouse_url}
+    CLICKHOUSE_USER=${var.clickhouse_user}
+    CLICKHOUSE_PASSWORD=${var.clickhouse_password}
+    CLICKHOUSE_DATABASE=${var.clickhouse_database}
+  EOT
+  )
+
+  # Gas collector: /opt/laundrytwin/gas.env
+  # PG_CONNECTION_STRING is deliberately absent for the same reason as weather:
+  # this collector reads Home Assistant and ClickHouse, never IRIS Postgres.
+  #
+  # CLICKHOUSE_USER/PASSWORD here are the WRITE-capable credentials, the same
+  # ones etl_env carries — the collector INSERTs, so the reader credential that
+  # app_env uses is not sufficient.
+  #
+  # HA_TOKEN is a real shop credential. It is written here, 0600, and never
+  # committed. It has no default in variables.tf, so a missing token fails the
+  # plan instead of rendering an empty Bearer that later surfaces as a 401.
+  gas_env = trimspace(<<-EOT
+    HA_BASE_URL=${var.ha_base_url}
+    HA_TOKEN=${var.ha_token}
+    GAS_TENANT_ID=${var.gas_tenant_id}
+    GAS_BRANCH_ID=${var.gas_branch_id}
+    GAS_BRANCH_SLUG=${var.gas_branch_slug}
+    GAS_LOOKBACK_HOURS=${var.gas_lookback_hours}
     CLICKHOUSE_URL=${var.clickhouse_url}
     CLICKHOUSE_USER=${var.clickhouse_user}
     CLICKHOUSE_PASSWORD=${var.clickhouse_password}

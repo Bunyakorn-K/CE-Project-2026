@@ -22,6 +22,15 @@ resource "local_file" "weather_env" {
   file_permission = "0600"
 }
 
+# Holds HA_TOKEN, so it is a local_sensitive_file: a leaked rendered/ directory
+# must not leak the shop credential. Installed 0600 like the others.
+resource "local_sensitive_file" "gas_env" {
+  content              = local.gas_env
+  filename             = "${path.module}/rendered/gas.env"
+  file_permission      = "0600"
+  directory_permission = "0700"
+}
+
 resource "local_file" "analytics_env" {
   content         = local.analytics_env
   filename        = "${path.module}/rendered/analytics.env"
@@ -55,6 +64,7 @@ resource "null_resource" "install_envs" {
     local_file.app_env,
     local_file.etl_env,
     local_file.weather_env,
+    local_sensitive_file.gas_env,
     local_file.analytics_env,
     local_sensitive_file.registry_htpasswd,
   ]
@@ -70,7 +80,7 @@ resource "null_resource" "install_envs" {
     # looks successful and the recreated containers read the previous file.
     # Hashed for the same reason as the stack triggers: state gets a digest, not
     # another copy of the plaintext.
-    env_hash = sha256("${local.app_env}${local.etl_env}${local.weather_env}${local.analytics_env}")
+    env_hash = sha256("${local.app_env}${local.etl_env}${local.weather_env}${local.gas_env}${local.analytics_env}")
   }
   provisioner "local-exec" {
     command = <<-EOT
@@ -79,6 +89,7 @@ resource "null_resource" "install_envs" {
       sudo mkdir -p "${local.etl_dir}/data"
       sudo install -m 0600 "${path.module}/rendered/etl.env" "${local.etl_dir}/.env"
       sudo install -m 0600 "${path.module}/rendered/weather.env" "${local.app_dir}/weather.env"
+      sudo install -m 0600 "${path.module}/rendered/gas.env" "${local.app_dir}/gas.env"
       sudo install -m 0600 "${path.module}/rendered/analytics.env" "${local.analytics_dir}/.env"
 
       # Internal registry. The htpasswd is copied from rendered/, never

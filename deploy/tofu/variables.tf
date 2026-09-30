@@ -152,6 +152,82 @@ variable "weather_env_file" {
   default     = "/opt/laundrytwin/weather.env"
 }
 
+variable "gas_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "gas_env_file" {
+  description = "Host path of the gas collector env file. Deliberately NOT the ETL env file: the collector reads Home Assistant + ClickHouse and never IRIS Postgres."
+  type        = string
+  default     = "/opt/laundrytwin/gas.env"
+}
+
+variable "ha_base_url" {
+  description = "Home Assistant base URL for the gas collector. No trailing slash required; the collector normalises it."
+  type        = string
+  default     = "http://otterimju2.meepiangroup.com:8123"
+}
+
+variable "ha_token" {
+  description = <<-EOT
+    Home Assistant long-lived access token for the gas collector (Bearer auth on
+    /api/history/period). This is a real credential for a real shop account:
+    create it in the HA profile page, never in git, never in a command line.
+    There is deliberately NO default — an unset token must fail the plan, not
+    render an empty credential that fails later as a confusing 401.
+  EOT
+  type        = string
+  sensitive   = true
+  nullable    = false
+}
+
+variable "gas_tenant_id" {
+  description = "UUID of the tenant owning the otterimju2 branch. Must exist in dim_branch or the facts will not join."
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.gas_tenant_id))
+    error_message = "gas_tenant_id must be a UUID; fact_gas_pressure_sample.tenant_id is a UUID column."
+  }
+}
+
+variable "gas_branch_id" {
+  description = <<-EOT
+    UUID of the branch in dim_branch that otterimju2 writes to. As of
+    2026-09-30 this is an OPS DECISION, not a discovered fact: 5e9611c1-6380-4d58-8ec7-ba4fb8fe4369
+    (about you.wash & dry แม่โจ้ - หลิ่งมื่น), chosen so the gas facts land on the
+    branch that already holds its 15,850 usage rows and 19 machines. No running
+    config on the edge agent or in IRIS asserts the site IS that branch. See
+    docs/03_data_contracts/ha_gas_sensor_contract.md before changing it.
+  EOT
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.gas_branch_id))
+    error_message = "gas_branch_id must be a UUID; fact_gas_pressure_sample.branch_id is a UUID column."
+  }
+}
+
+variable "gas_branch_slug" {
+  description = "Operator-facing site name stored alongside branch_id, e.g. otterimju2. branch_id stays the join key; this is the name the shop uses."
+  type        = string
+  default     = "otterimju2"
+}
+
+variable "gas_lookback_hours" {
+  description = <<-EOT
+    Hours of Home Assistant history each hourly pass re-reads. Must cover one
+    missed run plus overlap; ReplacingMergeTree(ingested_at) converges the
+    overlap. Above 7 the collector warns: Home Assistant purges its recorder at
+    purge_keep_days = 7, so a longer outage is already unrecoverable upstream.
+  EOT
+  type        = number
+  default     = 3
+}
+
 variable "clickhouse_url" {
   description = "Native (9000) or HTTP (8123) URL used by api + etl. Same-host compose uses the container name."
   type        = string

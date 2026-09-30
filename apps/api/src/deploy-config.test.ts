@@ -125,7 +125,13 @@ function secretKeysIn(body: string): string[] {
 
 describe("tofu env contract", () => {
   it("renders every env file it installs", () => {
-    expect([...templates.keys()].sort()).toEqual(["analytics_env", "app_env", "etl_env", "weather_env"]);
+    expect([...templates.keys()].sort()).toEqual([
+      "analytics_env",
+      "app_env",
+      "etl_env",
+      "gas_env",
+      "weather_env"
+    ]);
   });
 
   it("installs every env file it renders", () => {
@@ -136,7 +142,7 @@ describe("tofu env contract", () => {
     const installed = new Set([...envfiles.matchAll(/install[^\n]*?rendered\/([\w.-]+)/g)].map((match) => match[1]!));
 
     expect(declared.filter((stem) => !installed.has(stem))).toEqual([]);
-    expect(declared.length).toBe(5);
+    expect(declared.length).toBe(6);
   });
 
   it("delivers every variable the compose stacks interpolate", () => {
@@ -159,7 +165,7 @@ describe("tofu env contract", () => {
     const block = envfiles.match(/resource "null_resource" "install_envs" \{([\s\S]*?)\n  provisioner/)![1];
 
     expect(block).toMatch(/env_hash\s*=\s*sha256\(/);
-    for (const template of ["app_env", "etl_env", "weather_env", "analytics_env"]) {
+    for (const template of ["app_env", "etl_env", "weather_env", "gas_env", "analytics_env"]) {
       expect(block).toContain(`local.${template}`);
     }
   });
@@ -174,9 +180,12 @@ describe("tofu env contract", () => {
     // apps/etl/src/weather-run.ts requireEnv() throws without it, so the
     // hourly TMD collector exits non-zero.
     expect(produced.has("TMD_API_KEY")).toBe(true);
-    // All four app images; without them compose resolves bare
+    // apps/etl/src/gas-run.ts requireEnv() throws without it, so the hourly gas
+    // collector exits non-zero and retries into the same 401 forever.
+    expect(produced.has("HA_TOKEN")).toBe(true);
+    // All five app images; without them compose resolves bare
     // `laundrytwin-*:latest` against Docker Hub and the pull fails.
-    for (const key of ["API_IMAGE", "WEB_IMAGE", "ETL_IMAGE", "WEATHER_IMAGE"]) {
+    for (const key of ["API_IMAGE", "WEB_IMAGE", "ETL_IMAGE", "WEATHER_IMAGE", "GAS_IMAGE"]) {
       expect(produced.has(key)).toBe(true);
     }
   });
@@ -187,6 +196,37 @@ describe("tofu env contract", () => {
     expect(appCompose).not.toMatch(/^\s*-\s+\$\{WEATHER_IMAGE[^}]*\}[^\n]*\n(?:.*\n)*?\s*env_file:\s*\$\{ETL_ENV_FILE/m);
     expect(appCompose).toMatch(/WEATHER_ENV_FILE/);
     expect(envfiles).toMatch(/\$\{local\.app_dir\}\/weather\.env/);
+    // gas.env follows the same split: the collector reads Home Assistant and
+    // ClickHouse, never IRIS Postgres, and must not inherit the ETL env.
+    expect(appCompose).toMatch(/GAS_ENV_FILE/);
+    expect(envfiles).toMatch(/\$\{local\.app_dir\}\/gas\.env/);
+  });
+
+  it("keeps the gas collector out of a default `compose up`", () => {
+    // The gas image is not built and Home Assistant has no token provisioned.
+    // Without a profile, the next `docker compose up -d` on VM 117 tries to
+    // start it and fails on a missing image or a 401 - a self-inflicted
+    // outage in a stack that is otherwise healthy. Enabling it is deliberate.
+    expect(appCompose).toMatch(/profiles:\s*\[\"gas\"\]/);
+  });
+
+  it("renders the gas collector's ClickHouse credential as the writer, not the reader", () => {
+    // The collector INSERTs into fact_gas_pressure_sample. The reader
+    // credential that app_env carries is read-only, so a copy-paste of the
+    // app template here would fail at the first write with a permissions
+    // error that looks like a schema problem.
+    const line = templates
+      .get("gas_env")!
+      .split("\n")
+      .find((l) => l.trim().startsWith("CLICKHOUSE_PASSWORD="));
+    expect(line).toContain("var.clickhouse_password");
+    expect(line).not.toContain("var.clickhouse_reader_password");
+  });
+
+  it("gives the gas collector no IRIS Postgres connection string", () => {
+    // Same reason as weather.env: sharing the ETL env handed the collector a
+    // PG_CONNECTION_STRING it cannot use.
+    expect(templates.get("gas_env")).not.toContain("PG_CONNECTION_STRING");
   });
 
   it("resolves the analytics CLICKHOUSE_PASSWORD to the admin credential", () => {

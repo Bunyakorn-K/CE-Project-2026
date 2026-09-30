@@ -48,3 +48,24 @@ services:
       interval: 5m
       timeout: 5s
       retries: 1
+
+  gas:
+    image: ${GAS_IMAGE:-laundrytwin-gas:latest}
+    # Behind a profile so an ordinary `docker compose up -d` cannot fail on it.
+    # The image is not built yet and Home Assistant has no token provisioned,
+    # so starting this service today would only produce a pull error or an
+    # auth failure that looks like a stack problem. Enable deliberately:
+    #   sudo docker compose --profile gas up -d gas
+    profiles: ["gas"]
+    # Its own env file for the same reason as weather: this collector reads
+    # Home Assistant + ClickHouse and never IRIS Postgres. HA_BASE_URL,
+    # HA_TOKEN, GAS_TENANT_ID, GAS_BRANCH_ID, GAS_BRANCH_SLUG,
+    # GAS_LOOKBACK_HOURS and CLICKHOUSE_* live here (600, not in git).
+    env_file: ${GAS_ENV_FILE:-/opt/laundrytwin/gas.env}
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 5m
+      timeout: 5s
+      retries: 1
