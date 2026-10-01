@@ -1285,3 +1285,111 @@ Rolling back both is required, not optional: the web at `cbe7243` reads
 The pre-swap `.env` is also kept at `/opt/laundrytwin/.env.pre-cbe7243`. No
 schema migration shipped, so the SQLite backup above is insurance rather than a
 restored artifact.
+
+## Deploy record — 2026-10-01, API + web (`0ffb7ff`)
+
+The Digital Twin honesty follow-ups, deployed together from pinned commit
+`0ffb7ff` (which contains `3e43882`). Both services ship in one apply because the
+web half keys Thai error copy on codes only the new API emits, and the twin-card
+change is web-only but rides the same swap.
+
+| | |
+| :--- | :--- |
+| Images | `10.10.0.117:5000/laundrytwin-api:deploy-0ffb7ff-20261001`, repo digest `sha256:f4b8e5db…`, image `sha256:dc793c6e…`<br>`10.10.0.117:5000/laundrytwin-web:deploy-0ffb7ff-20261001`, repo digest `sha256:eb695773…`, image `sha256:00274571…` |
+| Rollback refs | api `deploy-84718f6-20261001`, web `deploy-155e111-20261001` |
+| App DB backup | `/opt/backups/pre-0ffb7ff-20261001T084141Z/laundrytwin.sqlite`, 196,608 bytes, `integrity_check: ok`, 15 tables, 3 users, 3 access grants — **identical to live** |
+| Suite before deploy | **629 green** (API 360, web 182, ETL 87); `pnpm check` clean; `pnpm build` clean; Playwright **32** passed |
+| Containers after | api + web healthy, `restarts=0`; etl/gas/weather untouched (`Up 19–41 hours`); volume count 17 before and after |
+
+Built on the VM from a throwaway `/tmp/lt-0ffb7ff` clone, per the gate's
+"immutable commit, not `main`". The web image carries
+`--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`; the LIFF id is still present in
+the shipped entry bundle (`index-BsdEn03p.js`), confirmed by grep after the swap.
+
+### The WAL trap, encountered again on the way in
+
+The pre-deploy backup step printed the trap before it could bite:
+
+```
+4096     /opt/laundrytwin/data/laundrytwin.sqlite
+2097112  /opt/laundrytwin/data/laundrytwin.sqlite-wal
+```
+
+The main file is a 4 KB schema stub; ~2 MB of live data sits in the `-wal`
+sidecar. A `cp` of the main file would have "succeeded", produced a plausible
+artifact, and captured **no rows**. The backup went through
+`db.backup("/data/pre-deploy.sqlite")` inside the API container, which folds
+the WAL in, and the result was moved out to the backup directory.
+
+Two corrections to the earlier record's method, both learned here:
+
+- `db.backup()` cannot write to a host path — the destination must exist **inside
+  the container's mount**, or it fails with `Cannot save backup because the
+  directory does not exist`. Write to `/data`, then move the file out.
+- Verify the backup with `better-sqlite3` opened `readonly` on a copy placed
+  inside `/data`, not by running `keinos/sqlite3`. That image treats a bare
+  `.sqlite` argument as an entrypoint and dies with `Exec format error`, which
+  looks like a corrupt backup but is not one.
+
+Table names are snake_case (`access_grant`, not `accessGrant`); guessing them
+wrong fails with `no such table`.
+
+### Smoke after the swap
+
+Every status matches the pre-swap baseline exactly, so no fallback widened and
+no route regressed. The baseline was taken on `http://localhost:8080` — nginx
+terminates plain HTTP there and proxies `/api/*` to `api:8787`; probing `https`
+on that port returns `000`, which reads like an outage and is not one.
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `/health` | 200 `{"ok":true,"reportingConfigured":false,"demoMode":false}` | **200, identical** |
+| `POST /api/auth/liff/exchange` no token | 400 | **400** |
+| same, bad `Origin` | 403 | **403** |
+| same, invalid ID token | 401 `LIFF_VERIFICATION_FAILED` | **401, identical body** |
+| `/`, `/login`, `/privacy`, `/terms` | 200 | **200** |
+| entry bundle | `index-CDOn3Rpg.js` | `index-BsdEn03p.js` |
+
+### The shipped bundles, checked for the changes themselves
+
+A green status list proves nothing regressed; it does not prove the fix is
+present. Counted greps against the running containers:
+
+| Assertion | Expected | Measured |
+| :--- | :--- | :--- |
+| `new Error("INVALID_CURSOR")` in API bundle | 0 | **0** |
+| `InvalidCursorError` in API bundle | ≥1 | **4** |
+| `machine-drum` / `machine-floor-visual` in web bundle | 0 | **0** |
+| `machine-floor-card` in web bundle (cards survive) | ≥1 | **4** |
+| `"Usage data is older than 30 minutes"` occurrences | 1 | **1** |
+| new Thai copy (`หน้ารายการถัดไปไม่ถูกต้อง`, `บทบาทของคุณไม่มีสิทธิ์ดูข้อมูลรายได้`, `ยังเชื่อมต่อคลังข้อมูลวิเคราะห์ไม่ได้`) | present | **all 3 in `index-BsdEn03p.js`** |
+
+The last row is the interesting one: the freshness reason string now appears
+**once** in the whole API bundle. It appeared twice before this deploy, because
+`demoFreshnessFields` restated what `usageFreshnessReasonOf` owns. That is the
+duplication removed, measured in the artifact rather than argued from the diff.
+
+**Still not verified:** authenticated report rendering in a browser. Every
+report route is 401 without a session and this deploy added none, so the Thai
+error copy is verified as *shipped bytes*, not as *rendered output*. The
+`INVALID_CURSOR` 400 likewise has no live request behind it — `fact_machine_event`
+holds 0 rows, so a malformed cursor is rejected before any query runs and there
+is no production path that reaches it yet.
+
+#### Rolling back `0ffb7ff`
+
+```bash
+ssh -J <jump> uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^API_IMAGE=.*#API_IMAGE=10.10.0.117:5000/laundrytwin-api:deploy-84718f6-20261001#' .env
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-155e111-20261001#' .env
+sudo docker compose --env-file .env up -d --no-deps api web
+```
+
+The pre-swap `.env` is kept at `/opt/laundrytwin/.env.pre-0ffb7ff`. Rolling back
+to `84718f6`/`155e111` is safe here even though the web at `0ffb7ff` reads
+`cycleCountSource` and `freshness` — that contract was already deployed by
+`cbe7243`, which is newer than both rollback targets. No schema migration
+shipped, so the SQLite backup is insurance rather than a restored artifact.

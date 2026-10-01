@@ -199,6 +199,16 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
+**As of 2026-10-01 production runs `deploy-0ffb7ff-20261001` for both API and
+web** (record and rollback refs in `docs/02_architecture/deploy-runbook.md`).
+That deploy removed the twin's machine illustration and made a caller's malformed
+`cursor` a 400 instead of a 502 source outage. Every status matched its
+pre-deploy baseline exactly and the shipped bundles were grepped for the changes
+themselves — but **authenticated report rendering in a browser remains
+unverified**, and the new Thai error copy is verified as shipped bytes, not as
+rendered output. The 400 for a bad cursor likewise has no live request behind
+it, because `fact_machine_event` holds 0 rows.
+
 **A caller-supplied error must be attributed to the caller, not to the source.**
 The events route answered **502 `REPORTING_SOURCE_FAILED`** for a malformed
 `cursor`, because `parseEventCursor` threw a bare `Error("INVALID_CURSOR")` that
