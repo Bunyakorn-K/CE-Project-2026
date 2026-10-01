@@ -433,7 +433,7 @@ describe("event feed report", () => {
   it("binds the window and branch scope, and pages on the event identity", () => {
     const sql = buildEventsSQL();
 
-    expect(sql).toContain("FROM fact_machine_event AS e FINAL");
+    expect(sql).toContain("FROM fact_machine_event AS e\n");
     expect(sql).toContain("e.occurred_at >= {from:String}");
     // Half-open upper bound, so an event at midnight on the last day of the
     // window is inside the window rather than between two adjacent ranges.
@@ -444,6 +444,34 @@ describe("event feed report", () => {
     expect(sql).toContain("ORDER BY e.occurred_at DESC, e.event_id DESC");
     expect(sql).toContain("(e.occurred_at, e.event_id) < ({cursorOccurredAt:String}, {cursorEventId:String})");
     expect(sql).toContain("LIMIT {limit:UInt32}");
+  });
+
+  it("reads the event log WITHOUT FINAL but the machine dimension WITH it", () => {
+    // Not a style preference. fact_machine_event is a plain MergeTree and
+    // ClickHouse rejects FINAL on it outright -- `Storage MergeTree doesn't
+    // support FINAL. (ILLEGAL_FINAL)`, measured on production 26.3 -- so
+    // copying the modifier from the sibling queries turns this route into a
+    // 500 on every call. dim_machine IS a ReplacingMergeTree and needs FINAL
+    // to join against current inventory. An append-only log has no duplicate
+    // rows to collapse, so omitting FINAL there loses nothing.
+    const sql = buildEventsSQL();
+
+    expect(sql).not.toMatch(/fact_machine_event AS e FINAL/);
+    expect(sql).toContain("INNER JOIN dim_machine AS m FINAL ON");
+  });
+
+  it("joins machine_id across the String/UUID mismatch on the dimension side", () => {
+    // machine_id is UUID in dim_machine and String in fact_machine_event, so the
+    // bare comparison is rejected outright: "There is no supertype for types
+    // UUID, String ... (NO_COMMON_TYPE)", measured on production 26.3. The cast
+    // is on the DIMENSION side deliberately: toUUID() would typecheck but throw
+    // on any event row whose machine_id is not a parseable UUID, while
+    // toString() is total.
+    const sql = buildEventsSQL();
+
+    expect(sql).toContain("e.machine_id = toString(m.machine_id)");
+    expect(sql).not.toContain("e.machine_id = toUUID(");
+    expect(sql).not.toMatch(/e\.machine_id = m\.machine_id/);
   });
 
   it("asks for one row past the page so 'more' needs no second count query", async () => {

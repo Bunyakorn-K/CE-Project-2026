@@ -423,6 +423,22 @@ type MachineEventRow = {
  * The window predicate is half-open on the upper bound (`< toDate(to) + 1`) to match
  * every other query here, so an event at exactly midnight on the last day is included
  * rather than falling between two ranges.
+ *
+ * `FINAL` appears on dim_machine but NOT on fact_machine_event, unlike every other
+ * query in this file. That asymmetry is required, not an oversight: dim_machine is a
+ * ReplacingMergeTree whose rows are superseded in place, so FINAL is what makes the
+ * join see current inventory, while fact_machine_event is a plain MergeTree holding an
+ * append-only log. ClickHouse REJECTS FINAL there outright -- `Storage MergeTree doesn't
+ * support FINAL. (ILLEGAL_FINAL)` -- so carrying the modifier over from the sibling
+ * queries would make this route throw on every call in production. An append-only log
+ * has no duplicate rows to collapse, so nothing is lost by omitting it.
+ *
+ * The join casts the DIMENSION side to String rather than parsing the event side as a
+ * UUID. machine_id is `UUID` in dim_machine but `String` in fact_machine_event, and
+ * ClickHouse refuses to join the two outright -- `There is no supertype for types UUID,
+ * String ... (NO_COMMON_TYPE)`. Converting with toUUID() would typecheck but throw on
+ * any event row whose machine_id is not a parseable UUID; toString() on the dimension
+ * side is total, and equality of the two renderings is the same predicate.
  */
 export function buildEventsSQL(): string {
   return `
@@ -434,11 +450,11 @@ SELECT
   e.occurred_at AS occurred_at,
   toString(e.kind) AS kind,
   toString(e.phase) AS phase
-FROM fact_machine_event AS e FINAL
+FROM fact_machine_event AS e
 INNER JOIN dim_machine AS m FINAL ON
   e.tenant_id = m.tenant_id
   AND e.branch_id = m.branch_id
-  AND e.machine_id = m.machine_id
+  AND e.machine_id = toString(m.machine_id)
 WHERE e.occurred_at >= {from:String}
   AND e.occurred_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(e.branch_id) = {branchId:String})

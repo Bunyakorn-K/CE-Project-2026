@@ -587,8 +587,30 @@ the last separator instead truncates an id that contains `|`, paging from a
 boundary that never existed — caught by a round-trip test.
 
 **Five of the seven new tests were verified to fail** against the pre-fix gate
-before being accepted; all seven pass after. The full suite is **532 tests
-green** (API 344, web 101, ETL 87), up from 499 on 2026-10-01.
+before being accepted; all seven pass after.
+
+#### The unit tests could not have caught the two real defects
+
+The first deployment of this route **returned 500 on every call.** The gate fix
+was correct and every test passed, because neither defect is visible from the
+code — both are properties of the live warehouse, and both were found only by
+running the exact SQL against production ClickHouse 26.3 on the VM:
+
+| What | Error from production | Why no test could see it |
+| :--- | :--- | :--- |
+| `FINAL` on the event log | `Storage MergeTree doesn't support FINAL. (ILLEGAL_FINAL)` | `fact_machine_event` is plain `MergeTree`; the four sibling queries all join `ReplacingMergeTree` tables where `FINAL` is correct, so copying their shape looked right |
+| `machine_id` join | `There is no supertype for types UUID, String … (NO_COMMON_TYPE)` | `machine_id` is `UUID` in `dim_machine` and `String` in `fact_machine_event` — a schema mismatch invisible until the join is executed |
+
+Both are now pinned by tests **and** explained in the source, because both invite
+a well-meaning future "cleanup" back to the broken form. The `FINAL` asymmetry
+is deliberate: an append-only log has no duplicate rows to collapse, and
+ClickHouse rejects the modifier outright. The join cast is on the **dimension**
+side — `toString(m.machine_id)`, not `toUUID(e.machine_id)` — because
+`toUUID()` would typecheck but throw on any event row whose `machine_id` is not
+a parseable UUID, while `toString()` is total.
+
+This is the argument for running new warehouse SQL against the real engine
+before deploying, and it belongs next to the other live-verified records here.
 
 ### Verified in a real browser, not just by status code
 

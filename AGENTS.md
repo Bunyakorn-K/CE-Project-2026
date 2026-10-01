@@ -319,9 +319,9 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 532 tests green** — API 344, web 101,
+Local automated evidence on **2026-10-01: 534 tests green** — API 346, web 101,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** The API figure rose from 320 to 344 on 2026-10-01
+rather than repeating it.** The API figure rose from 320 to 346 on 2026-10-01
 with tests for the four report routes that answered 503 in production, and web
 from 92 to 101 with the Thai freshness and alert-source states. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
