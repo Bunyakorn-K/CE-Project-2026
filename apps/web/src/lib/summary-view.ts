@@ -8,7 +8,7 @@
 // Suppressing it, and showing the empty-window message the dashboard already
 // owns, is the honest move.
 
-import { emptyStateMessage, usagePresence } from "./dashboard-view";
+import { availabilityLabel, emptyStateMessage, usagePresence } from "./dashboard-view";
 
 export type SummaryEnvelope = {
   source: string | null;
@@ -55,10 +55,13 @@ export function summarySourceLabel(source: string | null | undefined): string {
   return "แหล่งข้อมูล: ไม่ทราบ";
 }
 
-/** "availability" is "how do I know this?", so it is stated next to the source. */
+/** "availability" is "how do I know this?", so it is stated next to the source.
+ *
+ *  An unrecognised value is named but not embedded: the contract field is a
+ *  server-supplied string, and interpolating it into Thai copy would put an
+ *  English enum straight into the sentence. */
 export function summaryAvailabilityLabel(availability: string | null | undefined): string {
   if (availability === "usage-derived") return "สถานะจากข้อมูล usage · ไม่ใช่ live telemetry";
   if (availability === "available") return "ข้อมูลพร้อมใช้งาน";
-  if (availability) return `สถานะข้อมูล: ${availability}`;
-  return "ยังไม่มีสถานะข้อมูล";
+  return availabilityLabel(availability);
 }

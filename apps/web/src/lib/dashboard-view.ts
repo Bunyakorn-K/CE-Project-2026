@@ -46,6 +46,15 @@ export type BranchStatCells = {
   /** The `running/machines` pill. It is a ratio of usage-derived states over
    *  inventory, so it is withheld when no usage evidence exists. */
   statusPill: string;
+  /** The pill's status color, as a `status-pill--*` class.
+   *
+   *  This colors the *evidence*, not the branch's health. `running/machines`
+   *  derives from usage rows rather than live telemetry, so a high ratio means
+   *  "the warehouse saw activity here", never "this branch is performing". The
+   *  color therefore has exactly three bands and no red: an unmeasurable branch
+   *  and a measured-idle one must not read alike, but neither is a fault. See
+   *  `utilizationView`, whose `ariaValueText` already states the basis. */
+  statusClassName: string;
 };
 
 export type UtilizationView =
@@ -110,7 +119,15 @@ export function dashboardKpis(input: {
   const branches: MetricCell = {
     label: "สาขา",
     value: formatNumber(input.branchCount),
-    detail: input.firstBranchName ?? "ไม่มีข้อมูลสาขา",
+    // A branch is named only when it is the whole scope. Over several branches,
+    // naming whichever sorted first reads as though the card had identified one,
+    // so the detail states what the count is bounded by instead.
+    detail:
+      input.branchCount === 0
+        ? "ไม่มีข้อมูลสาขา"
+        : input.branchCount === 1 && input.firstBranchName
+          ? input.firstBranchName
+          : "นับเฉพาะสาขาที่คุณมีสิทธิ์",
     textValue: false
   };
 
@@ -147,7 +164,12 @@ export function branchStatCells(
     },
     statusPill: hasUsage
       ? `${formatNumber(branch.running)}/${formatNumber(branch.machines)} รายการสถานะ`
-      : "ไม่มีหลักฐานสถานะในช่วงเวลานี้"
+      : "ไม่มีหลักฐานสถานะในช่วงเวลานี้",
+    statusClassName: hasUsage
+      ? branch.running > 0
+        ? "status-pill--success"
+        : "status-pill--warning"
+      : "status-pill--neutral"
   };
 }
 
@@ -258,3 +280,169 @@ export function cycleAttributionView(
 }
 
 export { usageDerived };
+
+/** `availability` answers "how do I know this?", so it sits next to the source.
+ *
+ *  Shared by the Dashboard header, the Digital Twin tab, and the executive
+ *  summary — three places that were each interpolating a server-supplied
+ *  string straight into Thai copy, which put English enums on the page.
+ *
+ *  An unrecognised value is named but never embedded in the sentence: naming
+ *  it is the data-quality signal, and embedding it would make the claim rest on
+ *  prose the server controls. */
+export function availabilityLabel(availability: string | null | undefined): string {
+  if (availability === "usage-derived") return "สถานะจากข้อมูล usage · ไม่ใช่ live telemetry";
+  if (availability === "available") return "ข้อมูลพร้อมใช้งาน";
+  if (availability) return "สถานะข้อมูล: ไม่ทราบประเภทของแหล่งข้อมูล";
+  return "ยังไม่มีสถานะข้อมูล";
+}
+
+// ---------------------------------------------------------------------------
+// Branch sorting
+// ---------------------------------------------------------------------------
+
+export type BranchSortId = "name" | "cycles" | "running" | "utilization" | "revenue";
+
+export type SortableBranch = {
+  branchId: string;
+  branchName: string;
+  revenueSatang: number | null;
+  cycles: number;
+  machines: number;
+  running: number;
+};
+
+/**
+ * Orders the branch grid.
+ *
+ * A manager with twenty branches must otherwise read every card to find the one
+ * that matters. `name` is the default because it is the only ordering that is
+ * correct regardless of which measure the reader trusts.
+ *
+ * A redacted revenue (`null` — withheld by grant, not absent) sorts last under
+ * `revenue`, never as zero: a branch the technician may not see the money for is
+ * not the branch with no money.
+ */
+export function sortBranches<T extends SortableBranch>(branches: T[], sort: BranchSortId): T[] {
+  const byName = (a: T, b: T) => a.branchName.localeCompare(b.branchName, "th");
+
+  if (sort === "name") return [...branches].sort(byName);
+  if (sort === "revenue") {
+    return [...branches].sort((a, b) => {
+      if (a.revenueSatang === null && b.revenueSatang === null) return byName(a, b);
+      if (a.revenueSatang === null) return 1;
+      if (b.revenueSatang === null) return -1;
+      return b.revenueSatang - a.revenueSatang || byName(a, b);
+    });
+  }
+
+  return [...branches].sort((a, b) => {
+    if (sort === "cycles") return b.cycles - a.cycles || byName(a, b);
+    if (sort === "running") return b.running - a.running || byName(a, b);
+    // Utilization is a ratio, so it is compared as one rather than by numerator:
+    // 1 of 4 and 9 of 12 are the same 25%, and the numerator alone would rank
+    // the smaller floor first.
+    const ratioA = a.machines > 0 ? a.running / a.machines : -1;
+    const ratioB = b.machines > 0 ? b.running / b.machines : -1;
+    return ratioB - ratioA || byName(a, b);
+  });
+}
+
+/** The label naming what a sort is ordered by, next to the control. */
+export const BRANCH_SORT_LABELS: Record<BranchSortId, string> = {
+  name: "ชื่อสาขา",
+  cycles: "รอบซักมากที่สุด",
+  running: "รายการสถานะมากที่สุด",
+  utilization: "สัดส่วนกำลังใช้งานสูงสุด",
+  revenue: "รายได้มากที่สุด"
+};
+
+// ---------------------------------------------------------------------------
+// Prior-period comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * The immediately preceding window of equal length, ending the day before the
+ * selected one.
+ *
+ * Strictly arithmetic, never a model: AGENTS.md constrains seasonal and GBM
+ * claims, and this makes none. It is also bounded by the same 90-day range
+ * limit the API enforces, so the caller must check `isComparisonAvailable`
+ * before asking for a window the server would reject.
+ */
+export function priorPeriod(range: { from: string; to: string }): { from: string; to: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(range.from) || !/^\d{4}-\d{2}-\d{2}$/.test(range.to)) return null;
+
+  const from = new Date(`${range.from}T00:00:00Z`);
+  const to = new Date(`${range.to}T00:00:00Z`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return null;
+
+  const spanDays = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+  const priorTo = new Date(from.getTime() - 86_400_000);
+  const priorFrom = new Date(priorTo.getTime() - (spanDays - 1) * 86_400_000);
+  if (priorFrom.getUTCFullYear() < 1970) return null;
+
+  return { from: isoDate(priorFrom), to: isoDate(priorTo) };
+}
+
+function isoDate(value: Date): string {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export const MAX_RANGE_DAYS = 90;
+
+/** The API rejects a range longer than 90 days, so the combined request of two
+ *  equal windows must be checked before it is made. */
+export function isComparisonAvailable(prior: { from: string; to: string } | null, range: { from: string; to: string }): boolean {
+  if (!prior) return false;
+  const selected = new Date(`${range.from}T00:00:00Z`);
+  const earliest = new Date(`${prior.from}T00:00:00Z`);
+  if (Number.isNaN(selected.getTime()) || Number.isNaN(earliest.getTime())) return false;
+
+  const spanDays = Math.round((selected.getTime() - earliest.getTime()) / 86_400_000) + 1;
+  return spanDays <= MAX_RANGE_DAYS * 2;
+}
+
+export type Comparison =
+  | { kind: "unavailable"; reason: string }
+  | { kind: "changed"; direction: "up" | "down"; label: string; delta: string }
+  | { kind: "flat"; label: string };
+
+/**
+ * The change from the prior period for one measure.
+ *
+ * Only ever a subtraction of two measured totals. Three states, because the two
+ * that look identical are not: a prior zero makes a percentage undefined (not
+ * "infinite growth"), and a missing or redacted current value is unknown, not
+ * unchanged.
+ */
+export function priorPeriodDelta(input: {
+  current: number | null;
+  prior: number | null;
+  label: string;
+  formatNumber?: (value: number) => string;
+}): Comparison {
+  const format = input.formatNumber ?? ((value: number) => value.toLocaleString("th-TH"));
+  const { current, prior, label } = input;
+
+  if (current === null || prior === null || !Number.isFinite(current) || !Number.isFinite(prior)) {
+    return { kind: "unavailable", reason: `${label} · ไม่มียอดก่อนหน้าให้เทียบ` };
+  }
+  if (prior === 0) {
+    return { kind: "unavailable", reason: `${label} · ช่วงก่อนหน้าเป็นศูนย์ จึงคิดเปอร์เซ็นต์ไม่ได้` };
+  }
+  if (current === prior) return { kind: "flat", label: `${label} · เท่ากับช่วงก่อนหน้า` };
+
+  const rounded = Math.round(((current - prior) / prior) * 100);
+  const magnitude = `${Math.abs(rounded).toLocaleString("th-TH")}%`;
+  const up = rounded > 0;
+  return {
+    kind: "changed",
+    direction: up ? "up" : "down",
+    label: `${label} · ${up ? "สูงขึ้น" : "ลดลง"} ${magnitude}`,
+    delta: magnitude
+  };
+}

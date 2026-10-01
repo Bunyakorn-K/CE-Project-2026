@@ -847,6 +847,14 @@ main {
   margin-top: 12px;
 }
 
+/* The provenance cell carries the longest Thai string on the card ("แหล่งข้อมูลนี้
+   ไม่มีข้อมูลแถว usage"). In a half-width column it broke mid-word, which is
+   worse in Thai than in English because there are no spaces to break on. It
+   spans the full card width instead. */
+.machine-floor-facts > div:last-child {
+  grid-column: 1 / -1;
+}
+
 .machine-floor-card .kpi-detail {
   margin-top: 12px;
 }
@@ -1510,6 +1518,99 @@ main {
 .access-request-form select:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgb(43 146 146 / 16%);
+}
+
+/* Range presets. A quiet row of secondary buttons under the date inputs: the
+   free-text pair stays for an arbitrary window, these cover the common ones. */
+.range-presets {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.range-presets .secondary-button {
+  padding: 6px 12px;
+  font-size: 11px;
+}
+
+/* The active preset is marked by weight and border, not by a filled colour, so
+   the selection is legible without relying on hue alone. */
+.secondary-button--active {
+  color: var(--brand-dark);
+  background: var(--surface-muted);
+  border-color: var(--brand);
+  font-weight: 800;
+}
+
+/* Branch section heading gains a sort control on its right. */
+.section-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-field--sort {
+  min-width: 0;
+}
+
+.filter-field--sort label {
+  font-size: 11px;
+}
+
+/* Prior-period comparison. Reads as a footnote to the KPI row, not as a second
+   KPI: it qualifies the numbers above rather than competing with them. */
+.comparison-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.comparison-basis {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.comparison-note {
+  color: var(--muted);
+}
+
+.comparison-delta {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.comparison-delta--up {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: #c4e8d6;
+}
+
+.comparison-delta--down {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: #f1dbab;
+}
+
+.comparison-delta--flat {
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+}
+
+/* Cycle coverage under the floor total, so a partial sum is never read as the
+   floor's own figure. */
+.machine-floor-coverage {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .filter-note {

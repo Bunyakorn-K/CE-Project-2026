@@ -134,5 +134,101 @@ The `proj_by_time` projection (below) is `SELECT *`, so it holds its own copy of
 `status` and must be dropped for the swap and rebuilt after it; while it is
 attached the RENAME is refused with the same `Code: 70`.
 
-**The production migration has not been run.** The script has only been executed
-against local scratch tables. The deployment gate is still blocked.
+**The production migration HAS been run** (2026-09-29, via
+`apps/api/scripts/migrate-usage-status-enum.ts --apply`); `DESCRIBE TABLE
+fact_machine_usage` now matches `apps/etl/src/schema.ts`, and the script
+refuses an already-migrated column by design. See `AGENTS.md` for the deploy
+record.
+
+## Machine `cycleCount` — three states, decision 2026-10-01
+
+`GET /api/twin` reports a per-machine cycle count. **A count of zero and an
+unavailable count are different facts**, and the contract previously could not
+tell them apart.
+
+### What was wrong
+
+The machine-state query computed `cycle_count` as
+`countIf(status IN ('paid', 'finished'))` and then collapsed a non-positive
+result to `null`:
+
+```text
+cycleCount        = countedCycles > 0 ? countedCycles : null
+cycleCountSource  = cycleCount === null ? "unavailable" : "usage_row"
+```
+
+But a usage row in `pending_payment`, `admitted`, or `cancelled` is **usage
+without being a counted cycle**. A machine with seven such rows and no paid or
+finished ones produced `countedCycles = 0` → `null` → `"unavailable"`, and the
+Digital Twin card rendered that as *"ไม่มีแถว usage"* — **"no usage rows"**. The
+API had never made that claim. A technician investigating a busy machine was
+told to stop looking, and one demonstrably wrong provenance label discredits
+every other label on the same card.
+
+### The contract now
+
+The query selects the denominator separately, so the API — not the view —
+decides which of the three answers is true:
+
+```sql
+countIf(u.status IN ('paid', 'finished')) AS cycle_count,
+countIf(u.status IS NOT NULL)             AS usage_rows
+```
+
+`countIf(u.status IS NOT NULL)` rather than `count()`, because
+`SETTINGS join_use_nulls = 1` makes the unmatched LEFT JOIN row NULL; a plain
+`count()` would count that placeholder as a usage row.
+
+| `usage_rows` | `cycleCount` | `cycleCountSource` | Meaning |
+|---|---|---|---|
+| `> 0` | the counted number, **including `0`** | `"usage_row"` | The machine has usage rows in the window. Zero means none reached a counted state — a real, reportable answer. |
+| `0` | `null` | `"unavailable"` | The source reported a row count and it was zero: no usage rows in the window. |
+| absent | `null` | `"unavailable"` | The response carries no row count (pre-migration shape). An unknown denominator must not become a usage-row claim. |
+
+`GET /api/twin` in **demo/IRIS mode** reports `cycleCountSource: "unknown"` and
+`cycleCount: null`. That projection has no usage-row field at all, so it cannot
+say whether a machine was used — a different claim from "no usage rows", and
+the interface renders it differently (`apps/web/src/lib/machine-facts.ts`).
+
+### Verified
+
+Executed against a real ClickHouse 26.3 engine on a fixture built to the
+production schema (`Enum8` status, `ReplacingMergeTree`, `join_use_nulls = 1`),
+with the shipped SQL unmodified except for the literal date parameters:
+
+| machine | usage rows | counted cycles | expected |
+|---|---|---|---|
+| W1 | 5 | 2 | `cycleCount: 2`, `usage_row` |
+| **W2** | **7** | **0** | **`cycleCount: 0`, `usage_row`** — the regression case |
+| W3 | 0 | 0 | `cycleCount: null`, `unavailable` |
+| W4 | 0 (rows outside window only) | 0 | `cycleCount: null`, `unavailable` |
+
+## Machine `freshness` — a separate axis from `status`, 2026-10-01
+
+`GET /api/twin` now carries `freshness` and `freshnessReason` per machine.
+`status` describes **what the last usage row claimed**; `freshness` describes
+**how much a reader should trust that as a statement about now**. They are not
+interchangeable: a branch whose machines stopped reporting six days ago still
+yielded a confident `running` pill, a running drum animation, and a
+`ใช้งานล่าสุด` line with nothing marking it as describing the past.
+
+| Value | Condition | Reason string |
+|---|---|---|
+| `fresh` | newest usage evidence ≤ 5 minutes | `null` |
+| `stale` | ≤ 30 minutes | `Usage data is older than 30 minutes` |
+| `unavailable` | older than 30 minutes, absent, unparseable, **or in the future** | `No recent usage evidence is available for this machine` |
+
+A future timestamp is `unavailable`, not `fresh` — a clock skew must not read as
+a live machine.
+
+The thresholds live once, in `usageFreshnessOf()`
+(`apps/api/src/report/clickhouse-report.ts`). `GET /api/report/live` previously
+kept a private copy of the same thresholds in `apps/api/src/index.ts`; it now
+consumes the value computed by `queryMachineStates`, so the twin and the live
+snapshot cannot disagree about the same machine. The Thai labels are the ones
+already shipped in `apps/web/src/lib/machine-status.ts`.
+
+`freshnessReason` is **English and machine-readable on purpose**: it is a
+contract field, and the web layer maps it to Thai by keying on `freshness`,
+never by matching that prose — see `apps/web/src/lib/alerts-view.ts` for the
+same rule and the reason it exists.

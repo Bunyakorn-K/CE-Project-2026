@@ -1,19 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card, Tabs } from "@heroui/react";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import {
+  availabilityLabel,
   branchStatCells,
   cycleAttributionView,
   dashboardKpis,
   emptyStateMessage,
   usagePresence,
   usageRowsLabel,
+  isComparisonAvailable,
+  priorPeriod,
+  priorPeriodDelta,
+  sortBranches,
   utilizationView,
+  BRANCH_SORT_LABELS,
+  type BranchSortId,
   type MetricCell
 } from "../../lib/dashboard-view";
+import {
+  dashboardContext,
+  dashboardSearch,
+  presetRange,
+  RANGE_PRESETS,
+  type DashboardContext,
+  type DashboardSearch
+} from "../../lib/dashboard-search";
 import { machineStatusMeta } from "../../lib/machine-status";
+import {
+  machineCycleFacts,
+  machineFloorCycles,
+  machineFloorGroups,
+  machineFreshnessRow
+} from "../../lib/machine-facts";
 import {
   summaryAvailabilityLabel,
   summarySourceLabel,
@@ -21,7 +42,19 @@ import {
   type SummaryEnvelope
 } from "../../lib/summary-view";
 
+/** The URL is the single source of truth for the working context, so a LINE
+ *  user tapping back lands where they were and an owner can send a colleague
+ *  "สาขา A, last Tuesday". Every field is optional: an absent one resolves to the
+ *  7-day default in `dashboardContext`. An unrecognised `view` is dropped by the
+ *  tab switch rather than reaching `Tabs`, and `from`/`to` are kept verbatim so
+ *  a bad date is reported by the page instead of being quietly repaired. */
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  validateSearch: (search: Record<string, unknown>): DashboardSearch => ({
+    view: search.view === "twin" || search.view === "dashboard" ? search.view : undefined,
+    branch: typeof search.branch === "string" && search.branch ? search.branch : undefined,
+    from: typeof search.from === "string" && search.from ? search.from : undefined,
+    to: typeof search.to === "string" && search.to ? search.to : undefined
+  }),
   component: DashboardPage
 });
 
@@ -79,7 +112,14 @@ type Machine = {
   status: string | null;
   lastActiveAt: string | null;
   cycleCount: number | null;
-  cycleCountSource?: "usage_row" | "unavailable";
+  /** `usage_row` = usage rows exist (the count may legitimately be 0);
+   *  `unavailable` = the source reported zero usage rows; `unknown` = the
+   *  source has no usage-row concept (IRIS/demo). */
+  cycleCountSource?: "usage_row" | "unavailable" | "unknown";
+  /** Age of the newest usage evidence. Separate from `status`, which only
+   *  says what that evidence claimed. Absent on an older API build. */
+  freshness?: string;
+  freshnessReason?: string | null;
 };
 
 type Branch = { id: string; name: string };
@@ -148,13 +188,6 @@ function sourceLabel(source: Source | null): string {
   return "กำลังรอข้อมูลแหล่งที่มา";
 }
 
-function availabilityLabel(availability: Availability | null): string {
-  if (availability === "usage-derived") return "สถานะจากข้อมูล usage · ไม่ใช่ live telemetry";
-  if (availability === "available") return "ข้อมูลพร้อมใช้งาน";
-  if (availability) return `สถานะข้อมูล: ${availability}`;
-  return "ยังไม่มีสถานะข้อมูล";
-}
-
 function machineKindLabel(kind: string): string {
   if (kind === "washer") return "เครื่องซักผ้า";
   if (kind === "dryer") return "เครื่องอบผ้า";
@@ -162,10 +195,27 @@ function machineKindLabel(kind: string): string {
 }
 
 function DashboardPage() {
-  const [view, setView] = useState<DashboardView>("dashboard");
-  const [branchId, setBranchId] = useState("");
-  const [range, setRange] = useState(recentRange);
-  const validRange = Boolean(range.from && range.to && range.from <= range.to);
+  // The URL is the source of truth, not local state. A LINE user tapping back
+  // returns to the window and branch they were reading, a desktop refresh keeps
+  // it, and an owner can send a colleague the exact context.
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: "/dashboard" });
+  const defaultRange = useMemo(recentRange, []);
+  const context = dashboardContext(search, defaultRange);
+  const view = context.view;
+  const branchId = context.branchId;
+  const range = { from: context.from, to: context.to };
+  const validRange = context.validRange;
+  // Sort is presentation-only and stays local: it is not part of what the URL is
+  // shared to reproduce, and it never changes what is queried.
+  const [branchSort, setBranchSort] = useState<BranchSortId>("name");
+
+  const applyContext = (next: Partial<DashboardContext>) => {
+    void navigate({
+      search: (current) =>
+        dashboardSearch({ ...dashboardContext(current, defaultRange), ...next }, defaultRange)
+    });
+  };
 
   const branchesQuery = useQuery({
     queryKey: ["report", "branches", "dashboard-filters"],
@@ -175,13 +225,15 @@ function DashboardPage() {
   const dashQuery = useQuery({
     queryKey: ["report", "dashboard", branchId, range.from, range.to],
     queryFn: () => fetchJson<DashboardEnvelope>(reportPath("/api/report/dashboard", range.from, range.to, branchId), "ไม่สามารถโหลดแดชบอร์ดได้"),
-    enabled: validRange
+    enabled: validRange,
+    placeholderData: keepPreviousData
   });
 
   const twinQuery = useQuery({
     queryKey: ["twin", "dashboard", branchId, range.from, range.to],
     queryFn: () => fetchJson<TwinEnvelope>(reportPath("/api/twin", range.from, range.to, branchId), "ไม่สามารถโหลด Digital Twin ได้"),
     enabled: validRange && view === "twin",
+    placeholderData: keepPreviousData,
     refetchInterval: 60000
   });
 
@@ -190,11 +242,35 @@ function DashboardPage() {
     queryFn: () =>
       fetchJson<SummaryEnvelope>(reportPath("/api/report/summary", range.from, range.to, branchId), "ไม่สามารถโหลดสรุปผู้บริหารได้"),
     enabled: validRange && view === "dashboard",
+    placeholderData: keepPreviousData,
     // The summary counts the same cycles the KPI card does. When the window has
     // no usage rows there is nothing to summarise, and summaryView hides the
     // sentence rather than printing "0 cycles" as a finding.
     retry: false
   });
+
+  // The immediately preceding window of equal length. Strictly subtraction of
+  // two measured totals: AGENTS.md constrains seasonal and GBM claims and this
+  // makes none. Gated on `isComparisonAvailable` so a range the API would reject
+  // is never requested.
+  const prior = useMemo(() => priorPeriod(range), [range.from, range.to]);
+  const comparisonAvailable = validRange && isComparisonAvailable(prior, range);
+  const priorQuery = useQuery({
+    queryKey: ["report", "dashboard", "prior", branchId, prior?.from ?? "", prior?.to ?? ""],
+    queryFn: () =>
+      fetchJson<DashboardEnvelope>(
+        reportPath("/api/report/dashboard", prior!.from, prior!.to, branchId),
+        "ไม่สามารถโหลดข้อมูลช่วงก่อนหน้าได้"
+      ),
+    enabled: comparisonAvailable
+  });
+  const priorTotals = priorQuery.data?.dashboard.totals ?? null;
+  // The prior window's own presence gates its cycles: a window with no usage rows
+  // has no cycles to compare against, and reporting 0 would invent a drop to zero.
+  const priorPresence = usagePresence(priorQuery.data?.dashboard.usageRowsInRange);
+  const comparisonBasis = prior
+    ? `เทียบกับ ${formatDate(prior.from)} — ${formatDate(prior.to)}`
+    : "";
 
   const dashData = dashQuery.data?.dashboard;
   const twinData = twinQuery.data;
@@ -223,6 +299,23 @@ function DashboardPage() {
   // The summary sentence counts the same cycles as the KPI card, so the
   // attribution gap printed below the KPIs covers it too. It is rendered above
   // them only because it is the sentence an executive reads first.
+  // The two KPIs a change in money or volume actually means something for. The
+  // redacted revenue produces "unavailable", which is the point: a withheld
+  // number must not read as an unchanged one.
+  const revenueDelta = priorPeriodDelta({
+    current: dashData?.totals.revenueSatang ?? null,
+    prior: priorTotals?.revenueSatang ?? null,
+    label: "รายได้",
+    formatNumber: formatCount
+  });
+  const cyclesDelta = priorPeriodDelta({
+    current: dashData && presence === "present" ? dashData.totals.cycles : null,
+    prior: priorTotals && priorPresence === "present" ? priorTotals.cycles : null,
+    label: "รอบซัก",
+    formatNumber: formatCount
+  });
+  const cycleDeltas = [revenueDelta, cyclesDelta].filter((d) => d.kind !== "unavailable");
+
   const summary = summaryView({
     summary: summaryQuery.data?.summary,
     usageRowsInRange: dashData?.usageRowsInRange
@@ -235,7 +328,7 @@ function DashboardPage() {
         selectedKey={view}
         onSelectionChange={(key) => {
           const nextView = String(key);
-          if (nextView === "dashboard" || nextView === "twin") setView(nextView);
+          if (nextView === "dashboard" || nextView === "twin") applyContext({ view: nextView });
         }}
       >
         <section className="surface-card surface-card--dark">
@@ -266,7 +359,7 @@ function DashboardPage() {
               id="dashboard-branch"
               value={branchId}
               disabled={branchesQuery.isLoading}
-              onChange={(event) => setBranchId(event.target.value)}
+              onChange={(event) => applyContext({ branchId: event.target.value })}
             >
               <option value="">ทุกสาขาที่มีสิทธิ์</option>
               {(branchesQuery.data?.branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -274,18 +367,43 @@ function DashboardPage() {
           </div>
           <div className="filter-field">
             <label htmlFor="dashboard-from">ตั้งแต่วันที่</label>
-            <input id="dashboard-from" type="date" value={range.from} max={range.to} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
+            <input id="dashboard-from" type="date" value={range.from} max={range.to} onChange={(event) => applyContext({ from: event.target.value })} />
           </div>
           <div className="filter-field">
             <label htmlFor="dashboard-to">ถึงวันที่</label>
-            <input id="dashboard-to" type="date" value={range.to} min={range.from} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
+            <input id="dashboard-to" type="date" value={range.to} min={range.from} onChange={(event) => applyContext({ to: event.target.value })} />
           </div>
-          <p className="filter-note" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์</p>
+          <div className="range-presets" role="group" aria-label="เลือกช่วงเวลาที่ใช้บ่อย">
+            {RANGE_PRESETS.map((preset) => {
+              const presetDates = presetRange(preset.days);
+              const active = range.from === presetDates.from && range.to === presetDates.to;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`secondary-button${active ? " secondary-button--active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => applyContext({ ...presetDates })}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="filter-note" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์ · ช่วงที่เลือกถูกเก็บไว้ใน URL เพื่อกลับมาดูซ้ำหรือแชร์ได้</p>
         </section>
 
         <Tabs.Panel id="dashboard" className="dashboard-panel">
           {!validRange && <div className="error-message">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
-          {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}
+          {/* The one error path on this page that offered no way forward: a
+              failed branch list left the filter permanently empty with nothing to
+              retry, while every sibling query had a button. */}
+          {branchesQuery.isError && (
+            <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+              <span>ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</span>
+              <button type="button" className="secondary-button" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
+            </div>
+          )}
           {dashQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดข้อมูลแดชบอร์ด</div>}
           {dashQuery.isError && (
             <div className="error-message flex flex-wrap items-center gap-3" role="alert">
@@ -341,16 +459,54 @@ function DashboardPage() {
                 <KpiCard cell={kpis.branches} />
               </section>
 
+              {/* Prior-period change. Stated as subtraction of two measured
+                  totals against the named window, never as a forecast. An
+                  unavailable comparison says so rather than omitting the row,
+                  so its absence is not read as "no change". */}
+              <div className="comparison-strip" aria-live="polite">
+                <span className="comparison-basis">{comparisonBasis || "ช่วงก่อนหน้าคำนวณไม่ได้"}</span>
+                {!comparisonAvailable && <span className="comparison-note">เทียบช่วงก่อนหน้าไม่ได้ · ช่วงวันที่ยาวเกินขอบเขตที่ระบบรองรับ</span>}
+                {comparisonAvailable && priorQuery.isError && (
+                  <span className="comparison-note">โหลดยอดช่วงก่อนหน้าไม่สำเร็จ: {priorQuery.error.message}</span>
+                )}
+                {comparisonAvailable && priorQuery.isLoading && <span className="comparison-note">กำลังโหลดยอดช่วงก่อนหน้า</span>}
+                {comparisonAvailable && !priorQuery.isLoading && !priorQuery.isError && cycleDeltas.length === 0 && (
+                  <span className="comparison-note">ไม่มียอดในช่วงก่อนหน้าให้เทียบ</span>
+                )}
+                {cycleDeltas.map((delta) => (
+                  <span
+                    key={delta.label}
+                    className={`comparison-delta comparison-delta--${delta.kind === "changed" ? delta.direction : "flat"}`}
+                  >
+                    {delta.label}
+                  </span>
+                ))}
+              </div>
+
               <section>
                 <div className="section-heading">
                   <div>
                     <h2>ผลประกอบการรายสาขา</h2>
                     <p className="section-description">รายการสถานะ “กำลังใช้งาน” มาจาก usage และไม่ใช่การวัดสถานะทันที</p>
                   </div>
-                  <span>{dashData.branches.length.toLocaleString("th-TH")} สาขาในขอบเขตข้อมูล</span>
+                  <div className="section-heading-actions">
+                    <span>{dashData.branches.length.toLocaleString("th-TH")} สาขาในขอบเขตข้อมูล</span>
+                    <div className="filter-field filter-field--sort">
+                      <label htmlFor="branch-sort">เรียงตาม</label>
+                      <select
+                        id="branch-sort"
+                        value={branchSort}
+                        onChange={(event) => setBranchSort(event.target.value as BranchSortId)}
+                      >
+                        {Object.entries(BRANCH_SORT_LABELS).map(([id, label]) => (
+                          <option key={id} value={id}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
                 {dashData.branches.length > 0 ? (
-                  <div className="branch-grid">{dashData.branches.map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
+                  <div className="branch-grid">{sortBranches(dashData.branches, branchSort).map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
                 ) : (
                   <div className="state-message">ไม่มีข้อมูลผลประกอบการในช่วงเวลานี้</div>
                 )}
@@ -417,7 +573,9 @@ function BranchCard({ branch, presence }: { branch: DashboardData["branches"][0]
             <span className="branch-code">{branch.branchId.slice(0, 8)}</span>
             <h3>{branch.branchName}</h3>
           </div>
-          <span className="status-pill status-pill--neutral">{cells.statusPill}</span>
+          {/* The color follows the measured evidence; the text carries the number,
+              so the meaning survives without color. */}
+          <span className={`status-pill ${cells.statusClassName}`}>{cells.statusPill}</span>
         </div>
         <div className="branch-stats">
           <div><span>{cells.revenue.label}</span><strong>{cells.revenue.value}</strong></div>
@@ -451,8 +609,9 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
     map.set(key, current);
     return map;
   }, new Map<string, Machine[]>()));
-  const knownCycleMachines = machines.filter((machine) => machine.cycleCount !== null).length;
-  const knownCycles = machines.reduce((sum, machine) => sum + (machine.cycleCount ?? 0), 0);
+  // Coverage, not just a sum: one machine of forty having a count must not
+  // present that machine's cycles as the floor's.
+  const floorCycles = machineFloorCycles(machines);
   const running = machines.filter((machine) => machine.status === "running").length;
 
   if (machines.length === 0) return <div className="state-message">ไม่พบเครื่องใน Digital Twin สำหรับขอบเขตและช่วงเวลานี้</div>;
@@ -462,7 +621,11 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
       <div className="machine-floor-summary">
         <div><span>เครื่องทั้งหมด</span><strong>{machines.length}</strong></div>
         <div><span>สถานะกำลังใช้งาน</span><strong>{running}</strong></div>
-        <div><span>รอบที่นับได้</span><strong>{knownCycleMachines > 0 ? knownCycles.toLocaleString("th-TH") : "ไม่พร้อมใช้งาน"}</strong></div>
+        <div>
+          <span>รอบที่นับได้</span>
+          <strong>{floorCycles.value}</strong>
+          <span className="machine-floor-coverage">{floorCycles.coverage}</span>
+        </div>
         <div><span>สาขา</span><strong>{branches.length}</strong></div>
       </div>
       {branches.map(([branchKey, branchMachines]) => (
@@ -471,8 +634,12 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
             <h3>{branchMachines[0]?.branchName ?? "สาขาที่ไม่ระบุ"}</h3>
             <span>{branchMachines.length.toLocaleString("th-TH")} เครื่อง</span>
           </div>
-          <MachineGroup title="เครื่องซักผ้า" machines={branchMachines.filter((machine) => machine.machineKind === "washer")} />
-          <MachineGroup title="เครื่องอบผ้า" machines={branchMachines.filter((machine) => machine.machineKind === "dryer")} />
+          {/* Every machine lands in a rendered group, so "เครื่องทั้งหมด" and the
+              cards below it always agree. A machine of an unrecognised kind used
+              to count toward the total and produce no card at all. */}
+          {machineFloorGroups(branchMachines).map((group) => (
+            <MachineGroup key={group.title} title={group.title} machines={group.machines} />
+          ))}
         </section>
       ))}
     </div>
@@ -493,6 +660,8 @@ function MachineGroup({ title, machines }: { title: string; machines: Machine[] 
 
 function MachineCard({ machine }: { machine: Machine }) {
   const status = machineStatusMeta(machine.status);
+  const cycles = machineCycleFacts(machine);
+  const freshness = machineFreshnessRow(machine.freshness);
   return (
     <Card variant="transparent" className="surface-card machine-card machine-floor-card">
       <Card.Content>
@@ -503,11 +672,19 @@ function MachineCard({ machine }: { machine: Machine }) {
           </div>
           <span className={`status-pill ${status.className}`}>{status.label}</span>
         </div>
+        {/* Freshness is a separate axis from status: `running` describes what
+            the last usage row said, which may be days old. Without this pill a
+            six-day-old status renders exactly like a live one. */}
+        {freshness && (
+          <div className="machine-card-status-row">
+            <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>
+          </div>
+        )}
         <div className="machine-floor-visual"><MachineDrum kind={machine.machineKind} status={machine.status} /></div>
         <p className="machine-card-branch">{machine.branchName}</p>
         <div className="machine-facts machine-floor-facts">
-          <div><span>รอบในช่วง</span><strong>{machine.cycleCount === null ? "ไม่พร้อมใช้งาน" : machine.cycleCount.toLocaleString("th-TH")}</strong></div>
-          <div><span>ที่มาของจำนวนรอบ</span><strong>{machine.cycleCountSource === "usage_row" ? "นับจากแถว usage" : "ไม่มีแถว usage"}</strong></div>
+          <div><span>รอบในช่วง</span><strong>{cycles.value}</strong></div>
+          <div><span>ที่มาของจำนวนรอบ</span><strong>{cycles.source}</strong></div>
         </div>
         <p className="kpi-detail">ใช้งานล่าสุด {machine.lastActiveAt ? formatDateTime(machine.lastActiveAt) : "ไม่มีข้อมูล"}</p>
       </Card.Content>

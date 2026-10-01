@@ -4,6 +4,10 @@ import {
   cycleAttributionView,
   dashboardKpis,
   emptyStateMessage,
+  isComparisonAvailable,
+  priorPeriod,
+  priorPeriodDelta,
+  sortBranches,
   usagePresence,
   utilizationView,
   type DashboardTotals,
@@ -78,7 +82,8 @@ describe("dashboardKpis", () => {
     expect(rendered.inventory.value).toBe("6");
     expect(rendered.inventory.detail).toBe("2 รายการสถานะกำลังใช้งาน");
     expect(rendered.branches.value).toBe("2");
-    expect(rendered.branches.detail).toBe("สาขาเชียงใหม่");
+    // Two branches in scope: naming one of them would read as an identification.
+    expect(rendered.branches.detail).toBe("นับเฉพาะสาขาที่คุณมีสิทธิ์");
   });
 
   it("never claims usage-derived zeros for an empty window", () => {
@@ -127,6 +132,20 @@ describe("dashboardKpis", () => {
   // The KPI is a row count, not a session count. Naming the basis on the card
   // itself is what stops a reader from taking 3,905 for a count of fully
   // identified wash sessions.
+  it("names one branch only when exactly one is in scope", () => {
+    // Viewing all branches, "12" annotated with whichever branch sorted first
+    // reads as though the card had identified one.
+    expect(dashboardKpis({ totals: TOTALS, branchCount: 12, firstBranchName: "สาขาเชียงใหม่", range: "x", presence: "present", formatNumber: format, formatBaht: baht }).branches.detail).toBe("นับเฉพาะสาขาที่คุณมีสิทธิ์");
+  });
+
+  it("names the branch when the scope is exactly that branch", () => {
+    expect(dashboardKpis({ totals: TOTALS, branchCount: 1, firstBranchName: "สาขาเชียงใหม่", range: "x", presence: "present", formatNumber: format, formatBaht: baht }).branches.detail).toBe("สาขาเชียงใหม่");
+  });
+
+  it("still admits an empty scope rather than claiming a filter", () => {
+    expect(dashboardKpis({ totals: TOTALS, branchCount: 0, firstBranchName: null, range: "x", presence: "present", formatNumber: format, formatBaht: baht }).branches.detail).toBe("ไม่มีข้อมูลสาขา");
+  });
+
   it("names the definition behind the cycle number on the card itself", () => {
     const rendered = kpis({ presence: "present" });
 
@@ -211,6 +230,36 @@ describe("branchStatCells", () => {
     expect(cells.machines.value).toBe("4");
     expect(cells.statusPill).toBe("ไม่มีหลักฐานสถานะในช่วงเวลานี้");
   });
+
+  // A branch running 11/12 and one running 1/12 used to render the same neutral
+  // pill, so "which branch needs attention" was unanswerable by scanning.
+  it("gives a branch with machine activity a status color", () => {
+    expect(branchStatCells({ ...branch, machines: 12, running: 11 }, "present", format, baht).statusClassName).toBe(
+      "status-pill--success"
+    );
+  });
+
+  it("warns when the floor was used but nothing is running", () => {
+    // This is the branch's real state, not a fault: usage evidence exists, so
+    // "nothing running" is measured rather than unknown — and over a long window
+    // it means no machine ever reported a running state.
+    expect(branchStatCells({ ...branch, running: 0 }, "present", format, baht).statusClassName).toBe("status-pill--warning");
+  });
+
+  it("never colors a branch whose activity could not be measured", () => {
+    // Danger is reserved for a measured fault. An unmeasurable branch is neutral,
+    // because "unknown" and "nothing is wrong" must not share a color.
+    for (const presence of ["empty", "unknown"] as const) {
+      expect(branchStatCells({ ...branch, running: 0 }, presence, format, baht).statusClassName).toBe("status-pill--neutral");
+    }
+  });
+
+  it("keeps the meaning in the text so it survives without color", () => {
+    const cells = branchStatCells({ ...branch, machines: 12, running: 11 }, "present", format, baht);
+
+    expect(cells.statusPill).toContain("11/12");
+    expect(cells.statusPill).toContain("รายการสถานะ");
+  });
 });
 
 describe("utilizationView", () => {
@@ -248,5 +297,147 @@ describe("utilizationView", () => {
     expect(view.kind).toBe("ratio");
     if (view.kind !== "ratio") return;
     expect(`${view.ariaLabel}${view.ariaValueText}`).not.toContain("เครื่องที่มีข้อมูล");
+  });
+});
+
+describe("sortBranches", () => {
+  const a = { branchId: "a", branchName: "กรุงเทพ", revenueSatang: 100, cycles: 10, machines: 4, running: 1 };
+  const b = { branchId: "b", branchName: "เชียงใหม่", revenueSatang: 900, cycles: 30, machines: 4, running: 3 };
+  const c = { branchId: "c", branchName: "ขอนแก่น", revenueSatang: 500, cycles: 20, machines: 12, running: 3 };
+
+  it("orders by name by default", () => {
+    expect(sortBranches([c, b, a], "name").map((x) => x.branchId)).toEqual(["a", "c", "b"]);
+  });
+
+  it("does not mutate the payload it was given", () => {
+    const input = [c, b, a];
+    sortBranches(input, "cycles");
+
+    expect(input.map((x) => x.branchId)).toEqual(["c", "b", "a"]);
+  });
+
+  it("compares utilization as a ratio, not by numerator", () => {
+    // a is 1/4 and c is 3/12 — both 25%. Ranking by running alone would call c
+    // busier than b (3 vs 3, tie-broken by name) and a far busier than b (1 vs 3)
+    // when it is in fact the same.
+    expect(sortBranches([a, c, b], "utilization").map((x) => x.branchId)).toEqual(["b", "a", "c"]);
+  });
+
+  it("sorts a redacted revenue last rather than as zero", () => {
+    const redacted = { ...a, revenueSatang: null };
+    const ordered = sortBranches([redacted, b, c], "revenue");
+
+    expect(ordered.map((x) => x.branchId)).toEqual(["b", "c", "a"]);
+    expect(ordered[2].revenueSatang).toBeNull();
+  });
+
+  it("falls back to name order when every revenue is redacted", () => {
+    const ordered = sortBranches([{ ...a, revenueSatang: null }, { ...b, revenueSatang: null }], "revenue");
+
+    expect(ordered.map((x) => x.branchId)).toEqual(["a", "b"]);
+  });
+
+  it("puts a branch with no inventory last under utilization rather than first", () => {
+    const empty = { ...a, branchId: "z", machines: 0, running: 0 };
+
+    expect(sortBranches([empty, b], "utilization").map((x) => x.branchId)).toEqual(["b", "z"]);
+  });
+});
+
+describe("priorPeriod", () => {
+  it("returns the immediately preceding window of equal length", () => {
+    expect(priorPeriod({ from: "2026-09-25", to: "2026-10-01" })).toEqual({ from: "2026-09-18", to: "2026-09-24" });
+  });
+
+  it("keeps a single-day window single-day", () => {
+    expect(priorPeriod({ from: "2026-10-01", to: "2026-10-01" })).toEqual({ from: "2026-09-30", to: "2026-09-30" });
+  });
+
+  it("does not overlap the selected window", () => {
+    const prior = priorPeriod({ from: "2026-09-25", to: "2026-10-01" });
+
+    expect(prior!.to < "2026-09-25").toBe(true);
+  });
+
+  it("crosses a month boundary", () => {
+    expect(priorPeriod({ from: "2026-09-01", to: "2026-09-07" })).toEqual({ from: "2026-08-25", to: "2026-08-31" });
+  });
+
+  it("handles a leap day without drifting", () => {
+    expect(priorPeriod({ from: "2024-03-01", to: "2024-03-07" })).toEqual({ from: "2024-02-23", to: "2024-02-29" });
+  });
+
+  it("refuses a malformed or reversed range rather than guessing", () => {
+    expect(priorPeriod({ from: "2026-10-05", to: "2026-09-25" })).toBeNull();
+    expect(priorPeriod({ from: "nonsense", to: "2026-09-25" })).toBeNull();
+  });
+});
+
+describe("isComparisonAvailable", () => {
+  it("allows an ordinary two-window request", () => {
+    expect(isComparisonAvailable(priorPeriod({ from: "2026-09-25", to: "2026-10-01" }), { from: "2026-09-25", to: "2026-10-01" })).toBe(true);
+  });
+
+  it("refuses when the combined span would exceed what the API accepts", () => {
+    const wide = { from: "2026-01-01", to: "2026-10-01" };
+
+    expect(isComparisonAvailable(priorPeriod(wide), wide)).toBe(false);
+  });
+
+  it("refuses when there is no prior window", () => {
+    expect(isComparisonAvailable(null, { from: "2026-09-25", to: "2026-10-01" })).toBe(false);
+  });
+});
+
+describe("priorPeriodDelta", () => {
+  const format = (value: number) => value.toLocaleString("th-TH");
+
+  it("reports an increase as a subtraction of two measured totals", () => {
+    expect(priorPeriodDelta({ current: 120, prior: 100, label: "รอบซัก", formatNumber: format })).toEqual({
+      kind: "changed",
+      direction: "up",
+      label: "รอบซัก · สูงขึ้น 20%",
+      delta: "20%"
+    });
+  });
+
+  it("reports a decrease with the direction, not just the magnitude", () => {
+    expect(priorPeriodDelta({ current: 82, prior: 100, label: "รอบซัก", formatNumber: format })).toEqual({
+      kind: "changed",
+      direction: "down",
+      label: "รอบซัก · ลดลง 18%",
+      delta: "18%"
+    });
+  });
+
+  // A prior zero makes the percentage undefined. Rendering "infinite growth" or
+  // silently dropping the change would both be false.
+  it("will not compute a percentage against a zero prior period", () => {
+    const result = priorPeriodDelta({ current: 50, prior: 0, label: "รอบซัก", formatNumber: format });
+
+    expect(result.kind).toBe("unavailable");
+    expect(result).toMatchObject({ reason: expect.stringContaining("ศูนย์") });
+  });
+
+  it("says unavailable for a redacted revenue rather than calling it unchanged", () => {
+    const result = priorPeriodDelta({ current: null, prior: 100, label: "รายได้", formatNumber: format });
+
+    expect(result.kind).toBe("unavailable");
+    expect(result).toMatchObject({ reason: expect.stringContaining("ไม่มียอดก่อนหน้าให้เทียบ") });
+  });
+
+  it("says unavailable when the prior window itself could not be measured", () => {
+    expect(priorPeriodDelta({ current: 100, prior: null, label: "รอบซัก", formatNumber: format }).kind).toBe("unavailable");
+  });
+
+  it("states a genuine zero change as equal, not as a rounding artefact", () => {
+    expect(priorPeriodDelta({ current: 0, prior: 0, label: "รอบซัก", formatNumber: format })).toEqual({
+      kind: "unavailable",
+      reason: "รอบซัก · ช่วงก่อนหน้าเป็นศูนย์ จึงคิดเปอร์เซ็นต์ไม่ได้"
+    });
+    expect(priorPeriodDelta({ current: 100, prior: 100, label: "รอบซัก", formatNumber: format })).toEqual({
+      kind: "flat",
+      label: "รอบซัก · เท่ากับช่วงก่อนหน้า"
+    });
   });
 });

@@ -70,8 +70,13 @@ export type StubbedSession = "owner" | "technician";
 export type StubbedOptions = {
   /** Session principal; defaults to the tenant-wide owner. */
   session?: StubbedSession;
-  /** Extra `/api/*` responses, keyed by pathname. Overrides the defaults. */
-  responses?: Record<string, unknown>;
+  /** Extra `/api/*` responses, keyed by pathname. Overrides the defaults.
+   *
+   *  A value may be a function of the request URL, for the endpoints that are
+   *  called more than once with different windows — the dashboard now fetches the
+   *  prior period alongside the selected one, and a single static body would
+   *  answer both with the same numbers. */
+  responses?: Record<string, unknown | ((url: URL) => unknown)>;
   /** Status for a path in `responses`; defaults to 200. */
   statuses?: Record<string, number>;
 };
@@ -83,7 +88,7 @@ export type StubbedOptions = {
  */
 export async function installStubbedSession(page: Page, options: StubbedOptions = {}): Promise<void> {
   const session = options.session === "technician" ? TECHNICIAN_SESSION : DEVELOPMENT_OWNER_SESSION;
-  const table: Record<string, unknown> = {
+  const table: Record<string, unknown | ((url: URL) => unknown)> = {
     ...RESPONSES,
     "/api/me": session,
     ...(options.responses ?? {})
@@ -97,10 +102,12 @@ export async function installStubbedSession(page: Page, options: StubbedOptions 
     const key = url.pathname + url.search in table ? url.pathname + url.search : url.pathname;
     if (key in table) {
       const status = options.statuses?.[key] ?? 200;
+      const entry = table[key];
+      const body = typeof entry === "function" ? entry(url) : entry;
       await route.fulfill({
         status,
         contentType: "application/json",
-        body: JSON.stringify(table[key])
+        body: JSON.stringify(body)
       });
       return;
     }

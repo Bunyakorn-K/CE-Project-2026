@@ -340,22 +340,29 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 552 tests green** — API 351, web 114,
+Local automated evidence on **2026-10-01: 625 tests green** — API 359, web 179,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
-with tests for the four report routes that answered 503 in production, and web
-from 92 to 114 with the Thai freshness and alert-source states, and with the
+with tests for the four report routes that answered 503 in production, then to
+359 with the machine-state provenance fix (a `cycleCount` of zero and an
+unavailable `cycleCount` are different facts, and the Digital Twin was calling
+the first one "no usage rows") and the twin freshness axis. Web rose from 92 to
+114 with the Thai freshness and alert-source states, and with the
 stale-LIFF-session handling (a browser holding an expired ID token, which LIFF
 reports as a healthy session and never refreshes) — including the sign-in
-decision that regression testing caught. `login.tsx` had **no test at all** when
+decision that regression testing caught — then to 129 with the machine-facts
+decision functions and the Thai error-code copy, then to 179 with the dashboard
+working context: URL state, date presets, branch sort, and the prior-period
+comparison. `login.tsx` had **no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is 20 tests
+Playwright suite is 28 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
-`analytics.pw.ts` and `dashboard.pw.ts` assert rendered honesty labels — that a
+`analytics.pw.ts`, `dashboard.pw.ts` and `dashboard-context.pw.ts` assert
+rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
 and that the executive summary is hidden over an empty window and states when
 its source is unavailable. Node 24.x is used (see `.nvmrc`); no

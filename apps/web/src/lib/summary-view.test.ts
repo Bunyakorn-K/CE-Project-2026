@@ -56,7 +56,16 @@ describe("summaryAvailabilityLabel", () => {
     expect(summaryAvailabilityLabel("available")).not.toContain("live telemetry");
   });
 
-  it("keeps an unrecognised availability value visible rather than dropping it", () => {
-    expect(summaryAvailabilityLabel("degraded")).toContain("degraded");
+  it("keeps an unrecognised availability visible rather than dropping it", () => {
+    // The label must still SAY something went unrecognised — silently falling
+    // back to "พร้อมใช้งาน" would read as healthy. What it must not do is
+    // embed the server's own English string in the Thai sentence, which is why
+    // this asserts a Thai unknown-state rather than the raw value.
+    const label = summaryAvailabilityLabel("degraded");
+
+    expect(label).not.toBe(summaryAvailabilityLabel("available"));
+    expect(label).not.toBe(summaryAvailabilityLabel("usage-derived"));
+    expect(label).not.toContain("degraded");
+    expect(label).toMatch(/ไม่ทราบ/);
   });
 });
