@@ -1603,10 +1603,11 @@ main {
 
 /* The state-source notice sits directly under the section heading and above the
    grid. It is a boundary on everything below it, so it needs the separation a
-   section gets rather than reading as one machine's note. */
+   section gets rather than reading as one machine's note. The `.state-message`
+   treatment already carries that; an accent border here would be decoration,
+   and the design direction reserves colour for status and action. */
 .machine-source-notice {
   margin-top: 14px;
-  border-left: 3px solid var(--border-strong);
 }
 
 .analytics-section,
