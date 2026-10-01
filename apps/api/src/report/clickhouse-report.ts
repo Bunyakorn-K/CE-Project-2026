@@ -1,6 +1,12 @@
 import { createClickHouseClient, type ClickHouseExecutor } from "../analytics/clickhouse";
 import { isDemoModeEnabled } from "../demo-read-client";
 import type { Principal } from "../access-store";
+import {
+  isUsableHours,
+  resolveBranchOpenState,
+  type BranchHours,
+  type BranchOpenState
+} from "./branch-availability";
 
 // ---------------------------------------------------------------------------
 // ClickHouse table shapes (readonly references for query typing)
@@ -34,6 +40,9 @@ type MachineStateRow = {
   machine_code: string;
   machine_kind: string;
   branch_name: string;
+  /** Needed to evaluate the branch's own clock. Absent on a response from an
+   *  older build, which resolves to `unknown` rather than to the server's. */
+  timezone?: string | null;
   status: string | null;
   last_active_at: string | null;
   cycle_count: string | number;
@@ -141,6 +150,7 @@ SELECT
   m.machine_id AS machine_id,
   m.branch_id AS branch_id,
   b.branch_name AS branch_name,
+  b.timezone AS timezone,
   m.machine_code AS machine_code,
   m.machine_kind AS machine_kind,
   argMax(u.status, u.started_at) AS status,
@@ -158,9 +168,86 @@ LEFT JOIN fact_machine_usage AS u FINAL ON
 WHERE m.active = 1
   AND b.active = 1
   AND ({branchId:String} = '' OR toString(m.branch_id) = {branchId:String})
-GROUP BY m.tenant_id, m.branch_id, m.machine_id, b.branch_name, m.machine_code, m.machine_kind
+GROUP BY m.tenant_id, m.branch_id, m.machine_id, b.branch_name, b.timezone, m.machine_code, m.machine_kind
 ORDER BY last_active_at DESC
 SETTINGS join_use_nulls = 1`;
+}
+
+/**
+ * Operator-provisioned opening hours per branch.
+ *
+ * SEPARATE query, not a JOIN into `buildMachineStateSQL`, for one reason:
+ * `dim_branch_hours` does not exist on every warehouse. It was added to
+ * `apps/etl/src/schema.ts` on 2026-10-01 and the DDL pass creates it on the
+ * next ETL cycle, but a JOIN against a missing table fails the WHOLE machine
+ * query with `Code 60 UNKNOWN_TABLE` — turning an optional refinement into an
+ * outage of the page that reports broken machines. So the lookup is
+ * independently fault-tolerant and every failure resolves to "no schedule",
+ * which is exactly today's behaviour.
+ *
+ * `FINAL` is required (ReplacingMergeTree, like every other dim here) or a
+ * re-provisioned branch would resolve against whichever version happened to be
+ * on disk first.
+ */
+export function buildBranchHoursSQL(): string {
+  return `
+SELECT branch_id, open_minute, close_minute, open_days
+FROM dim_branch_hours FINAL
+WHERE {branchId:String} = '' OR toString(branch_id) = {branchId:String}
+GROUP BY tenant_id, branch_id, open_minute, close_minute, open_days
+ORDER BY branch_id`;
+}
+
+type BranchHoursRow = {
+  branch_id: string;
+  open_minute: string | number;
+  close_minute: string | number;
+  open_days: string | number[] | null;
+};
+
+/**
+ * Read the branch hours, degrading to "no schedule" on ANY failure.
+ *
+ * A missing table, a permission error, an unparseable row — all of them resolve
+ * to the same honest answer, `unknown`, which the caller turns into today's
+ * exact rendering. That is the point: this lookup may only ever make the alarm
+ * quieter when the schedule positively says the branch is shut, so a failure
+ * here has to be indistinguishable from "not provisioned yet".
+ *
+ * The `open_days` decode is defensive rather than trusting ClickHouse's
+ * JSONEachRow array: a NULL column and a stringified array are both possible
+ * depending on build, and neither may throw. An unusable row drops out of the
+ * map entirely, which is the same as absent.
+ */
+export async function queryBranchHours(
+  ch: ClickHouseExecutor,
+  branchId?: string
+): Promise<Map<string, BranchHours>> {
+  const hours = new Map<string, BranchHours>();
+  let rows: BranchHoursRow[];
+  try {
+    rows = await ch<BranchHoursRow>(buildBranchHoursSQL(), { branchId: branchId ?? "" });
+  } catch {
+    return hours;
+  }
+  // A non-array answer is not a schedule. The executor is typed to return
+  // rows, so this is belt-and-braces — but this function's whole contract is
+  // "any failure means no schedule", and an unguarded iteration would throw
+  // out of an optional refinement and take the machine report down with it.
+  if (!Array.isArray(rows)) return hours;
+
+  for (const row of rows) {
+    const candidate: BranchHours = {
+      openMinute: Number(row.open_minute),
+      closeMinute: Number(row.close_minute),
+      openDays: Array.isArray(row.open_days) ? row.open_days.map(Number) : []
+    };
+    // `isUsableHours` is re-checked here rather than trusted from the DDL: an
+    // operator typo in one row must degrade that branch to `unknown`, not throw
+    // and not be silently coerced into a plausible-looking schedule.
+    if (isUsableHours(candidate)) hours.set(row.branch_id, candidate);
+  }
+  return hours;
 }
 
 export type BranchInfo = {
@@ -205,6 +292,17 @@ export type MachineInfo = {
    *  `apps/web/src/lib/machine-status.ts` labels in Thai. */
   freshness: "fresh" | "stale" | "unavailable";
   freshnessReason: string | null;
+  /** Whether the BRANCH is trading right now, from operator-provisioned
+   *  hours. Additive and always present: `unknown` means the schedule is not
+   *  provisioned, the timezone is unusable, or the hours table could not be
+   *  read — all of which render exactly as they render today.
+   *
+   *  It is deliberately NOT folded into `freshness`. Freshness is a per-machine
+   *  evidence age that `reporting.ts` tallies (`unavailable` and `stale` counts
+   *  feed the AI context); widening that union to include `closed` would make
+   *  those machines vanish from the tally instead of being counted as
+   *  unobservable. Two axes, two fields. */
+  branchOpenState: BranchOpenState;
   cycleCount: number | null;
   /** Which definition `cycleCount` was taken from. It is NOT `machine_session_id`:
    *  the count is `countIf(status IN ('paid', 'finished'))` over usage rows, the
@@ -430,7 +528,17 @@ export async function queryMachineStates(
   to: string,
   branchId?: string
 ): Promise<MachineInfo[]> {
-  const rows = await ch<MachineStateRow>(buildMachineStateSQL(), { from, to, branchId: branchId ?? "" });
+  // The hours lookup runs alongside the machine query rather than after it,
+  // and is independent: `queryBranchHours` cannot throw (see its docstring),
+  // so a warehouse without the table costs one failed query, not a failed
+  // report. `now` is captured once so every machine on the page resolves
+  // against the same instant — a page straddling a close boundary could
+  // otherwise show half the branch shut and half open.
+  const [rows, hours] = await Promise.all([
+    ch<MachineStateRow>(buildMachineStateSQL(), { from, to, branchId: branchId ?? "" }),
+    queryBranchHours(ch, branchId)
+  ]);
+  const now = new Date();
 
   const statusMap: Record<string, MachineInfo["status"]> = {
     running: "running",
@@ -471,6 +579,11 @@ export async function queryMachineStates(
       status: statusMap[r.status ?? ""] ?? "unknown",
       lastActiveAt: r.last_active_at || null,
       ...freshnessFields(r.last_active_at || null),
+      branchOpenState: resolveBranchOpenState(
+        hours.get(r.branch_id),
+        r.timezone ?? "",
+        now
+      ),
       cycleCount,
       cycleCountSource: hasUsageRows ? "usage_row" : "unavailable"
     };

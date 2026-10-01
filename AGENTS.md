@@ -274,6 +274,50 @@ new Thai error copy is verified as shipped bytes and as rendered output on the
 sign-in page, and the 400 for a bad cursor still has no live request behind it,
 because `fact_machine_event` holds 0 rows.
 
+**A shut branch is not a room full of broken machines — the mechanism ships,
+the hours do not.** Measured on production 2026-10-01 at roughly 22:15 local:
+the newest usage row at the real branch was **52 minutes old**, so all **19 of
+19** machines read `freshness: "unavailable"` and rendered `ไม่พร้อมใช้งาน` in
+`--danger` red. Nothing was broken — no usage rows arrive while a laundromat is
+closed. One data fact was asserting three things it cannot support. So
+`MachineInfo` now also carries `branchOpenState` (`open` / `closed` /
+`unknown`), resolved per branch from operator-provisioned `dim_branch_hours` in
+the branch's own timezone, and the web renders `ปิดตามเวลาทำการ` in a neutral
+pill when — and only when — the schedule **positively** says the branch is
+shut.
+
+**`closed` means "not observable", never "assume the machines are fine."** The
+two failure directions are the ones that matter and both are enforced by test:
+an unknown or absent schedule must pass freshness through **unchanged** (one
+unpopulated row silently suppressing a real fault branch-wide would stop the
+alarm exactly when it is needed, and an **absent** field is what an older API
+build sends), and a machine with no evidence while the branch is **open** stays
+red. `branchOpenState` is a **separate field**, not a fourth `freshness` value,
+because `apps/api/src/reporting.ts` tallies `freshness` into the AI context and
+widening that union would make closed machines vanish from the tally rather than
+being counted as unobservable.
+
+**No opening hours exist yet, anywhere** — not in `dim_branch`, not in IRIS's
+synced columns, not in the codebase; IRIS's `status` maps to `active` ("this
+branch exists"), not to "open now". `dim_branch_hours` is declared in
+`apps/etl/src/schema.ts` so the DDL pass creates it, and the ETL **must never
+write it** — it re-syncs every other dim each 5-minute cycle and would clobber
+an operator's hours within one run; a test asserts no insert targets it. So
+production resolves `unknown` everywhere and renders exactly what it renders
+today. Provisioning the rows is a separate ops step. The hours lookup is a
+separate, independently fault-tolerant query rather than a JOIN precisely
+because the table does not exist on every warehouse: a JOIN would fail the whole
+machine query with `Code: 60 UNKNOWN_TABLE`, turning an optional refinement into
+an outage of the page that reports broken machines. Full contract:
+`docs/03_data_contracts/data_contracts.md`.
+
+**Not deployed.** The user's authorization covered the api+web merge only.
+Evidence: 38 API tests on the pure decision and 13 on the ClickHouse wiring,
+15 web tests, and `e2e/closed-branch-honesty.pw.ts` against the built bundle;
+every guard verified to fail against deliberately broken code, including
+dropping the web wire, which reproduced the exact production markup
+(`<span class="status-pill status-pill--danger">ไม่พร้อมใช้งาน</span>`).
+
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
 decided from the SDK's own state whether to render, so it could replace the
@@ -566,9 +610,12 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 719 tests green** — API 420, web 212,
+Local automated evidence on **2026-10-01: 785 tests green** — API 471, web 227,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
+rather than repeating it.** API rose from 420 to 471 with the closed-branch
+mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
+including that a warehouse without `dim_branch_hours` resolves every machine to
+`unknown` rather than failing the report. The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
 359 with the machine-state provenance fix (a `cycleCount` of zero and an
 unavailable `cycleCount` are different facts, and the Digital Twin was calling
@@ -605,8 +652,11 @@ a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
-after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is **44 tests**
+after the dead-code deletion removed `dashboard-metrics.test.ts`. Web rose from
+212 to 227 with the closed-branch view — including the guard that an
+**unrecognised** branch state renders as unknown rather than closed, since both
+are neutral and only the label separates them. The separate
+Playwright suite is **49 tests**
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
 `twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert
@@ -615,9 +665,11 @@ weather window never reads "ข้อมูลจริง", that a missing temp
 that the executive summary is hidden over an empty window and states when
 its source is unavailable, and that a twin card draws no machine state its own
 pills disclaim. `stale-liff-session.pw.ts` asserts that a blocking LINE gate
-neither hides a route the visitor may use nor replaces the sign-in page.
+neither hides a route the visitor may use nor replaces the sign-in page, and
+`closed-branch-honesty.pw.ts` asserts that a shut branch paints no card red
+while an *open* branch with identical evidence still does.
 
-**Four of those 44 were skipping in CI, which is the same defect a third
+**Four of those 49 were skipping in CI, which is the same defect a third
 time.** `stale-liff-session.pw.ts` guards the production defect measured
 earlier on 2026-10-01, and it skips unless `VITE_LIFF_ID` is set, because the
 gate compiles every LIFF branch out of a build without one. `ci.yml` never set

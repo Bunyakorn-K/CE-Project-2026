@@ -219,6 +219,15 @@ describe("runEtl", () => {
       "dim_branch",
       "dim_machine",
     ]);
+    // `dim_branch_hours` is ops-provisioned and the ETL must never write it.
+    // The ETL re-syncs every other dim on every 5-minute run, so a single
+    // insert here would silently clobber an operator's schedule within one
+    // cycle — and an empty schedule resolves to "unknown", which means the
+    // whole closed-branch feature quietly stops working. Asserted separately
+    // from the exact-match above so the failure names the reason.
+    expect(inserts.map((i) => (i.args as { table: string }).table)).not.toContain(
+      "dim_branch_hours"
+    );
     expect(log.some((l) => l.op === "insert")).toBe(true);
     expect(watermarks.load()).toEqual({
       usageCreatedAt: null,

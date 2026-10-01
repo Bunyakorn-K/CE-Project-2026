@@ -58,6 +58,17 @@ const FRESHNESS: Record<string, FreshnessMeta> = {
     className: "status-pill--danger",
     reason: "ไม่มีข้อมูลการใช้งานล่าสุดของเครื่องนี้",
     known: true
+  },
+  // A shut branch is not a machine fault. Production measured 2026-10-01
+  // rendered all 19 machines at the real branch as red `ไม่พร้อมใช้งาน`
+  // because the newest usage row was 52 minutes old and the branch was simply
+  // closed. So `closed` is neutral and says the branch, not the machine —
+  // it never means "the machines are fine", only "there is nothing to observe".
+  closed: {
+    label: "ปิดตามเวลาทำการ",
+    className: "status-pill--neutral",
+    reason: "สาขาปิดตามเวลาทำการ จึงไม่มีข้อมูลการใช้งานของเครื่องนี้",
+    known: true
   }
 };
 

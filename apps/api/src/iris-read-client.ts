@@ -48,6 +48,12 @@ export type IrisLiveMachine = {
   lastSeen: string | null;
   freshness: "fresh" | "stale" | "unavailable";
   reason?: string;
+  /** Whether the branch is trading right now. Additive: an older server omits
+   *  it and the consumer renders exactly what it renders today. See
+   *  `apps/api/src/report/branch-availability.ts` for the safety rule — a
+   *  `closed` branch means "not observable", never "assume the machines are
+   *  fine". */
+  branchOpenState?: "open" | "closed" | "unknown";
   telemetry?: {
     phase: string | null;
     remainingSeconds: number | null;

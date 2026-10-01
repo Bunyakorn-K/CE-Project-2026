@@ -683,6 +683,11 @@ async function queryDemoMachineStates(iris: IrisClient, branchId?: string): Prom
       // it goes through the same freshness computation as real usage rather
       // than being asserted fresh.
       ...demoFreshnessFields(machine.lastSeen),
+      // The demo projection carries no opening hours, so this is always
+      // `unknown` — stated rather than defaulted, because a default here would
+      // be a second place that decides what an absent schedule means, and the
+      // two could disagree.
+      branchOpenState: "unknown" as const,
       cycleCount: null,
       // The demo projection has no usage-row field, so it cannot say whether
       // the machine was used — only that it has no countable cycle evidence.
@@ -810,6 +815,7 @@ function toClickHouseLiveMachine(state: MachineInfo): IrisLiveMachine {
     lastSeen: state.lastActiveAt,
     freshness: state.freshness,
     ...(state.freshnessReason ? { reason: state.freshnessReason } : {}),
+    branchOpenState: state.branchOpenState,
     coverage: {
       liveState: {
         available: false,

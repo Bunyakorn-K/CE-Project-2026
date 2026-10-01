@@ -4,11 +4,13 @@ import {
   buildBranchSQL,
   buildDashboardSQL,
   buildEventsSQL,
+  buildBranchHoursSQL,
   buildMachineStateSQL,
   encodeEventCursor,
   parseEventCursor,
   InvalidCursorError,
   queryBranches,
+  queryBranchHours,
   queryDashboard,
   queryEvents,
   queryMachineStates,
@@ -463,7 +465,11 @@ describe("machine floor report", () => {
     expect(result[0]).toMatchObject({
       status: "running",
       freshness: "unavailable",
-      freshnessReason: "No recent usage evidence is available for this machine"
+      freshnessReason: "No recent usage evidence is available for this machine",
+      // This fake answers the hours query with machine rows, which carry no
+      // open_minute, so nothing usable is provisioned and the branch state is
+      // `unknown` — today's behaviour. See the branch-hours suite below.
+      branchOpenState: "unknown"
     });
   });
 
@@ -517,7 +523,8 @@ describe("machine floor report", () => {
         cycleCount: null,
         cycleCountSource: "unavailable",
         freshness: "unavailable",
-        freshnessReason: "No recent usage evidence is available for this machine"
+        freshnessReason: "No recent usage evidence is available for this machine",
+        branchOpenState: "unknown"
       }
     ]);
   });
@@ -674,5 +681,237 @@ describe("event feed report", () => {
     } catch (error) {
       expect((error as InvalidCursorError).code).toBe("INVALID_CURSOR");
     }
+  });
+});
+
+/**
+ * Branch opening hours, read from `dim_branch_hours`.
+ *
+ * The table did not exist on production when this was written (added to
+ * `apps/etl/src/schema.ts` 2026-10-01; the ETL's DDL pass creates it on the
+ * next cycle). Every degradation below therefore describes the state the live
+ * warehouse is actually in right now, and the whole point of the tolerant
+ * lookup is that none of them is an outage.
+ *
+ * The guards were verified to fail against deliberately broken code: making
+ * `queryBranchHours` rethrow fails the first test, and dropping `isUsableHours`
+ * fails the malformed-row one.
+ */
+describe("branch hours", () => {
+  const machineRow = (over: Record<string, unknown> = {}) => ({
+    machine_id: "machine-01",
+    branch_id: "branch-01",
+    machine_code: "W1",
+    machine_kind: "washer",
+    branch_name: "Branch A",
+    timezone: "Asia/Bangkok",
+    status: "finished",
+    last_active_at: null,
+    cycle_count: "0",
+    usage_rows: "0",
+    ...over
+  });
+
+  /** Routes by SQL so the two queries cannot be confused by call order. */
+  function routedExecutor(answers: {
+    machines?: Record<string, unknown>[];
+    hours?: Record<string, unknown>[];
+    hoursError?: Error;
+  }): ClickHouseExecutor {
+    return vi.fn(async (sql: string) => {
+      if (sql.includes("dim_branch_hours")) {
+        if (answers.hoursError) throw answers.hoursError;
+        return (answers.hours ?? []) as never;
+      }
+      return (answers.machines ?? []) as never;
+    }) as unknown as ClickHouseExecutor;
+  }
+
+  it("reads provisioned hours keyed by branch", async () => {
+    const hours = await queryBranchHours(
+      fakeExecutor([
+        { branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] }
+      ])
+    );
+
+    expect(hours.get("branch-01")).toEqual({ openMinute: 420, closeMinute: 1320, openDays: [] });
+  });
+
+  it("binds the branch scope rather than inlining a literal", () => {
+    const sql = buildBranchHoursSQL();
+
+    expect(sql).toContain("toString(branch_id) = {branchId:String}");
+    expect(sql).not.toContain("branch-01");
+    // ReplacingMergeTree: without FINAL a re-provisioned branch could resolve
+    // against whichever version is on disk first.
+    expect(sql).toContain("FROM dim_branch_hours FINAL");
+  });
+
+  it("degrades to no schedule when the table is absent", async () => {
+    // What production looks like before the ETL's DDL pass runs. This must be
+    // a missing map, never a thrown error — a JOIN instead of a separate query
+    // would fail the whole machine report with Code 60 UNKNOWN_TABLE.
+    const hours = await queryBranchHours(
+      routedExecutor({ hoursError: new Error("Code: 60. DB::Exception: Table default.dim_branch_hours does not exist") })
+    );
+
+    expect(hours.size).toBe(0);
+  });
+
+  it("degrades to no schedule when the source answers with something that is not rows", async () => {
+    const hours = await queryBranchHours(vi.fn().mockResolvedValue(undefined) as unknown as ClickHouseExecutor);
+
+    expect(hours.size).toBe(0);
+  });
+
+  it("drops a malformed row instead of coercing it into a schedule", async () => {
+    // An operator typo must degrade THAT branch to unknown. Coercing a
+    // zero-length window would produce a confidently wrong answer.
+    const hours = await queryBranchHours(
+      fakeExecutor([
+        { branch_id: "branch-01", open_minute: "600", close_minute: "600", open_days: [] },
+        { branch_id: "branch-02", open_minute: "not-a-number", close_minute: "1320", open_days: [] },
+        { branch_id: "branch-03", open_minute: "420", close_minute: "1320", open_days: [] }
+      ])
+    );
+
+    expect([...hours.keys()]).toEqual(["branch-03"]);
+  });
+
+  it("reads open_days as an array and tolerates a null one", async () => {
+    const hours = await queryBranchHours(
+      fakeExecutor([
+        { branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [1, 2, 3, 4, 5] },
+        { branch_id: "branch-02", open_minute: "420", close_minute: "1320", open_days: null }
+      ])
+    );
+
+    expect(hours.get("branch-01")?.openDays).toEqual([1, 2, 3, 4, 5]);
+    // NULL means "not enumerated", which this table defines as every day.
+    expect(hours.get("branch-02")?.openDays).toEqual([]);
+  });
+
+  it("reports the branch as closed while it is shut, which is the whole feature", async () => {
+    // 15:30 UTC is 22:30 in Bangkok. Production measured 2026-10-01 at
+    // roughly this hour: 19 of 19 machines read `unavailable` because the
+    // newest usage row was 52 minutes old, and rendered as 19 broken machines.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T15:30:00Z"));
+    try {
+      const result = await queryMachineStates(
+        routedExecutor({
+          machines: [machineRow()],
+          hours: [{ branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] }]
+        }),
+        "2026-10-01",
+        "2026-10-01"
+      );
+
+      expect(result[0]?.branchOpenState).toBe("closed");
+      // The evidence verdict is untouched: it is still true that there is no
+      // recent usage. `closed` is a second axis, not a replacement.
+      expect(result[0]?.freshness).toBe("unavailable");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports the branch as open during trading hours", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T02:00:00Z")); // 09:00 Bangkok
+    try {
+      const result = await queryMachineStates(
+        routedExecutor({
+          machines: [machineRow()],
+          hours: [{ branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] }]
+        }),
+        "2026-10-01",
+        "2026-10-01"
+      );
+
+      expect(result[0]?.branchOpenState).toBe("open");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is unknown when hours exist but the branch timezone is unusable", async () => {
+    // Never "closed": an unusable timezone is missing evidence, and a shut
+    // branch is a positive claim.
+    const result = await queryMachineStates(
+      routedExecutor({
+        machines: [machineRow({ timezone: "Not/AZone" })],
+        hours: [{ branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] }]
+      }),
+      "2026-10-01",
+      "2026-10-01"
+    );
+
+    expect(result[0]?.branchOpenState).toBe("unknown");
+  });
+
+  it("is unknown when a row from an older build carries no timezone", async () => {
+    const result = await queryMachineStates(
+      routedExecutor({
+        machines: [machineRow({ timezone: undefined })],
+        hours: [{ branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] }]
+      }),
+      "2026-10-01",
+      "2026-10-01"
+    );
+
+    expect(result[0]?.branchOpenState).toBe("unknown");
+  });
+
+  it("reads each branch against its own clock and its own schedule", async () => {
+    // Two branches, two zones, one instant. This is why the lookup is keyed by
+    // branch rather than resolved once for the page.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T15:30:00Z"));
+    try {
+      const result = await queryMachineStates(
+        routedExecutor({
+          machines: [
+            machineRow({ machine_id: "m1", branch_id: "branch-01", timezone: "Asia/Bangkok" }),
+            machineRow({ machine_id: "m2", branch_id: "branch-02", timezone: "Asia/Bangkok" })
+          ],
+          hours: [
+            { branch_id: "branch-01", open_minute: "420", close_minute: "1320", open_days: [] },
+            { branch_id: "branch-02", open_minute: "1320", close_minute: "120", open_days: [] }
+          ]
+        }),
+        "2026-10-01",
+        "2026-10-01"
+      );
+
+      const byId = Object.fromEntries(result.map((m) => [m.machineId, m.branchOpenState]));
+      // 22:30 is past branch-01's 22:00 close but inside branch-02's
+      // 22:00–02:00 window, which a naive `close < now` compare would invert.
+      expect(byId).toEqual({ m1: "closed", m2: "open" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("scopes the hours lookup to the caller's branch", async () => {
+    const ch = routedExecutor({ hours: [] });
+    await queryBranchHours(ch, "branch-01");
+
+    expect(ch).toHaveBeenCalledWith(expect.stringContaining("dim_branch_hours"), { branchId: "branch-01" });
+  });
+
+  it("leaves every machine unknown when the hours table is missing", async () => {
+    // The exact production state before provisioning. Today's rendering.
+    const result = await queryMachineStates(
+      routedExecutor({
+        machines: [machineRow(), machineRow({ machine_id: "machine-02" })],
+        hoursError: new Error("Code: 60. DB::Exception: Table does not exist")
+      }),
+      "2026-10-01",
+      "2026-10-01"
+    );
+
+    expect(result.map((m) => m.branchOpenState)).toEqual(["unknown", "unknown"]);
+    expect(result.map((m) => m.freshness)).toEqual(["unavailable", "unavailable"]);
   });
 });

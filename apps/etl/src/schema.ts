@@ -102,6 +102,41 @@ const DIM_BRANCH_LOCATION_COLUMNS: Column[] = [
   { name: "version", ch: "UInt32" },
 ];
 
+// Branch opening hours, added 2026-10-01. NOT part of the IRIS-synced
+// dim_branch, for the same reason dim_branch_location is not: the source
+// exposes no schedule, so anything written here would be a guess. Written by
+// ops, never by ETL — and deliberately so, because the ETL re-syncs every
+// other dim on every 5-minute run, which would clobber an operator's hours
+// within one cycle.
+//
+// WHY: measured on production 2026-10-01, all 19 machines at the real branch
+// read `unavailable` because the newest usage row was 52 minutes old. The
+// branch was shut; no usage rows arrive while a laundromat is closed. The web
+// rendered that as `ไม่พร้อมใช้งาน` in red, so a closed branch presented as 19
+// broken machines. Without a schedule the system cannot tell "shut on purpose"
+// from "no data", and must keep warning.
+//
+// `open_days` is an ISO weekday array (1 = Monday … 7 = Sunday). Empty means
+// "trades every day", so a 7-day branch does not need seven entries.
+//
+// A BRANCH WITH NO ROW HERE IS NOT AN ERROR and is not a default: it resolves
+// to "unknown", which renders exactly as it does today. That is deliberate. An
+// absent schedule must never be read as "closed", because that would silence a
+// genuine machine fault across the whole branch — the alarm has to keep
+// working while the data is still being filled in.
+//
+// `version` mirrors dim_branch_location: an integer revision counter, bumped by
+// ops on each re-provision. It must stay an integer (ReplacingMergeTree
+// rejects a String version column with Code 169 BAD_TYPE_OF_FIELD).
+const DIM_BRANCH_HOURS_COLUMNS: Column[] = [
+  { name: "tenant_id", ch: "UUID" },
+  { name: "branch_id", ch: "UUID" },
+  { name: "open_minute", ch: "UInt16" },
+  { name: "close_minute", ch: "UInt16" },
+  { name: "open_days", ch: "Array(UInt8)" },
+  { name: "version", ch: "UInt32" },
+];
+
 const DIM_MACHINE_COLUMNS: Column[] = [
   { name: "tenant_id", ch: "UUID" },
   { name: "branch_id", ch: "UUID" },
@@ -256,6 +291,9 @@ function ddl(
 export const CREATE_TABLES: string[] = [
   ddl("dim_branch", DIM_BRANCH_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "source_updated_at"),
   ddl("dim_branch_location", DIM_BRANCH_LOCATION_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "version"),
+  // Created by the ETL's DDL pass so the table exists, but never written by it:
+  // ops owns these rows. See the column comment above.
+  ddl("dim_branch_hours", DIM_BRANCH_HOURS_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "version"),
   ddl("dim_machine", DIM_MACHINE_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id, machine_id)", undefined, "source_updated_at"),
   ddl(
     "fact_machine_usage",
@@ -294,6 +332,7 @@ export const CREATE_TABLES: string[] = [
 export const TABLE_COLUMNS: Record<string, string[]> = {
   dim_branch: DIM_BRANCH_COLUMNS.map((c) => c.name),
   dim_branch_location: DIM_BRANCH_LOCATION_COLUMNS.map((c) => c.name),
+  dim_branch_hours: DIM_BRANCH_HOURS_COLUMNS.map((c) => c.name),
   dim_machine: DIM_MACHINE_COLUMNS.map((c) => c.name),
   fact_machine_usage: FACT_USAGE_COLUMNS.map((c) => c.name),
   fact_temperature_sample: FACT_TEMPERATURE_COLUMNS.map((c) => c.name),

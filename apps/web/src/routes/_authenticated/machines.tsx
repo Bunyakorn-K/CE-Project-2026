@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
 import { freshnessMeta } from "../../lib/machine-status";
 import { liveFreshnessRow, liveStateSource, liveStatusClaim, machineKindLabel } from "../../lib/live-machine-view";
+import { machineAvailability } from "../../lib/branch-availability-view";
 
 export const Route = createFileRoute("/_authenticated/machines")({
   component: MachinesPage
@@ -21,6 +22,12 @@ type Machine = {
   lastSeen: string | null;
   freshness: "fresh" | "stale" | "unavailable" | string;
   reason?: string;
+  /**
+   * Whether the BRANCH is trading right now. Absent on an older API build,
+   * which renders exactly what it renders today — see
+   * `machineAvailability` for why absent must never be read as "closed".
+   */
+  branchOpenState?: string;
   /**
    * Whether this snapshot's state came from live telemetry or from usage rows.
    * Absent on an older API build, which is why `liveStateSource` treats missing
@@ -156,8 +163,14 @@ function MachinesPage() {
 
 function MachineCard({ machine }: { machine: Machine }) {
   const claim = liveStatusClaim(machine);
-  const freshness = liveFreshnessRow(machine.freshness);
-  const fallback = freshnessMeta(machine.freshness);
+  // The pill shows the AVAILABILITY, not the raw evidence age: a shut branch
+  // produces no usage rows, and without this the page renders all 19 machines
+  // red `ไม่พร้อมใช้งาน` for a shop that is simply closed. `liveStatusClaim`
+  // keeps reading the raw freshness, so a closed branch still WITHHOLDS the
+  // machine state — a shut branch is not evidence the machine is idle.
+  const availability = machineAvailability(machine.freshness, machine.branchOpenState);
+  const freshness = liveFreshnessRow(availability);
+  const fallback = freshnessMeta(availability);
   return (
     <Card variant="transparent" className="surface-card machine-card">
       <Card.Content>

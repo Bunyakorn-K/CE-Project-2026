@@ -232,3 +232,81 @@ already shipped in `apps/web/src/lib/machine-status.ts`.
 contract field, and the web layer maps it to Thai by keying on `freshness`,
 never by matching that prose — see `apps/web/src/lib/alerts-view.ts` for the
 same rule and the reason it exists.
+
+## Branch `branchOpenState` — a third axis, 2026-10-01
+
+Measured on production 2026-10-01 at roughly 22:15 local: the newest usage row
+at the real branch was **52 minutes old**, so all **19 of 19** machines read
+`freshness: "unavailable"` and rendered `ไม่พร้อมใช้งาน` in `--danger` red.
+Nothing was broken. No usage rows arrive while a laundromat is closed, and the
+branch was shut. One data fact — no recent usage — was asserting three things
+it cannot support: no evidence, machine unusable, and something is wrong.
+
+| Value | Condition |
+|---|---|
+| `open` | the branch's provisioned hours say it is trading, in its own timezone |
+| `closed` | the schedule **positively** says it is shut |
+| `unknown` | no schedule provisioned, an unusable timezone, or the hours could not be read |
+
+### The safety rule
+
+**`closed` means "the branch is shut, so machine state is not observable". It
+NEVER means "assume the machines are fine".**
+
+Two consequences are enforced in code and by test, not left to reviewers:
+
+1. An unknown or malformed schedule resolves to `unknown`, and `unknown`
+   passes `freshness` through **unchanged**. An absent schedule defaulted to
+   `closed` would mean one unpopulated row silently suppresses a genuine
+   machine fault across an entire branch — the alarm would stop working exactly
+   when it was needed. This is also why the web treats an **absent**
+   `branchOpenState` as `unknown`: it is what an API build predating this
+   feature sends, and assuming `closed` client-side would silence the warning
+   for any account talking to an older server.
+2. A machine with no evidence while the branch is **open** stays
+   `unavailable` — red, technician-warranted. That is the case `closed` must
+   never swallow.
+
+So the mechanism can only ever make the alarm quieter when the schedule
+positively says the branch is shut, and never otherwise.
+
+### Why it is a separate field and not a fourth `freshness` value
+
+`freshness` is a per-machine evidence age that `apps/api/src/reporting.ts`
+tallies into the AI context (`unavailable` and `stale` counts). Widening that
+union would make a closed branch's machines **vanish** from the tally instead
+of being counted as unobservable. Two axes, two fields; the web combines them
+in `machineAvailability` (`apps/web/src/lib/branch-availability-view.ts`), which
+holds the same rule so an older API cannot undo it.
+
+### `dim_branch_hours` — provisioned by ops, never by the ETL
+
+`open_minute`/`close_minute` are minutes from local midnight; `close_minute` is
+**exclusive**, so a branch closing at 22:00 is already closed at 22:00. A
+`close_minute < open_minute` window wraps and means "trades past midnight"
+(22:00–02:00). `open_days` is an ISO weekday array (1 = Monday … 7 = Sunday)
+and **empty means every day**, so a 7-day branch needs no enumeration.
+
+The table is declared in `apps/etl/src/schema.ts` so the DDL pass creates it,
+but the ETL **must never write it**: it re-syncs every other dim on each
+5-minute cycle and would clobber an operator's hours within one run. A test
+asserts no insert ever targets it.
+
+**It is currently empty**, which is the intended shipping state: `unknown`
+everywhere, rendering exactly what production renders today. Provisioning the
+rows is a separate ops step with its own review.
+
+### Failure handling
+
+`queryBranchHours` is a **separate, independently fault-tolerant** query, not a
+JOIN. `dim_branch_hours` does not exist on every warehouse, and a JOIN against a
+missing table fails the whole machine query with `Code: 60 UNKNOWN_TABLE` —
+turning an optional refinement into an outage of the page that reports broken
+machines. Every failure mode (absent table, permission error, non-array answer,
+malformed row) resolves to `unknown`. A malformed row is dropped rather than
+coerced: an operator typo must degrade that branch, not produce a confidently
+wrong schedule.
+
+`version` mirrors `dim_branch_location` — an integer revision counter, bumped
+by ops on re-provision. A String version column makes the CREATE fail with
+`Code 169 BAD_TYPE_OF_FIELD`, which aborts `runEtl` before any fact table exists.

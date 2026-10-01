@@ -41,6 +41,7 @@ import {
   summaryView,
   type SummaryEnvelope
 } from "../../lib/summary-view";
+import { machineAvailability } from "../../lib/branch-availability-view";
 
 /** The URL is the single source of truth for the working context, so a LINE
  *  user tapping back lands where they were and an owner can send a colleague
@@ -120,6 +121,10 @@ type Machine = {
    *  says what that evidence claimed. Absent on an older API build. */
   freshness?: string;
   freshnessReason?: string | null;
+  /** Whether the branch is trading right now. Absent on an older API build,
+   *  which renders exactly what it renders today. Never absent-means-closed:
+   *  see `machineAvailability`. */
+  branchOpenState?: string;
 };
 
 type Branch = { id: string; name: string };
@@ -661,7 +666,7 @@ function MachineGroup({ title, machines }: { title: string; machines: Machine[] 
 function MachineCard({ machine }: { machine: Machine }) {
   const status = machineStatusMeta(machine.status);
   const cycles = machineCycleFacts(machine);
-  const freshness = machineFreshnessRow(machine.freshness);
+  const freshness = machineFreshnessRow(machineAvailability(machine.freshness, machine.branchOpenState));
   return (
     <Card variant="transparent" className="surface-card machine-card machine-floor-card">
       <Card.Content>
