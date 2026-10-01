@@ -14,10 +14,12 @@ concurrency:
 
 jobs:
   verify:
-    name: Test / Check / Build (Node 24)
+    name: Build / Test / Check (Node 24)
     runs-on: ubuntu-latest
-    # test + check + build, plus installing Chromium and running the layout
-    # suite. The layout step has its own, tighter budget; this is the backstop
+    # build + test + check, plus installing Chromium and running the layout
+    # suite. Build comes first because spa-bundle.test.ts reads the real
+    # apps/web/dist and fails rather than skips when it is absent. The layout
+    # step has its own, tighter budget; this is the backstop
     # for a hung build.
     timeout-minutes: 25
     steps:
@@ -37,14 +39,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build
+        run: pnpm build
+
+      # Deliberately AFTER `pnpm build`. `apps/web/dist` is gitignored, so on a
+      # fresh runner it does not exist until something builds it, and
+      # `spa-bundle.test.ts` runs the SPA handler against that real bundle —
+      # it skips when the bundle is absent. Testing first therefore skipped it
+      # on every CI run, which is the failure this repo already paid for once:
+      # a suite that stops running looks identical to one that passes, and the
+      # green tick says nothing. The test found `/fonts/README.md` untypable on
+      # its first run, which no fixture-based test could have.
+      #
+      # This is why the order is Test -> Check and not the reverse. `pnpm test`
+      # needs no build output of its own, so the only cost is wall clock.
       - name: Test
         run: pnpm test
 
       - name: Check (lint + types)
         run: pnpm check
-
-      - name: Build
-        run: pnpm build
 
       # The layout suite is deliberately not in `pnpm test`, so nothing else
       # runs it. `--with-deps` because this is a headless Linux container and

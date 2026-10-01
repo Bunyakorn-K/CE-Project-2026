@@ -532,7 +532,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 718 tests green** — API 419, web 212,
+Local automated evidence on **2026-10-01: 719 tests green** — API 420, web 212,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
@@ -552,7 +552,7 @@ with the live machine page's state-claim decision. The API
 figure rose from 360 to 376 with the grant route and the store function behind
 it, including the owner-only boundary and the duplicate refusal, then to 411
 with the SPA handler the merge introduced — 33 tests, six of which were each
-verified to fail against deliberately broken code — then to 419 with the same
+verified to fail against deliberately broken code — then to 420 with the same
 handler run against the **real built bundle** rather than a fixture tree.
 
 **A fixture tree can only contain extensions its author already thought of.**
@@ -565,10 +565,7 @@ the bundle and `.md` was not in the map. That file is harmless (nothing
 requests it), which is exactly why a fixture would never have surfaced it and
 why "no test failed" was not the same as "this is correct". The test names the
 offending file in its failure message, so the next extension a Vite plugin
-introduces is a one-line fix rather than a hunt. It **skips** when
-`apps/web/dist` is absent — a bare API test run or the ETL image — and two
-tests assert the skip is not vacuous, because a suite that silently stops
-running looks identical to one that passes. `login.tsx` had
+introduces is a one-line fix rather than a hunt. `login.tsx` had
 **no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
@@ -642,7 +639,23 @@ linux/amd64` against a `mcr.microsoft.com/playwright` base reproduces the CI
 measurement exactly (1202.81px, first-72px at 1203).
 
 **Deployment is now automated in two halves, and only the first is live.**
-`.github/workflows/release.yml` chains off CI via `workflow_run` rather than
+**A test that cannot run must fail, not skip — and CI must be ordered so it
+can run.** `spa-bundle.test.ts` reads the real `apps/web/dist`, which is
+gitignored, so on a fresh runner it does not exist until something builds it.
+`ci.yml` ran `pnpm test` **before** `pnpm build`, so the file skipped on every
+CI run: a green tick that asserted nothing, discovered only because the local
+suite happened to run after a build. It is the same class as the red-CI section
+above — a check that silently stops running is indistinguishable from one that
+passes, and both cost hours here. The fix is twofold and both halves matter:
+the steps are now **Build → Test → Check**, and the file has a test that
+**fails** when the bundle is absent rather than skipping, naming the fix in its
+message. Verified both ways: with `dist/` removed the file reports 5 failed and
+**0 skipped**; with the old order the run fails, and re-running after
+`pnpm build` is green. A bare `pnpm --filter @laundrytwin/api test` on a fresh
+checkout therefore fails until you build — intended, and the same trade
+`turbo prune` and the Playwright suite already make.
+
+
 re-running the suite on push, so a red CI run publishes nothing. It checks out
 `workflow_run.head_sha` explicitly, because under that event `GITHUB_SHA` is the
 default-branch head — a bare checkout would build an untested commit if `main`

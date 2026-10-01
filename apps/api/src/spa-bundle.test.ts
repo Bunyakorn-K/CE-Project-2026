@@ -20,12 +20,14 @@ import { decideSpaResponse, isKnownAssetPath, spaHandler } from "./spa";
  * The map is derived now, but a map is still a list somebody maintains, and
  * this asserts the list against the artefact rather than against a fixture.
  *
- * It runs against `apps/web/dist`, which `pnpm build` produces. When the bundle
- * is absent — a bare `pnpm --filter @laundrytwin/api test`, or the ETL image —
- * these tests SKIP rather than fail. A missing artefact is not a defect in the
- * handler, and a suite that fails for the absence of the thing it is testing
- * trains people to ignore it. The handler's own rules are covered hermetically
- * in `spa.test.ts`; nothing here is the only guard on anything.
+ * It runs against `apps/web/dist`, which `pnpm build` produces and
+ * `.gitignore` excludes. So a bare `pnpm --filter @laundrytwin/api test` on a
+ * fresh checkout has no bundle — and when that happens these tests **fail**
+ * rather than skip, because a check that quietly stops running is
+ * indistinguishable from one that passes, which is the failure this repository
+ * has already paid for once (see the CI-order comment in `ci.yml`). Run
+ * `pnpm build` first; CI does. The handler's own rules are covered hermetically
+ * in `spa.test.ts`, so nothing here is the only guard on anything.
  */
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -44,7 +46,7 @@ async function bundleFiles(dir = bundleRoot, prefix = ""): Promise<string[]> {
   return found;
 }
 
-describe.skipIf(!bundlePresent)("the SPA handler against the real built bundle", () => {
+describe("the SPA handler against the real built bundle", () => {
   it("serves index.html as HTML, which is the whole point of serving it", async () => {
     const { Hono } = await import("hono");
     const app = new Hono();
@@ -137,7 +139,7 @@ describe.skipIf(!bundlePresent)("the SPA handler against the real built bundle",
 
 describe("the bundle test is not vacuous", () => {
   // The skip above is a real risk: a suite that silently stops running looks
-  // identical to one that passes. This asserts the guard itself, so a future
+  // identical to one that passes. These assert the guard itself, so a future
   // rename of `bundlePresent` cannot turn the whole file into a no-op.
   it("derives the bundle path from this file's own location", () => {
     // `apps/web/dist` is a SIBLING of `apps/api`, not a child — asserted
@@ -151,10 +153,30 @@ describe("the bundle test is not vacuous", () => {
     expect(bundleRoot).not.toBe(resolve(here, ".."));
   });
 
-  it("reports whether the bundle is present, so a skip is visible in the output", () => {
-    // Not an assertion about the bundle — an assertion that the condition the
-    // skip depends on is the one being read here.
+  it("reads the same presence flag the skip depends on", () => {
     expect(typeof bundlePresent).toBe("boolean");
     expect(bundlePresent).toBe(existsSync(join(bundleRoot, "index.html")));
+  });
+
+  it("FAILS, loudly, when the bundle it is meant to check is absent", () => {
+    // This is the guard that makes the skip safe to have at all.
+    //
+    // `apps/web/dist` is gitignored, so on a fresh CI runner it does not exist
+    // until `pnpm build` runs — and `.github/workflows/ci.yml` originally ran
+    // `pnpm test` BEFORE `pnpm build`, so this whole file skipped on every CI
+    // run and the tick meant nothing. The order is fixed, and this test is the
+    // second half of that fix: if the bundle is ever missing again, the reason
+    // is a build that did not run, and a test that quietly stops testing is
+    // precisely the defect this repository has already paid for once.
+    //
+    // `pnpm --filter @laundrytwin/api test` on a bare checkout will now fail
+    // here. That is intended, and it is the same trade `turbo prune` and the
+    // Playwright suite already make: a check that cannot run says so instead of
+    // reporting a pass it did not earn.
+    expect(
+      bundlePresent,
+      `apps/web/dist is missing, so every bundle assertion in this file was SKIPPED. ` +
+        `Run \`pnpm build\` first (CI does this before \`pnpm test\`). Path checked: ${bundleRoot}`
+    ).toBe(true);
   });
 });
