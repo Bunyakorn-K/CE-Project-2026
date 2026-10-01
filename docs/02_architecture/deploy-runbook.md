@@ -1131,6 +1131,9 @@ number in the product moves as a result of running it.
 | `database is locked` anywhere | SQLite metadata (should be gone) | Airflow + Superset metadata must live on analytics-postgres-1 |
 | docker login to registry fails | Double auth on Caddy | Caddy block for registry must NOT add basic_auth |
 | `laundrytwin-etl-1` alive, no new `ETL complete:` line | A source or warehouse call is blocked | `docker logs laundrytwin-etl-1 --tail 50` — the last `ETL phase=<name> status=start` names the phase; a phase with no `status=ok` is the one that stalled. Bounded timeouts now turn a real block into `status=failed` within `ETL_PHASE_TIMEOUT_MS`. |
+| Public host 502s but `127.0.0.1:8787/health` is 200 on the VM | The Pi Caddyfile still proxies to the old `:8080`, which no longer exists since the api+web merge | `ssh` the Pi and check the `laundrytwin.duckdns.org` block proxies to **:8787**. This is the single most likely post-merge failure, and the health check on the VM will look perfect while the public route is down. |
+| A page renders as **raw HTML source text** instead of the app | The SPA was served without a `Content-Type`, so the browser displayed it rather than rendering it. Correct bytes, correct 200 — no error anywhere | `curl -sI http://127.0.0.1:8787/ \| grep -i content-type` — must be `text/html`. A regression here means the static handler stopped setting the header; `c.body()` does not infer one, it defaults to `text/plain`. |
+| A mistyped API path returns the app's HTML instead of 404 | The SPA fallback swallowed a server path | `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/anything` — must be **404**. `/api`, `/webhooks`, `/mcp`, `/docs` and `/health` are never the SPA's; see `SERVER_PATH_PREFIXES` in `apps/api/src/spa.ts`. |
 
 ### `deploy-155e111-20261001` — the LINE sign-in button could not sign anyone in
 
