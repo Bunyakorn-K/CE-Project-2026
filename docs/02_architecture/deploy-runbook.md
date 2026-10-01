@@ -686,6 +686,9 @@ just the status code.
 
 ### Final production state
 
+Superseded by `deploy-84718f6-20261001` below; kept for the rollback targets it
+names.
+
 | Service | Image |
 | :--- | :--- |
 | api | `deploy-170b527-20261001` |
@@ -715,6 +718,98 @@ cd /opt/laundrytwin
 sudo sed -i 's#^API_IMAGE=.*#API_IMAGE=10.10.0.117:5000/laundrytwin-api:deploy-93b03cf-20261001#' .env
 sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-33a84cd-20261001#' .env
 sudo docker compose up -d --no-deps api web
+```
+
+### `deploy-84718f6-20261001` — a stale LINE session is now recoverable
+
+The LIFF login failure was not a server outage and never was. A user whose LINE
+ID token had expired hit an unrecoverable dead end: the error said the exchange
+failed and offered "ลองใหม่" (try again), and retrying re-ran the identical
+exchange against the same dead token, forever.
+
+The cause is a specific asymmetry in the LIFF SDK. `liff.isLoggedIn()` stays
+**true** for an expired token and `liff.getIDToken()` hands the same expired one
+back — the SDK does not surface expiry at all. The ID token lives 60 minutes,
+while the access token lived `expires_in: 6893` at the time of the incident, so
+the session looked healthy from the browser's side while LINE's
+`/oauth2/v2.1/verify` endpoint rejected the ID token outright.
+
+Three changes, each aimed at a different half of the problem:
+
+| Layer | Change | File |
+| :--- | :--- | :--- |
+| Server | A token LINE rejected answers **401**, not 502 | `apps/api/src/liff-auth.ts`, `apps/api/src/index.ts` |
+| Client | The `exp` claim is read **before** the exchange and a stale token short-circuits to a re-login | `apps/web/src/liff.ts`, `apps/web/src/lib/components/liff-gate.tsx` |
+| Client | The sign-in button logs out a stale session instead of replaying it | `apps/web/src/routes/login.tsx` |
+
+**Why the status code mattered.** LINE answers an expired, wrong-channel, and
+malformed ID token with the same **400**. Forwarding that — or, as the route's
+fallback did, collapsing everything into **502** — tells the operator the server
+or a gateway is broken, which is not true and sends the debugging in the wrong
+direction. Only two conditions are genuinely the server's fault and they stay
+distinct: LINE unreachable (**502**) and no channel id configured (**503**).
+Everything the caller can fix is **401**.
+
+**Why the client checks `exp` at all.** With the server returning an opaque 401,
+the browser still cannot tell a stale token from a misconfigured channel — so it
+would still offer a retry that cannot work. Decoding `exp` client-side is what
+lets the UI say "your session expired" and offer the one action that fixes it,
+`liff.logout()` followed by a fresh sign-in. The payload is decoded but **not
+verified**: it decides only what the user is told and whether to re-login.
+Trusting a client-side `exp` for anything but presentation would be exactly the
+"fabricate data" failure the project rules forbid, and signature verification
+remains the server's job.
+
+Note that `liff.logout()` returns **void** and navigates. Both call sites were
+originally written as `await liff.logout().catch(...)` and the type checker
+rejected them — the tests did not, because neither has a test.
+
+#### What shipped
+
+`deploy-84718f6-20261001`, from pinned commit `84718f6`. API and web deployed as
+separate swaps because they are separate images. SQLite backup
+`backup-pre-84718f6-20261001.sqlite` was taken with the online backup API before
+the API swap (196,608 bytes, `integrity_check: ok`). Rollback targets were
+`deploy-0663e76-20261001` (API) and `deploy-d573e9c-20261001` (web).
+
+Verified in production **with the actual incident token**:
+
+```
+POST /api/auth/liff/exchange  {"error":{"code":"LIFF_VERIFICATION_FAILED",
+                                         "message":"LINE identity token is invalid"}}
+HTTP 401        (was 502)
+```
+
+Post-swap smoke test over TLS: all six real report routes (`branches`,
+`dashboard`, `live`, `alerts`, `events`, `summary`) **401 unauthenticated**,
+`/api/me` 401, bad origin **403**, missing token body **400** — auth and request
+validation unchanged. `/`, `/login`, `/privacy`, `/terms`, `/dashboard` all
+**200**, and the entry bundle served through nginx
+(`index-D1z7nO9D.js`) contains both the Thai stale-session string and the
+"เข้าสู่ระบบด้วย LINE อีกครั้ง" re-login button, so the client half is confirmed
+live rather than merely built. Both containers at `restarts=0`.
+
+`VITE_LIFF_ID` is a Docker **build-arg**, not an `.env` value — the runbook
+already records that the build arg is the only place the LIFF id enters the web
+image, so the build had to pass it explicitly and it was confirmed baked into
+the bundle rather than assumed present.
+
+**Still not verified: live browser end-to-end recovery.** Confirming that the
+stale user is actually recovered requires signing in with a real LINE account,
+which was deliberately not performed. What is verified is that the failure now
+reports the truth, that the page carries the recovery action, and that the
+button's `logout()` path typechecks against the SDK's real signature.
+
+Suite after the change: **547 green** (API 351, web 109, ETL 87).
+
+#### Rolling back `84718f6`
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^API_IMAGE=.*#API_IMAGE=10.10.0.117:5000/laundrytwin-api:deploy-0663e76-20261001#' .env
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-d573e9c-20261001#' .env
+sudo docker compose --env-file .env up -d --no-deps api web
 ```
 
 Both earlier tags are retained in the registry. Rolling the API back to
