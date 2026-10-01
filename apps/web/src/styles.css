@@ -1050,35 +1050,47 @@ main {
   }
 }
 
-/* The owner header's intrinsic width is 1173.30px (brand 197.78 + 24 + nav 629.97
-   + 24 + account 249.55 + 2x24 padding), so the inline nav only sits on one 72px
-   line from a 1174px viewport up and the collapse has to run through 1173. The
-   superseded 1041 threshold (before that 1019) came from treating 1040.78 as the
-   header width, which is only where the bar stops needing to scroll: 1042-1091
-   rendered three nav line boxes and grew the bar to 102.5px, and 1092-1173 two
-   line boxes at 83px. Nothing in that row can shrink (`.brand-lockup` is
-   min-width max-content, `.primary-nav` has no min-width 0).
+/* The owner header's intrinsic width is 1173.30px: brand 197.78 + gap 24 + nav
+   629.97 (six links totalling 609.97 plus five 4px gaps) + gap 24 + account
+   249.55 + 2x24 padding. Nothing in that row can shrink -- `.brand-lockup` is
+   min-width max-content and `.primary-nav` has no min-width 0 -- so below that
+   width the nav wraps to a second line box and the bar grows from 72px to 83px.
+   The superseded thresholds (1041, then 1019, then 1171, then 1173) all came
+   from treating some other measurement as the header width; 1042-1091 rendered
+   three line boxes at 102.5px and 1092-1173 two at 83px.
 
-   Re-measured on 2026-09-28 in Chromium against the production build after the
-   font was vendored, so the font half of this measurement is no longer a property
-   of the measuring machine. The previous 1172 came from the same arithmetic on a
-   machine whose stack fell through to Avenir Next, on the false premise that
-   Noto Sans Thai was installed locally; it was not. The threshold is only the
-   measurement while the font is self-hosted, so keep the `@font-face` above and the
-   vendored woff2 in `public/fonts/` together, or this number goes stale again.
+   WHY 1199 AND NOT 1173: the old threshold left 0.70px between the measured
+   1173.30 and the 1174 that has to work. That is not headroom, it is a rounding
+   coincidence, and it held only on the machine that measured it. CI failed on
+   `main` from 07:24 on 2026-10-01 with exactly the predicted symptom --
+   "1174px: 83px, expected 72px" -- on the same Chromium build (v1243) and the
+   same self-hosted woff2, so the difference is macOS-vs-Linux Thai glyph shaping
+   and subpixel rounding, not a font or version drift. Verified: the face loads
+   in both (`document.fonts` reports `Noto Sans Thai:loaded`), and blocking it
+   locally does not reproduce 83px, because macOS falls through to Avenir Next,
+   which is narrower than the Linux fallback.
 
-   Two things still move it. `.account-name` is capped at 130px but is otherwise
-   driven by the signed-in user's name (123.67px of the 249.55px account block here
-   for the dev-bypass owner `Development Owner`), and a non-owner header carries
-   three nav links rather than six, so a different or longer name, or fewer links,
-   move the width the inline nav needs. Only 0.70px separates 1173.30 from the 1174
-   that works, so re-measure before trusting it on another engine, platform or
-   Chromium version.
+   So the threshold now carries deliberate margin: the nav appears at 1200px,
+   26.7px clear of the 1173.30 measurement, which absorbs that platform delta
+   without another round trip through CI. The cost is that 1174-1199 now gets
+   the hamburger, which is the correct trade -- a collapsed nav is a smaller
+   defect than a topbar that silently changes height across the middle of a
+   range, which is the defect this whole threshold exists to prevent.
+
+   Two things still move the measurement. `.account-name` is capped at 130px but
+   is otherwise driven by the signed-in user's name (123.67px of the 249.55px
+   account block for the dev-bypass owner `Development Owner`), and a non-owner
+   header carries three nav links rather than six. `intrinsicTopbarWidth` in
+   e2e/support/viewports.ts re-measures this on every run and the suite fails
+   with the real number if the header outgrows the margin above, so a longer
+   name or a new nav link reports itself instead of waiting to be seen as an
+   83px topbar in CI. Keep the `@font-face` above and the vendored woff2 in
+   public/fonts/ together, or this measurement goes stale again.
 
    Reuse the 639px block's two declarations verbatim; `.account-actions` is
    content-sized and nests `.mobile-nav`, so `margin-left: 0` on it strands the
    hamburger mid-header. */
-@media (max-width: 1173px) {
+@media (max-width: 1199px) {
   .primary-nav {
     display: none;
   }

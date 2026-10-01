@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { gotoAuthenticated, installStubbedSession } from "./support/session";
-import { measureShell, setViewport, SIGNOUT_WIDTHS, VIEWPORTS } from "./support/viewports";
+import {
+  INLINE_NAV_HEADROOM_PX,
+  INLINE_NAV_MIN_WIDTH,
+  intrinsicTopbarWidth,
+  measureShell,
+  setViewport,
+  SIGNOUT_WIDTHS,
+  VIEWPORTS
+} from "./support/viewports";
 
 /**
  * Layout regression suite for the three defects fixed in 0a58da1, bed5f3f and
@@ -64,24 +73,89 @@ test.describe("LaundryTwin operations shell", () => {
     expect(wrongHeight, `unexpected topbar height: ${wrongHeight.join(", ")}`).toEqual([]);
   });
 
-  test("collapses the inline nav into the hamburger at 1173px and restores it at 1174px", async ({ page }) => {
-    // The regression that produced four commits: 1019, then 1041, then 1171,
-    // then 1173. Every one of those thresholds left a band where the inline nav
-    // was shown but could not fit. The boundary pair below is the actual
-    // contract, and it is asserted in both directions so neither a too-low nor a
-    // too-high threshold can pass.
+  test("keeps the inline nav clear of the width the header actually needs", async ({ page }) => {
+    // The guard that keeps the threshold honest. Every previous threshold was
+    // derived from a measurement recorded in a comment, and the last one cleared
+    // that measurement by 0.70px — so it passed on the machine that measured it
+    // and failed in CI on 2026-10-01 with an 83px topbar at 1174px, on the same
+    // Chromium build and the same vendored font. A longer account name or one new
+    // nav link widens the header the same way, and without this the only symptom
+    // is a height change nobody can explain.
+    //
+    // So the header's real intrinsic width is measured here, in the browser, on
+    // every run, and the threshold has to keep its headroom.
+    await installStubbedSession(page);
+    await gotoAuthenticated(page, "/dashboard");
+    await setViewport(page, 1440);
+
+    // Fonts must be settled first: `font-display: swap` means a measurement taken
+    // before the face loads is a measurement of the fallback, which is a
+    // different number and would fail this for the wrong reason.
+    await page.evaluate(() => document.fonts.ready);
+
+    const { total, brand, navItems, navGaps, account } = await intrinsicTopbarWidth(page);
+    const headroom = INLINE_NAV_MIN_WIDTH - total;
+    expect(
+      headroom,
+      `the owner header now needs ${total.toFixed(2)}px ` +
+        `(brand ${brand.toFixed(2)} + nav ${(navItems + navGaps).toFixed(2)} + account ${account.toFixed(2)} ` +
+        `+ gaps and padding), which leaves only ${headroom.toFixed(2)}px below the ` +
+        `${INLINE_NAV_MIN_WIDTH}px inline-nav threshold — less than the required ` +
+        `${INLINE_NAV_HEADROOM_PX}px. At ${INLINE_NAV_MIN_WIDTH - 1}px the nav would fit by ` +
+        `under a pixel and the topbar would grow to 83px. Raise INLINE_NAV_MIN_WIDTH and the ` +
+        `@media (max-width: ...) threshold in styles.css together, then re-measure.`
+    ).toBeGreaterThanOrEqual(INLINE_NAV_HEADROOM_PX);
+  });
+
+  test("keeps the CSS threshold and the measured width in one place", async () => {
+    // The headroom test above measures the header; this one makes sure the CSS
+    // actually implements the number it measures against. Without it the two can
+    // drift: the earlier threshold was 1173 in the stylesheet while the constant
+    // said 1200, and a green headroom test would have said nothing while the
+    // stylesheet shipped the wrong band. That drift IS the original defect — a
+    // threshold asserted in a comment and a stylesheet, never read from each
+    // other.
+    const css = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+    const thresholds = [...css.matchAll(/@media \(max-width: (\d+)px\)/g)].map((m) => Number(m[1]));
+    // The nav-collapse block is the one immediately governing `.primary-nav`.
+    const navBlock = css.match(/@media \(max-width: (\d+)px\)\s*\{\s*\.primary-nav\s*\{/);
+    expect(
+      navBlock,
+      "no @media block setting .primary-nav display was found in styles.css"
+    ).not.toBeNull();
+
+    const cssThreshold = Number(navBlock![1]);
+    expect(
+      cssThreshold,
+      `styles.css collapses the inline nav at max-width ${cssThreshold}px, but ` +
+        `INLINE_NAV_MIN_WIDTH is ${INLINE_NAV_MIN_WIDTH}px. The stylesheet must collapse at ` +
+        `INLINE_NAV_MIN_WIDTH - 1, or the measured headroom above is checking a threshold ` +
+        `that is not the one shipping.`
+    ).toBe(INLINE_NAV_MIN_WIDTH - 1);
+
+    // The 639px block owns the 64px topbar and must not be confused for this one.
+    expect(thresholds, "the 639px topbar block should still be present").toContain(639);
+  });
+
+  test("collapses the inline nav into the hamburger below the threshold and restores it above", async ({ page }) => {
+    // The regression that produced five commits: 1019, then 1041, then 1171,
+    // then 1173, then 1199. Every one of those thresholds left a band where the
+    // inline nav was shown but could not fit. The boundary pair below is the
+    // actual contract, and it is asserted in both directions so neither a too-low
+    // nor a too-high threshold can pass.
     await setViewport(page, 320);
     await gotoAuthenticated(page, "/dashboard");
 
-    await setViewport(page, 1173);
+    const collapseAt = INLINE_NAV_MIN_WIDTH - 1;
+    await setViewport(page, collapseAt);
     let shell = await measureShell(page);
-    expect(shell.primaryNavDisplay, "inline nav must be hidden at 1173px").toBe("none");
-    expect(shell.mobileNavDisplay, "hamburger must be shown at 1173px").toBe("block");
+    expect(shell.primaryNavDisplay, `inline nav must be hidden at ${collapseAt}px`).toBe("none");
+    expect(shell.mobileNavDisplay, `hamburger must be shown at ${collapseAt}px`).toBe("block");
 
-    await setViewport(page, 1174);
+    await setViewport(page, INLINE_NAV_MIN_WIDTH);
     shell = await measureShell(page);
-    expect(shell.primaryNavDisplay, "inline nav must be shown at 1174px").not.toBe("none");
-    expect(shell.mobileNavDisplay, "hamburger must be hidden at 1174px").toBe("none");
+    expect(shell.primaryNavDisplay, `inline nav must be shown at ${INLINE_NAV_MIN_WIDTH}px`).not.toBe("none");
+    expect(shell.mobileNavDisplay, `hamburger must be hidden at ${INLINE_NAV_MIN_WIDTH}px`).toBe("none");
   });
 
   test("shows exactly one navigation control at every width", async ({ page }) => {
@@ -195,7 +269,9 @@ test.describe("admin grants layout", () => {
       await expect(table, `table must be hidden at ${width}px`).toBeHidden();
     }
 
-    for (const width of [768, 900, 1174, 1440]) {
+    // 1280 rather than 1174: this asserts the grants table, and 1174 now sits
+    // below the nav threshold, so it renders a shell state this test is not about.
+    for (const width of [768, 900, 1280, 1440]) {
       await setViewport(page, width);
       await gotoAuthenticated(page, "/admin");
       await expect(cardList.first(), `card list must be hidden at ${width}px`).toBeHidden();

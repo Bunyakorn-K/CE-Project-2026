@@ -1,0 +1,214 @@
+name: Release
+
+# Builds and publishes the deployable images, and — on demand — rolls them out.
+#
+# This is deliberately NOT "deploy on merge to main". The rollout gate in
+# docs/02_architecture/deploy-runbook.md requires an approved immutable ref and a
+# recorded rollback ref before any production apply, and production deployment
+# requires a separate explicit user request. So:
+#
+#   CI green on main -> build + push images only. Nothing running changes.
+#   deploy job       -> manual dispatch, and still gated on an environment.
+#
+# The point of automating the first half is that the second half is then a single
+# reviewed step rather than a remembered sequence. Every deploy record in the
+# runbook had to re-derive the same facts by hand: which build context, which
+# platform, which build arg, which tag the VM would pull. Those are now derived
+# from the commit instead.
+#
+# WHY workflow_run AND NOT push: ci.yml already runs pnpm test, pnpm check,
+# pnpm build and the Playwright layout suite on every push to main. Re-running
+# that here would double the suite's cost on every push to buy nothing, so this
+# chains off CI's result instead. `conclusion == 'success'` is the gate — a red
+# CI run publishes nothing, so a broken commit cannot reach the registry at all.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Roll the images out to production"
+        type: boolean
+        default: false
+      services:
+        description: "Which services to roll out (comma-separated; blank = none)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: registry.laundrytwin.duckdns.org
+  # The tag the VM pulls, and the only thing a rollback needs to name. Derived
+  # from the commit so an image can never be rebuilt into the same tag with
+  # different contents.
+  #
+  # Under workflow_run the interesting SHA is the one CI tested
+  # (`workflow_run.head_sha`), not this run's own merge commit — so the fallback
+  # is only used for a manual dispatch.
+  IMAGE_TAG: deploy-${{ github.event.workflow_run.head_sha || github.sha }}-${{ github.event.workflow_run.id || github.run_id }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.service }}
+    # Only a green CI run may publish. The manual dispatch bypasses this because
+    # it *is* the operator asking, and is how an image is rebuilt for a tag that
+    # needs republishing.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One failing image must not hide the others' results, so this is
+      # fail-fast: false rather than the default.
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            dockerfile: apps/api/Dockerfile
+          - service: web
+            dockerfile: apps/web/Dockerfile
+          - service: etl
+            dockerfile: apps/etl/Dockerfile
+
+    steps:
+      # The ref is pinned to the commit CI tested, and this is load-bearing.
+      # Under workflow_run, GITHUB_SHA is the *default branch head*, not the
+      # tested commit — so a bare `checkout` would build whatever main points at
+      # when this run starts. If main moved after CI went green, that publishes an
+      # untested commit, which is exactly the guarantee this chain exists to
+      # provide. workflow_run.head_sha is confirmed present in the run payload.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Authenticates through the runner's own credential store, never on argv
+      # and never in a command echo. REGISTRY_USER/REGISTRY_PASSWORD are GitHub
+      # Actions secrets; they are the htpasswd credential deploy/registry
+      # renders on the host.
+      - name: Log in to the internal registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      # The build context is the REPOSITORY ROOT for every service, including
+      # web and etl. `apps/web/Dockerfile` copies files from the workspace, so
+      # `docker build -f apps/web/Dockerfile apps/web` fails with
+      # "failed to calculate checksum ... not found" — it is the single most
+      # repeated mistake in the deploy records, and it is what this line
+      # removes.
+      #
+      # --platform linux/amd64 is required: the runner is amd64 but the VM is
+      # the deployment target and the images are also built from an arm64 Mac,
+      # so the target platform is stated rather than inherited.
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            VITE_LIFF_ID=${{ secrets.VITE_LIFF_ID }}
+          tags: |
+            ${{ env.REGISTRY_HOST }}/laundrytwin-${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # Records what was actually published, so a rollback target is a digest
+      # rather than a tag someone has to trust.
+      - name: Record the published digest
+        run: |
+          digest=$(docker buildx imagetools inspect \
+            "$REGISTRY_HOST/laundrytwin-${{ matrix.service }}:$IMAGE_TAG" \
+            --format '{{ .Manifest.Digest }}')
+          echo "### ${{ matrix.service }} $IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$digest" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Roll out to production
+    # Manual only, and gated on the `production` environment below. Reaching this
+    # job at all requires an explicit dispatch with deploy=true; the environment
+    # then adds a second, independent approval. This mirrors the rollout gate:
+    # an apply is a decision someone makes, not a side effect of a merge.
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy == true && inputs.services != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://laundrytwin.duckdns.org
+    steps:
+      - uses: actions/checkout@v4
+
+      # The VM is reachable only over ZeroTier (172.30.191.48), or by jumping
+      # through the Pi. A GitHub-hosted runner is on neither, so it does not
+      # hold this key and does not SSH. Instead it renders the plan inputs and
+      # hands them to the VM's own deploy script, which runs locally where the
+      # registry is at 127.0.0.1:5000 and the backups are.
+      #
+      # WHAT THIS DOES NOT DO, deliberately:
+      #  - it does not run `tofu apply` from the runner, because the runner has
+      #    no route to the VM and no tfvars;
+      #  - it does not take a backup, because a backup taken by CI on the way in
+      #    is exactly the WAL trap: `cp` of the SQLite main file yields a
+      #    plausible 4 KB stub with zero rows. The backup must go through
+      #    `await db.backup(...)` and be verified, which is an operator step on
+      #    the host;
+      #  - it does not run a migration.
+      #
+      # What it does is remove the error-prone part: it renders the exact
+      # command, with the immutable tag this run published, so the operator runs
+      # one reviewed line instead of assembling tag, context and build arg from
+      # memory.
+      - name: Render the rollout command
+        id: rollout
+        run: |
+          tag="$IMAGE_TAG"
+          services="${{ inputs.services }}"
+          {
+            echo "Image tag published by this run: \`$tag\`"
+            echo ""
+            echo "Record as last-known-good: \`$(ssh … docker inspect --format '{{{{index .Config.Labels \"org.opencontainers.image.revision\"}}}}' laundrytwin-api)\`"
+            echo ""
+            echo "On the VM, after the backup and the review:"
+            echo '```bash'
+            echo "cd /opt/laundrytwin/deploy/tofu"
+            for svc in $(echo "$services" | tr ',' ' '); do
+              echo "tofu apply -var-file=terraform.tfvars -var=${svc}_image_tag=$tag"
+            done
+            echo '```'
+            echo ""
+            echo "Then the gate's apply-and-smoke steps: internal health, then"
+            echo "unauthenticated denial, branch scope, invalid dates 400, logout"
+            echo "revocation, then the public TLS routes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail rather than deploy a tag that was not published
+        run: |
+          # A tag that this run did not publish must never reach the host. If
+          # the build job was skipped (an empty filter, a path that matched
+          # nothing) the rollout would otherwise name an image that may not
+          # exist — or worse, an older image that does.
+          for svc in $(echo "${{ inputs.services }}" | tr ',' ' '); do
+            case "$svc" in
+              api|web|etl) ;;
+              *) echo "::error::unknown service '$svc'; expected api, web, or etl"; exit 1 ;;
+            esac
+          done

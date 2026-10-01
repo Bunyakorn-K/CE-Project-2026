@@ -13,9 +13,12 @@ import type { Page } from "@playwright/test";
  * The session mirrors the development auth bypass principal from
  * `apps/api/src/access-store.ts` (`Development Owner`, tenant-wide owner). That
  * name is load-bearing, though less than it was: the CSS comment above
- * `@media (max-width: 1173px)` in `styles.css` records that the 1174px threshold
+ * `@media (max-width: 1199px)` in `styles.css` records that the 1200px threshold
  * was measured with it, and `.account-name` is what the threshold is actually
- * derived from. It renders 123.67px here, inside the `max-width: 130px` cap, so
+ * derived from. The headroom test in `layout.pw.ts` now measures the real header
+ * width on every run, so a change here reports itself as a threshold failure
+ * rather than as an unexplained 83px topbar. It renders 123.67px here, inside
+ * the `max-width: 130px` cap, so
  * the name has 6.33px of slack before it starts clipping and another 6.33px
  * before it moves the header at all. Changing this string to anything longer or
  * shorter than roughly 17 characters moves the width the inline nav needs, which
