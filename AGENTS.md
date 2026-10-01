@@ -638,7 +638,6 @@ was pushed, which is cheap and available — `docker build --platform
 linux/amd64` against a `mcr.microsoft.com/playwright` base reproduces the CI
 measurement exactly (1202.81px, first-72px at 1203).
 
-**Deployment is now automated in two halves, and only the first is live.**
 **A test that cannot run must fail, not skip — and CI must be ordered so it
 can run.** `spa-bundle.test.ts` reads the real `apps/web/dist`, which is
 gitignored, so on a fresh runner it does not exist until something builds it.
@@ -655,7 +654,8 @@ message. Verified both ways: with `dist/` removed the file reports 5 failed and
 checkout therefore fails until you build — intended, and the same trade
 `turbo prune` and the Playwright suite already make.
 
-
+**Deployment is now automated in two halves, and only the first is live.**
+`.github/workflows/release.yml` chains off CI via `workflow_run` rather than
 re-running the suite on push, so a red CI run publishes nothing. It checks out
 `workflow_run.head_sha` explicitly, because under that event `GITHUB_SHA` is the
 default-branch head — a bare checkout would build an untested commit if `main`
