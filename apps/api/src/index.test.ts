@@ -1071,6 +1071,30 @@ describe("LaundryTwin API", () => {
         restore();
       }
     });
+
+    it("blames the caller for a malformed cursor, not the reporting source", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const clickhouse = eventsExecutor([ROW]);
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01&cursor=not-a-cursor");
+        const body = (await response.json()) as { error?: { code?: string; message?: string } };
+
+        // The cursor is caller-supplied. A malformed one is the caller's to fix,
+        // so it must not be dressed as a 502 source outage -- which is what the
+        // route did, because `parseEventCursor` throws a bare Error that fell
+        // through `irisError` to REPORTING_SOURCE_FAILED.
+        expect(response.status).toBe(400);
+        expect(body.error?.code).toBe("INVALID_CURSOR");
+        // And nothing should have reached ClickHouse: the request was rejected
+        // before it became a query.
+        expect(clickhouse).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
   });
 });
 

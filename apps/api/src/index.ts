@@ -51,11 +51,13 @@ import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboar
 import { registerAiRoutes } from "./ai-routes";
 import {
   encodeEventCursor,
+  InvalidCursorError,
   queryBranches,
   queryDashboard,
   queryEvents,
   queryMachineStates,
   usageFreshnessOf,
+  usageFreshnessReasonOf,
   type DashboardData,
   type MachineInfo
 } from "./report/clickhouse-report";
@@ -624,10 +626,11 @@ async function queryDemoDashboard(iris: IrisClient, from: string, to: string, br
 }
 
 function demoFreshnessFields(lastSeen: string | null): Pick<MachineInfo, "freshness" | "freshnessReason"> {
+  // Both halves come from the shared helpers rather than being restated here.
+  // This function previously re-derived the reason strings itself, so the demo
+  // twin and the ClickHouse twin owned two copies of one contract.
   const freshness = usageFreshnessOf(lastSeen);
-  if (freshness === "fresh") return { freshness, freshnessReason: null };
-  if (freshness === "stale") return { freshness, freshnessReason: "Usage data is older than 30 minutes" };
-  return { freshness, freshnessReason: "No recent usage evidence is available for this machine" };
+  return { freshness, freshnessReason: usageFreshnessReasonOf(freshness) };
 }
 
 async function queryDemoMachineStates(iris: IrisClient, branchId?: string): Promise<MachineInfo[]> {
@@ -975,6 +978,12 @@ function apiError(c: Context, status: 400 | 401 | 403 | 404 | 429 | 502 | 503, c
 }
 
 function irisError(c: Context, error: unknown) {
+  // The caller's own malformed input, checked before any source-failure branch.
+  // It is a 400 because no retry fixes it and the warehouse is fine; it was 502
+  // here before, which read as an outage to anyone acting on the status code.
+  if (error instanceof InvalidCursorError) {
+    return apiError(c, 400, "INVALID_CURSOR", "The events cursor is not a cursor this build issued");
+  }
   if (error instanceof IrisReadUnavailableError) {
     return apiError(c, 503, "REPORTING_SOURCE_UNAVAILABLE", "IRIS reporting is not configured for LaundryTwin");
   }

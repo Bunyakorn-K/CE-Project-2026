@@ -21,7 +21,13 @@ const API_ERROR_COPY: Record<string, string> = {
   INVALID_RANGE: "รูปแบบวันที่ไม่ถูกต้อง กรุณาเลือกช่วงวันที่ใหม่",
   RANGE_TOO_LONG: "ช่วงวันที่ยาวเกินไป ระบบรองรับได้สูงสุด 90 วัน",
   INVALID_REPORT_QUERY: "คำขอรายงานไม่ถูกต้อง กรุณาลองใหม่",
+  INVALID_CURSOR: "หน้ารายการถัดไปไม่ถูกต้อง กรุณาเริ่มดูรายการใหม่",
   INVALID_LIMIT: "จำนวนรายการที่ขอไม่ถูกต้อง กรุณาลองใหม่",
+  INVALID_INPUT: "ค่าที่กำหนดไม่ถูกต้อง กรุณาตรวจสอบแล้วลองใหม่",
+  // Kept distinct from REPORTING_SOURCE_UNAVAILABLE on purpose: that one is a
+  // deployment gap where IRIS was never configured, this one is the analytics
+  // warehouse itself being unreachable at runtime.
+  ANALYTICS_SOURCE_UNAVAILABLE: "ยังเชื่อมต่อคลังข้อมูลวิเคราะห์ไม่ได้ กรุณาลองใหม่",
   INVALID_BRANCH_SCOPE: "ขอบเขตสาขาที่เลือกไม่ถูกต้อง",
   UNKNOWN_BRANCH: "ไม่พบสาขาที่เลือก",
   BRANCH_NOT_FOUND: "ไม่พบสาขาที่เลือกในระบบ",
@@ -32,6 +38,11 @@ const API_ERROR_COPY: Record<string, string> = {
   ACCESS_NOT_GRANTED: "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งาน",
   ACCESS_PENDING: "คำขอสิทธิ์ยังอยู่ระหว่างการอนุมัติ",
   OWNER_ROLE_REQUIRED: "หน้านี้ใช้ได้เฉพาะเจ้าของระบบ",
+  // A permission denial, not a load failure. Rendering the generic sentence here
+  // told a technician the warehouse had failed when in fact their role cannot see
+  // revenue at all — which is a permanent answer, not a retry.
+  REVENUE_FORBIDDEN: "บทบาทของคุณไม่มีสิทธิ์ดูข้อมูลรายได้",
+  LAST_OWNER: "ต้องมีเจ้าของระบบอย่างน้อยหนึ่งคน กรุณาเพิ่มเจ้าของใหม่ก่อนยกเลิกสิทธิ์นี้",
   INVALID_ROLE: "บทบาทการใช้งานไม่ถูกต้อง",
   RATE_LIMITED: "คำขอถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
   // Kept distinct on purpose: one is a deployment gap, the other an outage.
@@ -48,6 +59,11 @@ const API_ERROR_COPY: Record<string, string> = {
 };
 
 export const API_ERROR_FALLBACK = "ไม่สามารถโหลดข้อมูลได้";
+
+/** The codes this build can actually say something specific about. Exposed so a
+ *  test can prove the API's vocabulary is covered rather than trusting that it
+ *  is — see `api-errors.test.ts`. */
+export const MAPPED_API_ERROR_CODES: readonly string[] = Object.keys(API_ERROR_COPY);
 
 /**
  * Thai copy for an API error, or the neutral fallback.

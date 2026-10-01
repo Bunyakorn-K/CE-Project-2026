@@ -7,6 +7,7 @@ import {
   buildMachineStateSQL,
   encodeEventCursor,
   parseEventCursor,
+  InvalidCursorError,
   queryBranches,
   queryDashboard,
   queryEvents,
@@ -663,7 +664,15 @@ describe("event feed report", () => {
   });
 
   it("refuses a cursor it cannot read rather than paging from a made-up boundary", () => {
-    expect(() => parseEventCursor("not-a-cursor")).toThrow("INVALID_CURSOR");
-    expect(() => parseEventCursor(Buffer.from("|leading", "utf8").toString("base64url"))).toThrow("INVALID_CURSOR");
+    // Asserted on the typed error, not on the message text. The message is
+    // prose meant for a log; the `code` is what the route maps to a status, and
+    // matching on wording is what let this error read as a 502 source outage.
+    expect(() => parseEventCursor("not-a-cursor")).toThrow(InvalidCursorError);
+    expect(() => parseEventCursor(Buffer.from("|leading", "utf8").toString("base64url"))).toThrow(InvalidCursorError);
+    try {
+      parseEventCursor("not-a-cursor");
+    } catch (error) {
+      expect((error as InvalidCursorError).code).toBe("INVALID_CURSOR");
+    }
   });
 });

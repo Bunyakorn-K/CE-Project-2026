@@ -303,8 +303,14 @@ export function usageFreshnessOf(lastActiveAt: string | null): MachineInfo["fres
 
 /** The reason is English and machine-readable: it is a contract field, and the
  *  web layer maps it to Thai by keying on `freshness` (see
- *  `apps/web/src/lib/machine-status.ts`), never by matching this prose. */
-function usageFreshnessReasonOf(freshness: MachineInfo["freshness"]): string | null {
+ *  `apps/web/src/lib/machine-status.ts`), never by matching this prose.
+ *
+ *  Exported because two sources build `MachineInfo` — the ClickHouse query and
+ *  the demo/IRIS projection in `apps/api/src/index.ts` — and each was
+ *  restating these strings. Two copies of one contract means the demo twin and
+ *  the real twin can disagree about the same machine's freshness, which is
+ *  exactly what extracting `usageFreshnessOf` was meant to prevent. */
+export function usageFreshnessReasonOf(freshness: MachineInfo["freshness"]): string | null {
   if (freshness === "fresh") return null;
   if (freshness === "stale") return "Usage data is older than 30 minutes";
   return "No recent usage evidence is available for this machine";
@@ -569,6 +575,24 @@ export function encodeEventCursor(event: { occurredAt: string; eventId: string }
   return Buffer.from(`${event.occurredAt}|${event.eventId}`, "utf8").toString("base64url");
 }
 
+/**
+ * A caller-supplied cursor that cannot be decoded.
+ *
+ * This is deliberately a typed error rather than a bare `Error("INVALID_CURSOR")`.
+ * The bare version fell through the route's error mapper to the generic
+ * source-failure branch and answered **502** — so a mangled query string read as
+ * "the reporting warehouse is down", which sends an operator to page someone for a
+ * typo in a URL. Carrying the code on the error is what lets the route answer 400.
+ */
+export class InvalidCursorError extends Error {
+  readonly code = "INVALID_CURSOR";
+
+  constructor() {
+    super("The events cursor is not a cursor this build issued");
+    this.name = "InvalidCursorError";
+  }
+}
+
 export function parseEventCursor(cursor: string): { occurredAt: string; eventId: string } {
   const decoded = Buffer.from(cursor, "base64url").toString("utf8");
   // Split on the FIRST separator, not the last: occurredAt is a ClickHouse
@@ -578,7 +602,7 @@ export function parseEventCursor(cursor: string): { occurredAt: string; eventId:
   // repeating or skipping rows.
   const separator = decoded.indexOf("|");
   if (separator <= 0) {
-    throw new Error("INVALID_CURSOR");
+    throw new InvalidCursorError();
   }
   return { occurredAt: decoded.slice(0, separator), eventId: decoded.slice(separator + 1) };
 }

@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { apiErrorCopy } from "./api-errors";
+import { apiErrorCopy, MAPPED_API_ERROR_CODES } from "./api-errors";
 
 /**
  * A server-supplied reason must never reach a Thai-first page untranslated.
@@ -77,5 +78,79 @@ describe("apiErrorCopy", () => {
       // so this asserts no long English run rather than banning all Latin.
       expect(copy).not.toMatch(/[A-Za-z]{4,}\s+[A-Za-z]{4,}/);
     }
+  });
+
+  it("distinguishes an unreachable analytics warehouse from an unconfigured reporting source", () => {
+    // Both are "the data did not load", but only one is an operator problem.
+    expect(apiErrorCopy("ANALYTICS_SOURCE_UNAVAILABLE", "Analytics warehouse is unavailable")).not.toBe(
+      apiErrorCopy("REPORTING_SOURCE_UNAVAILABLE", "IRIS reporting is not configured")
+    );
+  });
+});
+
+/**
+ * The mapping above is only as complete as the API's own vocabulary, and nothing
+ * in the build connects the two: a code added to `apps/api` and forgotten here
+ * compiles fine, ships fine, and renders as the neutral generic sentence.
+ *
+ * Two codes are exempt, both deliberately. `INVALID_SCOPE` and `SCOPE_MISMATCH`
+ * are the MCP service-token path — no browser in the request, so there is no
+ * Thai page for them to reach. `REPORTING_SOURCE_FAILED` is listed explicitly
+ * rather than exempted so that its presence stays deliberate.
+ */
+describe("every code the API can answer a browser with has Thai copy", () => {
+  // Codes the browser can never receive, with the reason each is exempt.
+  const BROWSER_INACCESSIBLE = new Set(["INVALID_SCOPE", "SCOPE_MISMATCH"]);
+
+  function apiErrorCodes(): string[] {
+    const apiDir = new URL("../../../api/src/", import.meta.url);
+    const files = [
+      "index.ts",
+      "analytics/routes.ts",
+      "analytics/scope.ts",
+      "analytics/revenue.ts",
+      "analytics/utilization.ts",
+      "analytics/temperature.ts",
+      "analytics/weather-routes.ts",
+      "analytics/offpeak-routes.ts",
+      "analytics/clickhouse.ts"
+    ];
+    const codes = new Set<string>();
+    for (const file of files) {
+      const source = readFileSync(new URL(file, apiDir), "utf8");
+      // Two shapes reach the browser. Most routes call `apiError(c, 400, "CODE", …)`
+      // or `analyticsError(c, …)`. `analytics/scope.ts` instead returns a typed
+      // result whose fields the route forwards, so `code: "CODE"` has to be read
+      // too — missing that form is how RANGE_TOO_LONG would have gone uncovered.
+      for (const match of source.matchAll(/(?:apiError|analyticsError)\(\s*c\s*,\s*\d+\s*,\s*"([A-Z_]+)"/g)) {
+        codes.add(match[1]!);
+      }
+      for (const match of source.matchAll(/\bcode:\s*"([A-Z_]{4,})"/g)) {
+        codes.add(match[1]!);
+      }
+    }
+    return [...codes].sort();
+  }
+
+  it("maps every emitted code, or exempts it with a stated reason", () => {
+    const unmapped = apiErrorCodes().filter(
+      (code) =>
+        !BROWSER_INACCESSIBLE.has(code) &&
+        code !== "REPORTING_SOURCE_FAILED" &&
+        !MAPPED_API_ERROR_CODES.includes(code)
+    );
+
+    // Asserting the shape rather than the count: a new API code should fail
+    // here, and the fix is one line of Thai copy, not a reworded English string.
+    expect(unmapped).toEqual([]);
+  });
+
+  it("finds the API's own codes at all, so the guard cannot pass by matching nothing", () => {
+    // A regex that silently matches zero sources would make the test above
+    // vacuously true forever.
+    const codes = apiErrorCodes();
+    expect(codes.length).toBeGreaterThan(15);
+    expect(codes).toContain("RANGE_TOO_LONG");
+    expect(codes).toContain("INVALID_CURSOR");
   });
 });

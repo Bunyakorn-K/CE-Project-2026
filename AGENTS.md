@@ -199,6 +199,43 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
+**A caller-supplied error must be attributed to the caller, not to the source.**
+The events route answered **502 `REPORTING_SOURCE_FAILED`** for a malformed
+`cursor`, because `parseEventCursor` threw a bare `Error("INVALID_CURSOR")` that
+fell through `irisError`'s source-failure branch. A typo in a query string
+therefore read as "the reporting warehouse is down" — the one status that sends
+an operator to page someone. It is now a typed `InvalidCursorError` mapped to
+**400 `INVALID_CURSOR`** before any source branch, and the route's ClickHouse
+executor is asserted un-called, because the request must be rejected before it
+becomes a query. This is the general rule: `irisError` is the single funnel for
+every report route, so a new failure mode must either carry a typed error it can
+be distinguished by or answer a status that names who can fix it. A bare
+`throw new Error("CODE")` always lands in the catch-all and will be reported as
+an outage.
+
+**Every error code the API can send to a browser must have Thai copy.** The
+web maps codes through `apps/web/src/lib/api-errors.ts` and falls back to a
+neutral generic sentence for anything unmapped, which silently swallowed real
+distinctions: a technician whose role cannot see revenue read "ไม่สามารถโหลดข้อมูลได้"
+(load failed) rather than a permanent permission denial, and an unreachable
+analytics warehouse read as a generic failure. `REVENUE_FORBIDDEN`,
+`LAST_OWNER`, `ANALYTICS_SOURCE_UNAVAILABLE` and `INVALID_INPUT` now have their
+own copy. **`api-errors.test.ts` reads the API sources and fails on any emitted
+code that is neither mapped nor explicitly exempted** (`INVALID_SCOPE` and
+`SCOPE_MISMATCH`, the MCP service-token path, where no browser is in the
+request), so the two vocabularies cannot drift apart silently again. The test
+also asserts it found the codes at all, so the scan cannot pass vacuously.
+
+**One source owns each freshness string.** `usageFreshnessOf` and
+`usageFreshnessReasonOf` are both exported and both used by every source that
+builds `MachineInfo`. `demoFreshnessFields` in `apps/api/src/index.ts`
+previously restated the two reason strings, which is how the demo twin and the
+ClickHouse twin could disagree about the same machine — the exact hazard the
+original extraction was meant to remove. The web does not render
+`freshnessReason` (it keys on `freshness`), so this was a contract-duplication
+risk rather than a visible-prose defect; it is fixed anyway because two copies
+of one contract is the failure mode, not the current symptom.
+
 ## Strict physical and safety boundaries
 
 - Do not propose hardware modifications, new sensors, or rewiring unless the
@@ -366,20 +403,22 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 625 tests green** — API 359, web 179,
+Local automated evidence on **2026-10-01: 629 tests green** — API 360, web 182,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
 359 with the machine-state provenance fix (a `cycleCount` of zero and an
 unavailable `cycleCount` are different facts, and the Digital Twin was calling
-the first one "no usage rows") and the twin freshness axis. Web rose from 92 to
+the first one "no usage rows") and the twin freshness axis, then to 360 with the
+events-cursor blame test. Web rose from 92 to
 114 with the Thai freshness and alert-source states, and with the
 stale-LIFF-session handling (a browser holding an expired ID token, which LIFF
 reports as a healthy session and never refreshes) — including the sign-in
 decision that regression testing caught — then to 129 with the machine-facts
 decision functions and the Thai error-code copy, then to 179 with the dashboard
 working context: URL state, date presets, branch sort, and the prior-period
-comparison. `login.tsx` had **no test at all** when
+comparison, then to 182 with the API error-code coverage guard. `login.tsx` had
+**no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
