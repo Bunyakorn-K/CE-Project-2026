@@ -1164,3 +1164,124 @@ cd /opt/laundrytwin
 sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-84718f6-20261001#' .env
 sudo docker compose --env-file .env up -d --no-deps web
 ```
+
+## Deploy record — 2026-10-01, API + web (`cbe7243`)
+
+Both halves of the UX-honesty work, deployed together from pinned commit
+`cbe7243` (`939d7ae` + `cbe7243`). The API half changes the **machine-state
+contract**; the web half consumes it. Deploying web alone would have shown a
+field the running API never sent, so this had to be one apply.
+
+| | |
+| :--- | :--- |
+| Images | `10.10.0.117:5000/laundrytwin-api:deploy-cbe7243-20261001`, digest `sha256:64735a16…`<br>`10.10.0.117:5000/laundrytwin-web:deploy-cbe7243-20261001`, digest `sha256:68682049…` |
+| Rollback refs | api `deploy-84718f6-20261001`, web `deploy-155e111-20261001` |
+| App DB backup | `/opt/backups/pre-cbe7243-20261001T062410Z/laundrytwin.sqlite`, 196,608 bytes, `integrity_check: ok`, 15 tables, 3 users, 3 access grants |
+| Suite before deploy | **625 green** (API 359, web 179, ETL 87); `pnpm check` clean; `pnpm build` clean; Playwright **28** passed |
+| Containers after | 19 running, `restarts=0` on both swapped services; etl/gas/weather untouched (`Up 17–38 hours`) |
+
+Built on the VM from `git clone --no-checkout` + `git checkout cbe7243` into
+`/tmp/lt-cbe7243`, per the gate's "immutable commit, not `main`". The web image
+carries `--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`, which is still the only
+place the LIFF ID enters the image.
+
+### The backup that first looked fine and was not
+
+`cp /opt/laundrytwin/data/laundrytwin.sqlite` produced a **4,096-byte** file
+and reported success. The main DB file *is* 4 KB — the database is in WAL mode
+and its actual 2 MB live in `laundrytwin.sqlite-wal`. A file copy of a WAL-mode
+database captures the schema stub and none of the rows, and it fails silently:
+`ls -l` shows a plausible file and only the row counts give it away.
+
+The real backup goes through the online backup API, which folds the WAL in:
+
+```js
+const db = new Database("/data/laundrytwin.sqlite", { readonly: true });
+await db.backup("/data/pre-deploy.sqlite");
+```
+
+`db.backup()` is promise-based in the installed `better-sqlite3` — it exposes
+only `then`/`catch`/`finally`, so the `backup.step(-1)` form from older docs
+throws `backup.step is not a function`. The result is 196,608 bytes and verifies
+with 15 tables, 3 users, and 3 access grants, matching the production counts.
+**Any future backup taken by file copy should be treated as failed.**
+
+### The changed SQL, run against live ClickHouse
+
+`buildMachineStateSQL()` now selects the denominator separately:
+
+```sql
+countIf(u.status IN ('paid', 'finished')) AS cycle_count,
+countIf(u.status IS NOT NULL) AS usage_rows
+```
+
+`countIf(... IS NOT NULL)` rather than `count()` because `join_use_nulls = 1`
+suppresses the LEFT JOIN placeholder row; a plain `count()` would report 1 for a
+machine with no usage at all, which is the exact confusion the field exists to
+remove. Run verbatim against production ClickHouse 26.3.26 (read-only, via the
+app's reader credentials):
+
+| Machine | `cycle_count` | `usage_rows` |
+| :--- | ---: | ---: |
+| D5 | 193 | 202 |
+| D7 | 181 | 190 |
+| W1 | 144 | 153 |
+| W2 | 147 | 153 |
+| D3 | 124 | 124 |
+
+All 19 active machines split cleanly. Grouping them by contract state over the
+full history gives only `counted` (19 machines, 313–547 rows each) — because
+every machine has paid history somewhere. **The state the fix exists for only
+appears in a bounded window**, which is what the interface actually shows:
+
+| Window | `no_rows` | `rows_but_none_paid` | `counted` |
+| :--- | :--- | :--- | :--- |
+| 2026-09-24 → 09-30 | 0 | 0 | 19 |
+| 2026-09-16 → 09-22 | 0 | 0 | 19 |
+| **2026-07-27** (known source gap) | **19** | 0 | 0 |
+
+So the `no_rows` state is real and reachable in production, and it is exactly
+the day the old code would have printed "ไม่มีข้อมูลแถว usage" as though the
+machine had never run. `rows_but_none_paid` did not occur in any window tested;
+it remains covered by unit tests only, and this measurement does not claim
+otherwise.
+
+### Smoke after the swap, against TLS
+
+Every status matches the pre-swap baseline exactly, so no fallback widened and
+no route regressed:
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `/health` | 200 `{"ok":true,"reportingConfigured":false,"demoMode":false}` | **200, identical** |
+| `POST /api/auth/liff/exchange` no token | 400 | **400** |
+| same, bad `Origin` | 403 | **403** |
+| same, invalid ID token | 401 `LIFF_VERIFICATION_FAILED` | **401, identical body** |
+| `/`, `/login`, `/privacy`, `/terms` | 200 | **200** |
+| entry bundle | `index-sT6pqrPy.js` | `index-CDOn3Rpg.js` |
+
+The new bundle carries the LIFF id, `ไม่มียอดก่อนหน้าให้เทียบ`, and
+`แหล่งข้อมูลรายงานไม่ตอบสนอง`; the API bundle carries `usage_rows`,
+`cycleCountSource`, `usage_row`, `usageFreshnessOf`, and the literal
+`countIf(u.status IS NOT NULL) AS usage_rows`. **Authenticated report rendering
+is still not verified in a browser** — every report route is 401 without a
+session, and this deploy did not add one. What is verified is the contract, the
+SQL against the real engine, and that the auth boundary did not move.
+
+#### Rolling back `cbe7243`
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^API_IMAGE=.*#API_IMAGE=10.10.0.117:5000/laundrytwin-api:deploy-84718f6-20261001#' .env
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-155e111-20261001#' .env
+sudo docker compose --env-file .env up -d --no-deps api web
+```
+
+Rolling back both is required, not optional: the web at `cbe7243` reads
+`cycleCountSource` and `freshness`, which the API at `84718f6` does not send.
+The pre-swap `.env` is also kept at `/opt/laundrytwin/.env.pre-cbe7243`. No
+schema migration shipped, so the SQLite backup above is insurance rather than a
+restored artifact.

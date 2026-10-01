@@ -114,6 +114,14 @@ change, and roughly the first two months of temperature history cannot be
 reloaded from IRIS. See
 `docs/07_handoffs/2026-09-30-handoff-priorities.md`.
 
+**The app SQLite is in WAL mode, so a file copy is not a backup.**
+`/opt/laundrytwin/data/laundrytwin.sqlite` is a 4 KB stub; the real ~192 KB
+lives in `laundrytwin.sqlite-wal`. `cp`-ing the main file succeeds, produces a
+plausible file, and captures no rows. Take backups through the online API
+(`await db.backup(...)` — promise-based in the installed `better-sqlite3`) and
+verify with `integrity_check` plus a table and row count before relying on one.
+A copy-sized backup is a failed backup, not a small one.
+
 ## Current production caveats
 
 As of 2026-09-25, direct ClickHouse Dashboard and Digital Twin routes have
@@ -140,6 +148,24 @@ never quote a stale number), the dashboard response carries `cycleAttribution`
 and the web dashboard states the unattributed share in Thai; **a cycle count
 must never be presented as fully attributed.** This is
 code/test evidence, not production E2E.
+
+**The machine-state contract is three-valued and deployed** (2026-10-01,
+`deploy-cbe7243-20261001`, API and web together because the web reads fields the
+API change introduces). A machine's `cycleCount` is `null` with
+`cycleCountSource: "unavailable"` when it has no usage rows in the window,
+`"usage_row"` when it does — in which case a real `0` is a real `0` — and
+`"unknown"` from the demo/IRIS path, which never measured usage rows at all and
+must not claim they are absent. An earlier version inferred the state from the
+session evidence alone, so a machine with 153 usage rows and no paid ones
+reported "no usage rows"; the SQL now selects the denominator separately as
+`countIf(u.status IS NOT NULL) AS usage_rows` (not `count()`, because
+`join_use_nulls = 1` suppresses the LEFT JOIN placeholder). Verified by running
+the shipped query against production ClickHouse 26.3.26: over the full history
+every active machine is `counted`, but in the known `2026-07-27` source gap all
+19 are `no_rows` — the exact case the old code mislabelled. **Authenticated
+report rendering in a browser is still unverified**; the route scope, the SQL,
+and the auth boundary are. See `docs/03_data_contracts/data_contracts.md` and
+the deploy record in `docs/02_architecture/deploy-runbook.md`.
 
 **The LINE authentication flow is now verified end to end** (2026-10-01): the
 owner signed in with LINE in the real client against production and reached the
