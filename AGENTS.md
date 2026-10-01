@@ -532,6 +532,84 @@ LIFF-gate change on 2026-10-01, both in Chromium against a local build; they
 remain manual, Chromium-only, and leave no committed visual baseline. This does
 not establish production, LINE, or browser E2E.
 
+**CI on `main` was red for four hours and nobody saw it, because the layout
+suite's one platform-dependent assertion was the only thing failing and it was
+the same assertion every time.** From 07:24 on 2026-10-01, seven consecutive
+commits failed with `unexpected topbar height: 1174px: 83px, expected 72px`,
+while all 675 unit tests stayed green locally. The owner header's intrinsic
+width had been measured on one machine (1173.30px) and the `@media` threshold
+set to clear it by **0.70px**, so the contract passed wherever it was measured
+and failed everywhere else.
+
+The header width is not one number. Measured with the same Chromium 153 and the
+same self-hosted woff2 — `document.fonts` confirms `Noto Sans Thai:loaded` on
+both platforms, so this was never a font-coverage or version problem:
+
+| part | macOS | Linux amd64 | Linux arm64 |
+|---|---|---|---|
+| brand | 197.78 | 205.81 | 205.81 |
+| nav (6 links) | 629.97 | 641.00 | 641.00 |
+| account | 249.55 | 260.00 | 260.00 |
+| **total** | **1173.30** | **1202.81** | **1202.81** |
+
+Two effects. Thai glyphs measure ~19px wider on Linux for identical text in an
+identical font file. And `.account-name` is capped at `max-width: 130px`, where
+the fixture owner `Development Owner` renders 123.67px on macOS but hits the cap
+exactly on Linux — **a cap being reached is a step, not a drift, so no sub-pixel
+margin can absorb it.** That is why four successive thresholds (1019, 1041,
+1171, 1173) each looked right and each broke.
+
+The threshold is now **1240px, derived from the worst measured platform**
+(1202.81) with 37.19px of margin, and the full table lives in `styles.css`
+beside the `@media` block so it is not re-derived from one machine a fifth
+time. Two tests keep it honest, and both were verified to fail against
+deliberately broken code: one measures the real header width in the browser on
+every layout run and fails **with the measured number** when the headroom drops
+below 20px, and one asserts the stylesheet's threshold against
+`INLINE_NAV_MIN_WIDTH` so the CSS and the test cannot drift apart — which is
+exactly how 1173 outlived the measurement that justified it. This is also the
+pattern to follow for any other font-metric threshold: a number in a comment is
+not a contract.
+
+**The general rule this exposed: a suite that only ever runs on one platform
+cannot see a platform-dependent failure, and "it passes locally" is not evidence
+for a number derived from the local machine.** The fix here was verified on
+macOS, `linux/amd64` and `linux/arm64` in Playwright's own container before it
+was pushed, which is cheap and available — `docker build --platform
+linux/amd64` against a `mcr.microsoft.com/playwright` base reproduces the CI
+measurement exactly (1202.81px, first-72px at 1203).
+
+**Deployment is now automated in two halves, and only the first is live.**
+`.github/workflows/release.yml` chains off CI via `workflow_run` rather than
+re-running the suite on push, so a red CI run publishes nothing. It checks out
+`workflow_run.head_sha` explicitly, because under that event `GITHUB_SHA` is the
+default-branch head — a bare checkout would build an untested commit if `main`
+moved after CI went green. It builds all three images for `linux/amd64` from the
+repository root and records each published digest into the run summary, so a
+rollback target is a digest rather than a tag someone has to trust.
+
+The `deploy` job is manual-dispatch only and gated on a `production` GitHub
+Environment, and it deliberately does **not** SSH, run `tofu apply`, take a
+backup, or migrate — the runner has no route to the VM, and a CI-taken backup
+is exactly the WAL trap (`cp` of the SQLite main file yields a plausible 4 KB
+stub with zero rows). It renders the exact reviewed `tofu apply` lines and
+fails rather than name a tag this run did not publish.
+
+**As of 2026-10-01 the publish half is wired but not yet configured**, so no
+image has ever been published by CI and **no deployment has been automated or
+attempted.** The first real run of the chain behaved correctly: CI green
+fired the workflow, all three build jobs started, and each failed at
+`Log in to the internal registry` with `Username and password required`. The
+registry is reachable from a hosted runner — `https://registry.laundrytwin.duckdns.org/v2/`
+answers **401**, so auth is live — and all three images build `linux/amd64`
+from the repo root with `VITE_LIFF_ID` correctly baked in. What is missing is
+configuration only: the secrets `REGISTRY_USER`, `REGISTRY_PASSWORD` and
+`VITE_LIFF_ID`, and the `production` Environment, which does not exist yet
+(`gh api repos/Bunyakorn-K/CE-Project-2026/environments` returns
+`total_count: 0`) — so the deploy job's approval gate is currently inert.
+Until those exist, deploying remains a manual host-side step under the runbook
+gate, unchanged.
+
 **The live machine page was asserting states its own cards disclaimed, measured
 in production on 2026-10-01 and fixed the same day.** `/machines` rendered
 `machineStatusMeta(state)` as a coloured pill unconditionally, above a freshness
