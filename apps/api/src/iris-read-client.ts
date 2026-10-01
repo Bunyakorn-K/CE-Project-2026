@@ -96,7 +96,16 @@ export type IrisEvent = {
   coverage: Record<string, TelemetryCoverage>;
 };
 
-export type IrisEvents = ReportingEnvelope & { events: IrisEvent[]; nextCursor: string | null };
+export type IrisEvents = ReportingEnvelope & {
+  events: IrisEvent[];
+  nextCursor: string | null;
+  /** Present on the ClickHouse path, which can answer "the source cannot tell
+   *  you" in a way a 200 with an empty array cannot: fact_machine_event exists
+   *  but has never been written, and a consumer must be able to tell that from
+   *  a window that genuinely had no events. */
+  availability?: "available" | "unavailable";
+  reason?: string;
+};
 
 export class IrisReadUnavailableError extends Error {
   constructor() {

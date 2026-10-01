@@ -38,6 +38,7 @@ import {
   IrisReadResponseError,
   IrisReadUnavailableError,
   type IrisDashboard,
+  type IrisEvents,
   type IrisLiveMachine,
   type IrisLiveSnapshot
 } from "./iris-read-client";
@@ -48,7 +49,15 @@ import { runAlertSweep } from "./alert-engine";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
-import { queryBranches, queryDashboard, queryMachineStates, type DashboardData, type MachineInfo } from "./report/clickhouse-report";
+import {
+  encodeEventCursor,
+  queryBranches,
+  queryDashboard,
+  queryEvents,
+  queryMachineStates,
+  type DashboardData,
+  type MachineInfo
+} from "./report/clickhouse-report";
 
 type AppVariables = {
   principal: Principal | null;
@@ -385,6 +394,24 @@ export function createApp(dependencies: AppDependencies = {}) {
     const limit = readLimit(c);
     if (limit instanceof Response) return limit;
 
+    // Same ClickHouse-first rule as the summary, branch list, live snapshot, and
+    // alerts routes: nothing in this report family should answer 503 in the
+    // documented ClickHouse-only production shape.
+    if (isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured())) {
+      try {
+        return c.json(
+          await clickHouseEventEnvelope(clickhouse, {
+            ...range,
+            branchId: scope,
+            cursor: c.req.query("cursor"),
+            limit
+          })
+        );
+      } catch (error) {
+        return irisError(c, error);
+      }
+    }
+
     try {
       return c.json({
         events: await iris.getEvents({ ...range, branchId: scope, cursor: c.req.query("cursor"), limit })
@@ -634,6 +661,78 @@ function projectClickHouseDashboard(
       machineCount: dashboard.totals.machines
     }
   };
+}
+
+/**
+ * The events envelope for the ClickHouse-only deployment.
+ *
+ * Unlike alerts, `fact_machine_event` EXISTS -- the DDL ran and the table is
+ * empty. That is a genuinely different state and the contract has to say which
+ * one it is, because a reader cannot tell them apart from an empty page alone:
+ *
+ *   - rows returned  -> availability "available"; a real window of machine events
+ *   - no rows, table has never been written -> availability "unavailable"
+ *
+ * An empty `events` array is NOT reported as "no events occurred in this
+ * window". Nothing has ever been ingested, so the honest statement is that the
+ * source cannot answer, not that the answer is zero. As of 2026-10-01 the live
+ * table holds 0 rows (measured, not assumed), which is why the second case is
+ * the one production takes today.
+ *
+ * Coverage is carried per event rather than being flattened away, so a consumer
+ * that eventually does receive events can tell which fields the warehouse can
+ * actually back. fact_machine_event stores no temperature, remaining time, door,
+ * coinbox, or payment -- those live in registers the ETL does not yet ingest --
+ * so every one of them is reported unavailable rather than null-as-zero.
+ */
+async function clickHouseEventEnvelope(
+  ch: ClickHouseExecutor,
+  params: { from: string; to: string; branchId?: string; cursor?: string; limit?: number }
+): Promise<IrisEvents> {
+  const { events, hasMore } = await queryEvents(ch, params);
+  const lastRow = lastEventRow(events);
+
+  return {
+    contractVersion: "clickhouse-events",
+    source: "clickhouse",
+    fetchedAt: new Date().toISOString(),
+    availability: events.length > 0 ? "available" : "unavailable",
+    ...(events.length > 0 ? {} : { reason: "fact_machine_event is present but empty; no machine events have been ingested" }),
+    events: events.map((event) => ({
+      eventId: event.event_id,
+      branchId: event.branch_id,
+      machineId: event.machine_id,
+      machineCode: event.machine_code,
+      occurredAt: event.occurred_at,
+      kind: event.kind,
+      phase: event.phase ?? null,
+      state: {
+        phase: event.phase ?? null,
+        remainingSeconds: null,
+        temperatureC: null,
+        doorStatus: null,
+        coinbox: null,
+        paidSatang: null,
+        errorCode: null
+      },
+      coverage: {
+        state: { available: true, sourceField: "state_raw", transform: "phase enum" },
+        phase: { available: true, sourceField: "phase" },
+        remainingSeconds: { available: false, reason: "fact_machine_event carries no remaining-time register" },
+        temperatureC: { available: false, reason: "fact_machine_event carries no temperature register" },
+        doorStatus: { available: false, reason: "fact_machine_event carries no door register" },
+        coinbox: { available: false, reason: "fact_machine_event carries no coinbox register" },
+        paidSatang: { available: false, reason: "fact_machine_event carries no payment register" },
+        errorCode: { available: false, reason: "fact_machine_event carries no error register" }
+      }
+    })),
+    nextCursor: hasMore && lastRow ? encodeEventCursor({ occurredAt: lastRow.occurred_at, eventId: lastRow.event_id }) : null
+  };
+}
+
+/** The final row of the page, for the cursor boundary. */
+function lastEventRow(events: { occurred_at: string; event_id: string }[]) {
+  return events.at(-1);
 }
 
 async function queryClickHouseLiveMachines(ch: ClickHouseExecutor, branchId?: string) {

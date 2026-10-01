@@ -889,4 +889,186 @@ describe("LaundryTwin API", () => {
       }
     });
   });
+
+  // fact_machine_event EXISTS and is empty (measured 2026-10-01), which is a
+  // different state from alerts having no table at all. A 200 with an empty
+  // array reads as "no events happened in this window"; nothing has ever been
+  // ingested, so that claim would be a fabrication. This route had no test.
+  describe("events route", () => {
+    const IRIS_KEYS = ["IRIS_READ_BASE_URL", "IRIS_LAUNDRYTWIN_READ_API_KEY", "LAUNDRYTWIN_DEMO_MODE"] as const;
+
+    function withoutIrisReadSource(): () => void {
+      const saved = new Map(IRIS_KEYS.map((key) => [key, process.env[key]]));
+      for (const key of IRIS_KEYS) delete process.env[key];
+      return () => {
+        for (const [key, value] of saved) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      };
+    }
+
+    type EventRow = {
+      event_id: string;
+      branch_id: string;
+      machine_id: string;
+      machine_code: string;
+      occurred_at: string;
+      kind: string;
+      phase: string | null;
+    };
+
+    const ROW: EventRow = {
+      event_id: "evt-2",
+      branch_id: "branch-01",
+      machine_id: "machine-01",
+      machine_code: "W01",
+      occurred_at: "2026-09-30 10:00:00.000",
+      kind: "state_change",
+      phase: "RUNNING"
+    };
+
+    function eventsExecutor(rows: EventRow[]): ClickHouseExecutor {
+      return vi.fn(async () => rows) as unknown as ClickHouseExecutor;
+    }
+
+    it("denies a zero-grant principal before any source is called", async () => {
+      authenticate([]);
+      const clickhouse = vi.fn();
+      const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+      const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01");
+
+      expect(response.status).toBe(403);
+      expect(clickhouse).not.toHaveBeenCalled();
+    });
+
+    it("rejects a branch outside the principal grant before querying", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "tech-01", role: "technician", branchId: "branch-01" }]);
+        const clickhouse = vi.fn();
+        const app = createApp({ analyticsDeps: { clickhouse: clickhouse as unknown as ClickHouseExecutor } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01&branchId=branch-02");
+
+        expect(response.status).toBe(403);
+        expect(clickhouse).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
+
+    it("answers from ClickHouse when no IRIS read source is configured", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const app = createApp({ analyticsDeps: { clickhouse: eventsExecutor([ROW]) } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01");
+
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          contractVersion: string;
+          source: string;
+          availability: string;
+          events: { eventId: string; machineCode: string; kind: string; phase: string | null }[];
+          nextCursor: string | null;
+        };
+        expect(body.contractVersion).toBe("clickhouse-events");
+        expect(body.source).toBe("clickhouse");
+        expect(body.availability).toBe("available");
+        expect(body.events).toHaveLength(1);
+        expect(body.events[0]).toMatchObject({ eventId: "evt-2", machineCode: "W01", kind: "state_change", phase: "RUNNING" });
+        expect(body.nextCursor).toBeNull();
+      } finally {
+        restore();
+      }
+    });
+
+    // The fabrication this route exists to prevent.
+    it("reports an unwritten table as unavailable, never as a window with no events", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const app = createApp({ analyticsDeps: { clickhouse: eventsExecutor([]) } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01");
+
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as { availability: string; reason: string; events: unknown[] };
+        // An empty array alone would tell the reader nothing had happened in the
+        // window. Nothing has ever been ingested, which is a different claim.
+        expect(body.events).toEqual([]);
+        expect(body.availability).toBe("unavailable");
+        expect(body.reason).toMatch(/fact_machine_event/);
+      } finally {
+        restore();
+      }
+    });
+
+    it("marks the telemetry registers the event table cannot back as unavailable", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const app = createApp({ analyticsDeps: { clickhouse: eventsExecutor([ROW]) } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01");
+        const body = (await response.json()) as {
+          events: {
+            state: { temperatureC: number | null; remainingSeconds: number | null };
+            coverage: Record<string, { available: boolean; reason?: string }>;
+          }[];
+        };
+        const event = body.events[0]!;
+
+        // fact_machine_event stores no temperature, remaining time, door, coinbox,
+        // or payment. A null there would be indistinguishable from a real
+        // reading of zero.
+        expect(event.state.temperatureC).toBeNull();
+        expect(event.state.remainingSeconds).toBeNull();
+        expect(event.coverage.temperatureC?.available).toBe(false);
+        expect(event.coverage.temperatureC?.reason).toBeTruthy();
+        expect(event.coverage.remainingSeconds?.available).toBe(false);
+      } finally {
+        restore();
+      }
+    });
+
+    it("asks for one row past the page so a next cursor means there is more", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+        const clickhouse = eventsExecutor([ROW, { ...ROW, event_id: "evt-3" }]);
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        const response = await app.request("/api/report/events?from=2026-09-25&to=2026-10-01&limit=1");
+        const body = (await response.json()) as { events: unknown[]; nextCursor: string | null };
+
+        // Two rows came back for a limit of one: the extra row is the signal.
+        expect(body.events).toHaveLength(1);
+        expect(body.nextCursor).toBeTruthy();
+        const params = (clickhouse as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Record<string, unknown>;
+        expect(params.limit).toBe(2);
+      } finally {
+        restore();
+      }
+    });
+
+    it("scopes the query to a branch-scoped principal's own branch", async () => {
+      const restore = withoutIrisReadSource();
+      try {
+        authenticate([{ id: "tech-01", role: "technician", branchId: "branch-01" }]);
+        const clickhouse = eventsExecutor([ROW]);
+        const app = createApp({ analyticsDeps: { clickhouse } });
+
+        await app.request("/api/report/events?from=2026-09-25&to=2026-10-01");
+
+        const params = (clickhouse as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Record<string, unknown>;
+        expect(params.branchId).toBe("branch-01");
+      } finally {
+        restore();
+      }
+    });
+  });
 });

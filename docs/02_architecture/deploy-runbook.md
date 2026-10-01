@@ -536,6 +536,7 @@ the routes around it. Each was found only by loading the real page:
 | `/api/report/branches` | 503 — Digital Twin rendered no branches at all | `ec60130` |
 | `/api/report/live` | 503 — a branch name with nothing under it | `93b03cf` |
 | `/api/report/alerts` | 503 — Analytics page | `170b527` |
+| `/api/report/events` | 503 — no caller in `apps/web`, so no visible symptom | see below |
 
 The rule all four now share: answer from the warehouse whenever IRIS cannot
 answer. Demo mode stays on the IRIS client, because `createIrisReadClient` serves
@@ -549,10 +550,45 @@ why" answer was already written — it was simply unreachable behind the dev-byp
 gate. A 503 tells the operator the source is broken; the warehouse is fine, the
 table does not exist. Absent and broken must not read the same.
 
-`/api/report/events` has the same gate and is **still unfixed**. Nothing in
-`apps/web` calls it, and unlike alerts it has no ClickHouse branch written at
-all, so fixing it means inventing a contract rather than exposing an existing
-one. Left alone deliberately.
+`/api/report/events` had the same gate and **no ClickHouse branch at all**, so
+fixing it meant writing a contract rather than exposing an existing one. It was
+left alone through the first three deploys and fixed afterwards, deliberately
+after measuring the live table rather than assuming its state.
+
+The distinction that shaped the contract: `/api/report/alerts` has **no table
+at all** in the warehouse, while `fact_machine_event` **exists and holds 0
+rows** (measured on the VM 2026-10-01, `MergeTree`, `total_rows: 0`). Those
+are three different states — absent, present-but-never-written, and
+present-with-data — and the response says which one it is:
+
+| Live state | `availability` | Carries a `reason` |
+| :--- | :--- | :--- |
+| rows in window | `available` | no |
+| table present, 0 rows | `unavailable` | yes |
+| no table | 503 via `irisError` | no |
+
+An empty `events` array is **not** reported as "no events in this window".
+Nothing has ever been ingested, so the honest answer is that the source cannot
+tell you, not that the answer is zero. The test is named for this:
+*"reports an unwritten table as unavailable, never as a window with no events."*
+
+Coverage is carried per event rather than flattened, because
+`fact_machine_event` stores no temperature, remaining time, door, coinbox, or
+payment registers. Every one of those is `available: false` with a stated
+reason instead of a bare `null` that reads like a zero.
+
+Paging is a keyset cursor over `(occurred_at, event_id)` — the same pair as the
+`ORDER BY`, so a walk cannot skip or repeat a row the way an offset would if
+events arrived mid-pagination. `limit + 1` rows are fetched so `hasMore` needs
+no second count query. The cursor is base64url-encoded because `event_id` is an
+opaque source string; it is split on the **first** `|`, since `occurred_at` is a
+ClickHouse `DateTime` and cannot contain one while `event_id` can. Splitting on
+the last separator instead truncates an id that contains `|`, paging from a
+boundary that never existed — caught by a round-trip test.
+
+**Five of the seven new tests were verified to fail** against the pre-fix gate
+before being accepted; all seven pass after. The full suite is **532 tests
+green** (API 344, web 101, ETL 87), up from 499 on 2026-10-01.
 
 ### Verified in a real browser, not just by status code
 

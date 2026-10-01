@@ -147,8 +147,13 @@ rate limits. Development access requires both `NODE_ENV=development` and
 configured real analytics sources, and is not a production security design.
 Explicit demo mode requires a demo session cookie and remains preview-only.
 MCP requires `MCP_ACCESS_TOKEN`; `MCP_ALLOW_REVENUE` is explicit false by
-default. `fact_machine_event` is currently empty, so Digital Twin state is
-derived from usage data rather than live telemetry.
+default. `fact_machine_event` exists but holds 0 rows (measured on the VM
+2026-10-01), so Digital Twin state is derived from usage data rather than live
+telemetry, and `/api/report/events` reports `availability: "unavailable"` with
+a reason rather than an empty event list — an empty array would read as "no
+events in this window", which is a claim the warehouse cannot support. Absent
+(no such table, as with the alert source), present-but-unwritten, and
+present-with-data are three states and must never render the same.
 
 ## Strict physical and safety boundaries
 
@@ -314,12 +319,14 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 499 tests green** — API 320, web 92,
+Local automated evidence on **2026-10-01: 532 tests green** — API 344, web 101,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** The web figure rose from 86 to 92 on 2026-10-01 with
-the LIFF-gate legal-route bypass. Older figures (413/384/227, then 493) were
-superseded, and web briefly fell to 1 after the dead-code deletion removed
-`dashboard-metrics.test.ts`. The separate Playwright suite is 20 tests
+rather than repeating it.** The API figure rose from 320 to 344 on 2026-10-01
+with tests for the four report routes that answered 503 in production, and web
+from 92 to 101 with the Thai freshness and alert-source states. Older figures
+(413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
+after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
+Playwright suite is 20 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts` and `dashboard.pw.ts` assert rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",

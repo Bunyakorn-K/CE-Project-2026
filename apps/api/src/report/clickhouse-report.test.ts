@@ -3,9 +3,13 @@ import type { ClickHouseExecutor } from "../analytics/clickhouse";
 import {
   buildBranchSQL,
   buildDashboardSQL,
+  buildEventsSQL,
   buildMachineStateSQL,
+  encodeEventCursor,
+  parseEventCursor,
   queryBranches,
   queryDashboard,
+  queryEvents,
   queryMachineStates
 } from "./clickhouse-report";
 
@@ -422,5 +426,100 @@ describe("branch report", () => {
     expect(sql).toContain("FROM dim_branch FINAL");
     expect(sql).toContain("WHERE active = 1");
     expect(sql).toContain("({branchId:String} = '' OR toString(branch_id) = {branchId:String})");
+  });
+});
+
+describe("event feed report", () => {
+  it("binds the window and branch scope, and pages on the event identity", () => {
+    const sql = buildEventsSQL();
+
+    expect(sql).toContain("FROM fact_machine_event AS e FINAL");
+    expect(sql).toContain("e.occurred_at >= {from:String}");
+    // Half-open upper bound, so an event at midnight on the last day of the
+    // window is inside the window rather than between two adjacent ranges.
+    expect(sql).toContain("e.occurred_at < plus(toDate({to:String}), 1)");
+    expect(sql).toContain("({branchId:String} = '' OR toString(e.branch_id) = {branchId:String})");
+    // Newest first, and the cursor predicate must compare the SAME pair in the
+    // SAME direction or a page walk would skip or repeat rows.
+    expect(sql).toContain("ORDER BY e.occurred_at DESC, e.event_id DESC");
+    expect(sql).toContain("(e.occurred_at, e.event_id) < ({cursorOccurredAt:String}, {cursorEventId:String})");
+    expect(sql).toContain("LIMIT {limit:UInt32}");
+  });
+
+  it("asks for one row past the page so 'more' needs no second count query", async () => {
+    const rows = Array.from({ length: 51 }, (_, i) => ({
+      event_id: `e${i}`,
+      branch_id: "b1",
+      machine_id: `m${i}`,
+      machine_code: `M-${i}`,
+      occurred_at: "2026-09-30 10:00:00",
+      kind: "state",
+      phase: "running"
+    }));
+    const ch = fakeExecutor(rows);
+
+    const result = await queryEvents(ch, { from: "2026-09-01", to: "2026-09-30" });
+
+    expect(result.events).toHaveLength(50);
+    expect(result.hasMore).toBe(true);
+    expect(ch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ limit: 51 }));
+  });
+
+  it("reports no more pages when the row past the limit is absent", async () => {
+    const ch = fakeExecutor([
+      {
+        event_id: "e1",
+        branch_id: "b1",
+        machine_id: "m1",
+        machine_code: "M-1",
+        occurred_at: "2026-09-30 10:00:00",
+        kind: "state",
+        phase: null
+      }
+    ]);
+
+    const result = await queryEvents(ch, { from: "2026-09-01", to: "2026-09-30", limit: 50 });
+
+    expect(result.events).toHaveLength(1);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it("decodes a cursor into the boundary pair it will page from", async () => {
+    const cursor = encodeEventCursor({ occurredAt: "2026-09-30 10:00:00", eventId: "evt-9" });
+
+    expect(parseEventCursor(cursor)).toEqual({ occurredAt: "2026-09-30 10:00:00", eventId: "evt-9" });
+
+    const ch = fakeExecutor([]);
+    await queryEvents(ch, { from: "2026-09-01", to: "2026-09-30", cursor });
+    expect(ch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ cursorOccurredAt: "2026-09-30 10:00:00", cursorEventId: "evt-9" })
+    );
+  });
+
+  it("leaves the cursor predicate inert when no cursor was given", async () => {
+    // Empty strings make the ({cursorOccurredAt} = '' OR …) half of the
+    // predicate true, so page one is not silently filtered by a blank boundary.
+    const ch = fakeExecutor([]);
+    await queryEvents(ch, { from: "2026-09-01", to: "2026-09-30" });
+
+    expect(ch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ cursorOccurredAt: "", cursorEventId: "" })
+    );
+  });
+
+  it("round-trips an opaque event id that contains the separator itself", () => {
+    // occurredAt is a timestamp and cannot contain "|"; eventId is an opaque
+    // source string and can. Splitting on the last separator instead would cut
+    // this id to "7" and page from a boundary that never existed.
+    const cursor = encodeEventCursor({ occurredAt: "2026-09-30 10:00:00", eventId: "ns|part|7" });
+
+    expect(parseEventCursor(cursor)).toEqual({ occurredAt: "2026-09-30 10:00:00", eventId: "ns|part|7" });
+  });
+
+  it("refuses a cursor it cannot read rather than paging from a made-up boundary", () => {
+    expect(() => parseEventCursor("not-a-cursor")).toThrow("INVALID_CURSOR");
+    expect(() => parseEventCursor(Buffer.from("|leading", "utf8").toString("base64url"))).toThrow("INVALID_CURSOR");
   });
 });

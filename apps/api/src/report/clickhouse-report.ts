@@ -398,3 +398,99 @@ export async function queryMachineStates(
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Events (fact_machine_event)
+// ---------------------------------------------------------------------------
+
+type MachineEventRow = {
+  event_id: string;
+  branch_id: string;
+  machine_id: string;
+  machine_code: string;
+  occurred_at: string;
+  kind: string;
+  phase: string | null;
+};
+
+/**
+ * Event feed for one window, newest first.
+ *
+ * `machineCode` comes from dim_machine rather than the event table: fact_machine_event
+ * keys on machine_id alone, and joining costs nothing on an empty table but keeps
+ * the mapping in one place if events ever start arriving.
+ *
+ * The window predicate is half-open on the upper bound (`< toDate(to) + 1`) to match
+ * every other query here, so an event at exactly midnight on the last day is included
+ * rather than falling between two ranges.
+ */
+export function buildEventsSQL(): string {
+  return `
+SELECT
+  e.event_id AS event_id,
+  e.branch_id AS branch_id,
+  e.machine_id AS machine_id,
+  m.machine_code AS machine_code,
+  e.occurred_at AS occurred_at,
+  toString(e.kind) AS kind,
+  toString(e.phase) AS phase
+FROM fact_machine_event AS e FINAL
+INNER JOIN dim_machine AS m FINAL ON
+  e.tenant_id = m.tenant_id
+  AND e.branch_id = m.branch_id
+  AND e.machine_id = m.machine_id
+WHERE e.occurred_at >= {from:String}
+  AND e.occurred_at < plus(toDate({to:String}), 1)
+  AND ({branchId:String} = '' OR toString(e.branch_id) = {branchId:String})
+  AND ({cursorOccurredAt:String} = '' OR (e.occurred_at, e.event_id) < ({cursorOccurredAt:String}, {cursorEventId:String}))
+ORDER BY e.occurred_at DESC, e.event_id DESC
+LIMIT {limit:UInt32}
+SETTINGS join_use_nulls = 1`;
+}
+
+/** One past the requested page, so the presence of a row past `limit` is what
+ *  signals "there is more" rather than a second count query. */
+export async function queryEvents(
+  ch: ClickHouseExecutor,
+  params: { from: string; to: string; branchId?: string; cursor?: string; limit?: number }
+): Promise<{ events: MachineEventRow[]; hasMore: boolean }> {
+  const limit = params.limit ?? EVENTS_DEFAULT_LIMIT;
+  const cursor = params.cursor ? parseEventCursor(params.cursor) : null;
+  const rows = await ch<MachineEventRow>(buildEventsSQL(), {
+    from: params.from,
+    to: params.to,
+    branchId: params.branchId ?? "",
+    cursorOccurredAt: cursor?.occurredAt ?? "",
+    cursorEventId: cursor?.eventId ?? "",
+    limit: limit + 1
+  });
+  return { events: rows.slice(0, limit), hasMore: rows.length > limit };
+}
+
+export const EVENTS_DEFAULT_LIMIT = 50;
+
+/**
+ * Keyset cursor over (occurred_at, event_id), which together are unique per event
+ * and match the ORDER BY, so paging cannot skip or repeat a row the way an offset
+ * would if events arrived mid-walk.
+ *
+ * Encoded rather than a bare "occurredAt|eventId" pair because event ids are opaque
+ * strings from the source and must not be able to forge a cursor boundary.
+ */
+export function encodeEventCursor(event: { occurredAt: string; eventId: string }): string {
+  return Buffer.from(`${event.occurredAt}|${event.eventId}`, "utf8").toString("base64url");
+}
+
+export function parseEventCursor(cursor: string): { occurredAt: string; eventId: string } {
+  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  // Split on the FIRST separator, not the last: occurredAt is a ClickHouse
+  // DateTime and cannot contain "|", while eventId is an opaque source string
+  // that can. Splitting on the last separator would silently truncate an id
+  // that contains one, paging from a boundary that never existed and either
+  // repeating or skipping rows.
+  const separator = decoded.indexOf("|");
+  if (separator <= 0) {
+    throw new Error("INVALID_CURSOR");
+  }
+  return { occurredAt: decoded.slice(0, separator), eventId: decoded.slice(separator + 1) };
+}
