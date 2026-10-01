@@ -27,6 +27,16 @@ import { installStubbedSession } from "./support/session";
  * branch out otherwise — so it skips rather than passing vacuously:
  *
  *   VITE_LIFF_ID=2011592166-uToRdTwS pnpm --filter @laundrytwin/web test:layout
+ *
+ * The value does not have to be a real LIFF ID. These specs abort every
+ * `*.line.me` and `*.line-s.me` request, so the SDK never reaches LINE and the
+ * placeholder is never used as a credential; it only has to be non-empty, so
+ * the gate compiles its LIFF branches in. CI sets one for exactly this reason
+ * (see `.github/workflows/ci.yml`): with the variable absent, all four specs
+ * skipped on every run and CI reported a green `40 passed` that had silently
+ * stopped covering the defect this file exists for. A skip that is correct on
+ * one machine and invisible on another is the same failure as a threshold
+ * measured on one platform.
  */
 
 /**

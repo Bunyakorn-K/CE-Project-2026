@@ -572,7 +572,7 @@ only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is 42 tests
+Playwright suite is **44 tests**
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
 `twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert
@@ -581,7 +581,25 @@ weather window never reads "ข้อมูลจริง", that a missing temp
 that the executive summary is hidden over an empty window and states when
 its source is unavailable, and that a twin card draws no machine state its own
 pills disclaim. `stale-liff-session.pw.ts` asserts that a blocking LINE gate
-neither hides a route the visitor may use nor replaces the sign-in page. Node
+neither hides a route the visitor may use nor replaces the sign-in page.
+
+**Four of those 44 were skipping in CI, which is the same defect a third
+time.** `stale-liff-session.pw.ts` guards the production defect measured
+earlier on 2026-10-01, and it skips unless `VITE_LIFF_ID` is set, because the
+gate compiles every LIFF branch out of a build without one. `ci.yml` never set
+it, so **all four specs skipped on every run and CI reported a green
+`40 passed`** — a tick that had quietly stopped covering the one production
+defect in this repository found by using the product. Three separate classes of
+"green means nothing" now, all in this file's history: a platform-derived font
+threshold, a bundle test skipped for want of a build, and a spec file skipped
+for want of an env var. The value does not need to be real — the specs abort
+every `*.line.me` request, so a placeholder is never used as a credential, only
+as a compile-time flag. `ci.yml` now sets one and **fails the step if the suite
+reports any skip**, so the condition cannot be reintroduced silently. Verified
+both directions: 44 passed with the variable set, 4 skipped and the guard trips
+without it.
+
+Node
 24.x is used (see `.nvmrc`); no
 `package.json` declares `engines` and the Dockerfiles build from the floating
 `node:24-bookworm-slim` tag, so nothing local enforces a narrower Node version.

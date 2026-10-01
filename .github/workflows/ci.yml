@@ -89,5 +89,23 @@ jobs:
       # is a real regression. If the font is ever dropped from `public/fonts/`, the
       # fragility comes straight back.
       - name: Layout regression suite (Playwright, Chromium)
-        run: pnpm --filter @laundrytwin/web test:layout
+        # VITE_LIFF_ID is a PLACEHOLDER, not the real channel ID, and must never
+        # be the real one here: these specs abort every *.line.me request, so the
+        # value only has to be non-empty for the LIFF gate to compile its branches
+        # in. Without it, all four `stale-liff-session.pw.ts` specs skip and CI
+        # reports a green "40 passed" that has quietly stopped covering the
+        # production defect they exist for. Verified: the suite reports 44 passed
+        # with this set, and 4 skipped with it absent.
+        env:
+          VITE_LIFF_ID: ci-placeholder-not-a-real-liff-id
+        run: |
+          set -o pipefail
+          pnpm --filter @laundrytwin/web test:layout 2>&1 | tee /tmp/layout.log
+          # A skipped spec is not a pass. Fail the build if the suite skipped
+          # anything, so a future env change cannot re-hide these assertions
+          # behind a green tick.
+          if grep -qE '^ *[0-9]+ skipped' /tmp/layout.log; then
+            echo "::error::the layout suite skipped tests — see the count above"
+            exit 1
+          fi
         timeout-minutes: 10
