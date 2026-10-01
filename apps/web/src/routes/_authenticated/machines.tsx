@@ -3,7 +3,8 @@ import { Card } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../lib/api/client";
-import { machineStatusMeta, freshnessMeta } from "../../lib/machine-status";
+import { freshnessMeta } from "../../lib/machine-status";
+import { liveFreshnessRow, liveStateSource, liveStatusClaim, machineKindLabel } from "../../lib/live-machine-view";
 
 export const Route = createFileRoute("/_authenticated/machines")({
   component: MachinesPage
@@ -20,6 +21,12 @@ type Machine = {
   lastSeen: string | null;
   freshness: "fresh" | "stale" | "unavailable" | string;
   reason?: string;
+  /**
+   * Whether this snapshot's state came from live telemetry or from usage rows.
+   * Absent on an older API build, which is why `liveStateSource` treats missing
+   * coverage as "no claim" rather than "unavailable".
+   */
+  coverage?: { liveState?: { available: boolean; reason?: string } };
   telemetry?: {
     phase: string | null;
     remainingSeconds: number | null;
@@ -56,10 +63,6 @@ function fmtTime(iso: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "ไม่มีข้อมูล";
   return date.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-function stateMeta(state: string | null): { label: string; className: string } {
-  return machineStatusMeta(state);
 }
 
 function sourceLabel(source: string): string {
@@ -139,6 +142,7 @@ function MachinesPage() {
               {liveQuery.isFetching && <span>กำลังรีเฟรช</span>}
             </div>
           </div>
+          <StateSourceNotice machines={liveQuery.data.machines} />
           {liveQuery.data.machines.length > 0 ? (
             <div className="machine-grid">{liveQuery.data.machines.map((machine) => <MachineCard key={machine.id} machine={machine} />)}</div>
           ) : (
@@ -151,20 +155,21 @@ function MachinesPage() {
 }
 
 function MachineCard({ machine }: { machine: Machine }) {
-  const state = stateMeta(machine.state);
-  const freshness = freshnessMeta(machine.freshness);
+  const claim = liveStatusClaim(machine);
+  const freshness = liveFreshnessRow(machine.freshness);
+  const fallback = freshnessMeta(machine.freshness);
   return (
     <Card variant="transparent" className="surface-card machine-card">
       <Card.Content>
         <div className="machine-card-head">
           <div>
             <span className="machine-code">{machine.code}</span>
-            <span className="machine-kind">{machine.kind === "washer" ? "เครื่องซักผ้า" : machine.kind === "dryer" ? "เครื่องอบผ้า" : machine.kind || "ไม่ระบุประเภท"}</span>
+            <span className="machine-kind">{machineKindLabel(machine.kind)}</span>
           </div>
-          <span className={`status-pill ${state.className}`}>{state.label}</span>
+          <span className={`status-pill ${claim.className}`}>{claim.label}</span>
         </div>
         <div className="machine-card-status-row">
-          <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>
+          {freshness && <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>}
           <span>สถานะตั้งค่า: {machine.configuredStatus || "ไม่ทราบ"}</span>
         </div>
         {machine.telemetry ? (
@@ -182,13 +187,41 @@ function MachineCard({ machine }: { machine: Machine }) {
                 prose. An unrecognised freshness value falls back to the
                 server's own reason -- showing the source string beats guessing
                 at a cause this build does not model. */}
-            {freshness.known
-              ? freshness.reason
+            {fallback.known
+              ? fallback.reason
               : machine.reason ?? "ไม่มี telemetry สำหรับเครื่องนี้"}
+            {/* The withheld state keeps its history visible without promoting it
+                back to the headline. A card that says only "unknown" would make
+                a technician re-check a machine it can already answer. */}
+            {claim.kind === "withheld" && claim.recordedLabel && <span className="machine-recorded-state"> · {claim.recordedLabel}</span>}
           </div>
         )}
         <p className="kpi-detail">พบข้อมูลล่าสุด {fmtTime(machine.lastSeen)}</p>
       </Card.Content>
     </Card>
+  );
+}
+
+/**
+ * One statement of where this snapshot's state came from, above the grid.
+ *
+ * Every machine carries `coverage.liveState`, and the page used to read none of
+ * it — so the page whose entire subject is machine state never said that it has
+ * none. Stating it once here beats stamping the same sentence onto 19 cards.
+ */
+function StateSourceNotice({ machines }: { machines: Machine[] }) {
+  const sources = machines.map((machine) => liveStateSource(machine.coverage));
+  // An older build carries no coverage on any machine. Saying nothing keeps the
+  // three states distinct: no claim, source missing, source working. The notice
+  // is only true when *every* machine agrees, so a mixed payload claims nothing.
+  if (sources.length === 0) return null;
+  if (!sources.every((source) => !("known" in source) && !source.available)) return null;
+  return (
+    <div className="state-message machine-source-notice" role="status">
+      {/* Thai first. The server's own reason stays available per machine on the
+          card, but the headline explanation is this product's own claim about
+          what it can and cannot see. */}
+      ไม่มีข้อมูลสดจากเครื่อง · สถานะทั้งหมดด้านล่างคำนวณจากแถวการใช้งาน ไม่ใช่ค่าที่เครื่องรายงานขณะนี้
+    </div>
   );
 }

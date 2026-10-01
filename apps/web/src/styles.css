@@ -1597,6 +1597,18 @@ main {
   white-space: normal;
 }
 
+.machine-recorded-state {
+  color: var(--muted);
+}
+
+/* The state-source notice sits directly under the section heading and above the
+   grid. It is a boundary on everything below it, so it needs the separation a
+   section gets rather than reading as one machine's note. */
+.machine-source-notice {
+  margin-top: 14px;
+  border-left: 3px solid var(--border-strong);
+}
+
 .analytics-section,
 .admin-section,
 .alert-section {

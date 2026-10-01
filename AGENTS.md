@@ -488,7 +488,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 661 tests green** — API 376, web 198,
+Local automated evidence on **2026-10-01: 675 tests green** — API 376, web 212,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
@@ -503,7 +503,8 @@ decision that regression testing caught — then to 129 with the machine-facts
 decision functions and the Thai error-code copy, then to 179 with the dashboard
 working context: URL state, date presets, branch sort, and the prior-period
 comparison, then to 182 with the API error-code coverage guard, then to 189 with
-the LIFF gate decision, then to 198 with the admin direct-grant form. The API
+the LIFF gate decision, then to 198 with the admin direct-grant form, then to 212
+with the live machine page's state-claim decision. The API
 figure rose from 360 to 376 with the grant route and the store function behind
 it, including the owner-only boundary and the duplicate refusal. `login.tsx` had
 **no test at all** when
@@ -512,10 +513,10 @@ only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is 36 tests
+Playwright suite is 42 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
-`analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts` and
-`twin-honesty.pw.ts` assert
+`analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
+`twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert
 rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
 that the executive summary is hidden over an empty window and states when
@@ -530,6 +531,43 @@ Manual browser QA of the active router was performed on 2026-09-28 and the
 LIFF-gate change on 2026-10-01, both in Chromium against a local build; they
 remain manual, Chromium-only, and leave no committed visual baseline. This does
 not establish production, LINE, or browser E2E.
+
+**The live machine page was asserting states its own cards disclaimed, measured
+in production on 2026-10-01 and fixed the same day.** `/machines` rendered
+`machineStatusMeta(state)` as a coloured pill unconditionally, above a freshness
+pill computed from the same card. Over the 19 machines at the real branch, **17
+reported `running` or `finished` with freshness `unavailable`** — so 17 cards
+showed a green `status-pill--success` `กำลังใช้งาน` pill directly above a red
+`ไม่พร้อมใช้งาน` pill. The loudest element on the card asserted a live machine
+state that the card itself said it had no evidence for. This is the same defect
+class the twin page already fixed by deleting its machine illustration; the twin
+page has carried the guard ever since, and the live page never had one. The page
+also dropped `coverage.liveState` entirely, so the page whose entire subject is
+machine state never said it had none.
+
+The rule is now `liveStatusClaim` in `apps/web/src/lib/live-machine-view.ts`:
+`fresh` states the state plainly, `stale` keeps it but out of the success colour
+and in the past tense (`สถานะล่าสุด:`), and `unavailable` **withholds** it —
+`ไม่ทราบสถานะปัจจุบัน` — while preserving the last recorded value as history
+(`บันทึกล่าสุดว่า …`) so a technician is not sent to re-check a machine the card
+can already answer. The branch is keyed on the **raw freshness enum, never on the
+Thai label**: a copy change to `freshnessMeta` would otherwise silently invert
+which case withholds a state, and the failure would be invisible — a card would
+start asserting a machine's state again, in the same green. An unrecognised or
+absent freshness is treated as `fresh`, because only a value this build
+recognises may withhold information; the reverse default would claim the product
+knows less than an older API build told it. `liveStateSource` keeps *no
+coverage*, *source unavailable* and *source working* distinct, and the page
+states the derived-not-live boundary **once above the grid** rather than stamping
+it on 19 cards. Evidence: 14 unit tests in `live-machine-view.test.ts`, each
+guard verified to fail against deliberately broken code (removing the
+`unavailable` branch fails 4; removing the `stale` demotion fails 1; conflating
+absent coverage with unavailable fails 1), plus `e2e/live-machine-honesty.pw.ts`
+against the built bundle, which reproduced the exact production markup
+(`<span class="status-pill status-pill--success">กำลังใช้งาน</span>`) when the
+guard was removed. Rendered in Chromium at 390px and 1440px against the measured
+production payload. **Not deployed** — production still runs the web image that
+carries the defect.
 
 ```bash
 pnpm test
