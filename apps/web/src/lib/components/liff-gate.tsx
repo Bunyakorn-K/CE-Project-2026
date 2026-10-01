@@ -4,6 +4,7 @@ import {
   initLiff,
   isIdTokenExpired,
   missingIdTokenReason,
+  signInWithLiff,
   staleLiffSessionMessage
 } from "../../liff";
 import { router } from "../../router";
@@ -38,14 +39,18 @@ function LiffGateMessage({ phase, message, onRetry }: { phase: Phase; message: s
  * Sign in again, discarding the stale token.
  *
  * `liff.logout()` is what clears the cached token; without it the SDK replays
- * the same expired one and the re-login lands back where it started. It returns
- * void and navigates, so the reload below only runs if that navigation did not
- * happen — a fallback, not the main path.
+ * the same expired one and the re-login lands back where it started. The plan
+ * decides whether a logout is needed at all — on this card the token is known
+ * dead, but going through the same shared decision keeps one code path from
+ * diverging again.
  */
 function reauthenticateWithLiff(liffId: string): void {
   void (async () => {
-    const liff = await initLiff(liffId);
-    if (liff) liff.logout();
+    await signInWithLiff(liffId);
+    // `logout()` is documented to clear the session and return nothing, NOT to
+    // navigate, so the reload cannot be assumed. When it does fire liff.login()
+    // this is redundant; when it only cleared the cache, this is what puts the
+    // user back on a clean page that can run a fresh exchange.
     window.location.reload();
   })();
 }

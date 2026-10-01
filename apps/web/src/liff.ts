@@ -191,6 +191,77 @@ export function staleLiffSessionMessage(): string {
   return "เซสชัน LINE หมดอายุแล้ว — กรุณาเข้าสู่ระบบด้วย LINE อีกครั้งเพื่อรับสิทธิ์เข้าใช้งานใหม่";
 }
 
+/**
+ * What a "sign in with LINE" press has to do, given the session it finds.
+ *
+ * The three cases are genuinely different and collapsing any two of them breaks
+ * sign-in for real users:
+ *
+ * - `login` — no session. Fire `liff.login()`. The ordinary first visit.
+ * - `exchange` — a session with a live token. Trade it for a session cookie.
+ *   This is the common case for anyone already signed in to LINE, and it must
+ *   NOT log them out: discarding a valid session and returning early is what
+ *   made the button do nothing at all (fixed 2026-10-01).
+ * - `renew` — a session whose token is expired. `logout()` first, or the SDK
+ *   replays the same dead token and the press loops forever.
+ *
+ * Kept pure and separate from the SDK so the decision can be tested without a
+ * LINE client, which is the only reason this bug reached production.
+ */
+export type LineSignInPlan = "login" | "exchange" | "renew";
+
+export function planLineSignIn(input: {
+  isLoggedIn: boolean;
+  idToken: string | null | undefined;
+  now?: number;
+}): LineSignInPlan {
+  if (!input.isLoggedIn) return "login";
+  // An unreadable or absent token is NOT an expiry — it stays unknown, and the
+  // exchange reports the real reason (missing openid scope, or no consent).
+  return isIdTokenExpired(input.idToken, input.now) ? "renew" : "exchange";
+}
+
+/** `getIDToken()` reads a cache and can reject; a failure here is "unknown". */
+async function readIdToken(liff: typeof import("@line/liff")["default"]): Promise<string | null> {
+  try {
+    return await liff.getIDToken();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One sign-in path, shared by the login button and the stale-session card.
+ *
+ * Both call sites previously carried their own copy of this logic and the login
+ * page's had no test at all, which is how a button that could not sign anyone in
+ * shipped. Returns the identity to exchange, or null when `liff.login()` has
+ * been fired and the SDK is navigating away — in which case the caller must not
+ * continue.
+ */
+export async function signInWithLiff(liffId: string): Promise<LiffIdentity | null> {
+  const liff = await initLiff(liffId);
+
+  if (!liff?.isLoggedIn()) {
+    manualLiffLogin(liffId);
+    return null;
+  }
+
+  const plan = planLineSignIn({ isLoggedIn: true, idToken: await readIdToken(liff) });
+  if (plan === "renew") {
+    // `logout()` is documented as clearing the session and returning nothing;
+    // it is NOT documented to navigate, so nothing here may assume the page is
+    // about to go away. Clear the one-shot login guard so the login fired below
+    // is not swallowed by the guard left over from the press that got here.
+    liff.logout();
+    resetLiffLoginGuard();
+    manualLiffLogin(liffId);
+    return null;
+  }
+
+  return connectLiff(liffId);
+}
+
 export async function connectLiff(liffId: string): Promise<LiffIdentity | null> {
   const liff = await initLiff(liffId);
   if (!liff) return null;

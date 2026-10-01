@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import { apiErrorMessage, apiUrl } from "../lib/api/client";
 import { authAtom } from "../lib/atoms/auth";
-import { connectLiff, initLiff, manualLiffLogin, resetLiffLoginGuard } from "../liff";
+import { resetLiffLoginGuard, signInWithLiff } from "../liff";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage
@@ -53,23 +53,12 @@ function LoginPage() {
     setError(null);
     resetLiffLoginGuard();
     try {
-      // A user who reaches this button holding a STALE token is the exact case
-      // that used to dead-end: LIFF reports isLoggedIn() true, hands back the
-      // same expired token, and the exchange fails identically every press.
-      // Logging out first is what forces a genuinely new one. It is skipped
-      // when there is no live session so a first-time visitor is not logged
-      // out of nothing.
-      //
-      // `logout()` returns void and navigates away, so control does not come
-      // back here — returning is just belt-and-braces for the case where the
-      // navigation is blocked and the page is still alive.
-      const existing = await initLiff(liffId);
-      if (existing?.isLoggedIn()) {
-        existing.logout();
-        return;
-      }
-      manualLiffLogin(liffId);
-      const identity = await connectLiff(liffId);
+      // One shared path, because the login button and the stale-session card
+      // used to carry separate copies of this and diverge. `signInWithLiff`
+      // decides between logging in, exchanging a live token, and renewing an
+      // expired one; it returns null when it has fired liff.login() and the SDK
+      // is navigating, so nothing below may run in that case.
+      const identity = await signInWithLiff(liffId);
       if (!identity) return;
       const response = await fetch(apiUrl("/api/auth/liff/exchange"), { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ idToken: identity.idToken }) });
       if (!response.ok) throw new Error(await apiErrorMessage(response, "เข้าสู่ระบบด้วย LINE ไม่สำเร็จ"));
