@@ -148,8 +148,11 @@ path: LIFF reports a stale session as a healthy one — `isLoggedIn()` true and
 row — so the expiry is invisible client-side and only the API rejects it. The
 browser now reads the `exp` claim itself, offers a re-login instead of a retry
 that cannot succeed, and the API answers **401** for a rejected token instead of
-the 502 that made a stale browser look like a server outage. See
-`apps/web/src/liff.ts` and `apps/api/src/liff-auth.ts`. Better Auth requires
+the 502 that made a stale browser look like a server outage. Sign-in is one
+shared path, `signInWithLiff`, behind the pure decision `planLineSignIn` —
+an earlier version logged out **any** logged-in session and therefore could
+not sign anyone in. See `apps/web/src/liff.ts` and
+`apps/api/src/liff-auth.ts`. Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded
 rate limits. Development access requires both `NODE_ENV=development` and
 `LAUNDRYTWIN_DEV_BYPASS=true`; it uses an in-memory `Development Owner`, reads
@@ -328,13 +331,17 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 547 tests green** — API 351, web 109,
+Local automated evidence on **2026-10-01: 552 tests green** — API 351, web 114,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, and web
-from 92 to 109 with the Thai freshness and alert-source states, and with the
+from 92 to 114 with the Thai freshness and alert-source states, and with the
 stale-LIFF-session handling (a browser holding an expired ID token, which LIFF
-reports as a healthy session and never refreshes). Older figures
+reports as a healthy session and never refreshes) — including the sign-in
+decision that regression testing caught. `login.tsx` had **no test at all** when
+a broken LINE sign-in button shipped through a green suite; a UI path that can
+only be exercised inside the LINE client needs its decision logic extracted as
+a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
 Playwright suite is 20 tests

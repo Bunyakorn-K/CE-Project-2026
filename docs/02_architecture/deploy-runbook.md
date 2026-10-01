@@ -764,6 +764,33 @@ Note that `liff.logout()` returns **void** and navigates. Both call sites were
 originally written as `await liff.logout().catch(...)` and the type checker
 rejected them — the tests did not, because neither has a test.
 
+> **Correction, `155e111` (2026-10-01).** The paragraph above is wrong, and it
+> shipped a regression within the hour. The LIFF reference documents
+> `liff.logout()` as clearing the session and returning nothing, with **no
+> navigation side effect** — "returns void" was read as "and navigates", which
+> the documentation does not say.
+>
+> The worse half: the login button called `logout()` for **any** logged-in
+> session and then returned without exchanging, so a user holding a perfectly
+> valid token was logged out and sent nowhere. The button could not sign anyone
+> in. Only an **expired** token needs a logout, and a stale token still reports
+> `isLoggedIn()` true — so the fix could not even reach the case it was written
+> for.
+>
+> Both call sites carried their own copy of this logic and `login.tsx` had **no
+> test of any kind**. Sign-in is now one path, `signInWithLiff`, behind the pure
+> decision `planLineSignIn` (`login` / `exchange` / `renew`), so the choice is
+> testable without a LINE client. Nothing assumes a navigation the SDK does not
+> document, and `renew` clears the one-shot login guard before firing
+> `liff.login()` so a guard left by the previous press cannot swallow it. An
+> unreadable or absent token still resolves to `exchange`, never `renew`:
+> unknown stays unknown, and discarding a session over a failed cache read would
+> sign out users whose token was fine.
+>
+> The lesson worth keeping: **a UI path that can only be exercised inside the
+> LINE client must have its decision logic extracted as a pure function**, or it
+> ships untested. This one shipped green and dead.
+
 #### What shipped
 
 `deploy-84718f6-20261001`, from pinned commit `84718f6`. API and web deployed as
@@ -1078,3 +1105,49 @@ number in the product moves as a result of running it.
 | `database is locked` anywhere | SQLite metadata (should be gone) | Airflow + Superset metadata must live on analytics-postgres-1 |
 | docker login to registry fails | Double auth on Caddy | Caddy block for registry must NOT add basic_auth |
 | `laundrytwin-etl-1` alive, no new `ETL complete:` line | A source or warehouse call is blocked | `docker logs laundrytwin-etl-1 --tail 50` — the last `ETL phase=<name> status=start` names the phase; a phase with no `status=ok` is the one that stalled. Bounded timeouts now turn a real block into `status=failed` within `ETL_PHASE_TIMEOUT_MS`. |
+
+### `deploy-155e111-20261001` — the LINE sign-in button could not sign anyone in
+
+Reported one hour after `84718f6` shipped: pressing **เข้าสู่ระบบด้วย LINE**
+did nothing and never reached the dashboard. A regression in the fix itself, not
+a new defect.
+
+`onLineSignIn` called `liff.logout()` whenever `isLoggedIn()` was true and then
+returned **without exchanging**. LIFF reports `isLoggedIn()` true for a healthy
+session, so every already-signed-in user was logged out and sent nowhere — the
+button was inert. Only an *expired* token needed a logout, and a stale token
+reports `isLoggedIn()` true too, so the change could not reach the one case it
+was written for: both paths took the same branch.
+
+| | Before | After |
+| :--- | :--- | :--- |
+| No session | `liff.login()` | `login` |
+| **Live token** | **`logout()`, return — dead** | `exchange` |
+| Expired token | `logout()`, return | `renew` |
+| Token unreadable | treated as expired | `exchange` (unknown ≠ expired) |
+
+Rollback target `deploy-84718f6-20261001`. Web only — the API was untouched, so
+no SQLite backup was taken and `laundrytwin-api-1` was never recreated (still
+`deploy-84718f6`, `restarts=0`).
+
+Post-deploy over TLS: `/`, `/login`, `/privacy`, `/terms`, `/health` all **200**;
+entry bundle `index-sT6pqrPy.js` served, with the LIFF id and the Thai
+stale-session string baked in. All six report routes still **401**
+unauthenticated, so no fallback widened access.
+
+**Not verified: signing in from inside the LINE app.** That needs a real LINE
+account, which was deliberately not used. What is verified is that the decision
+is unit-tested against the exact regression, that the bundle is live, and that
+nothing in either call site depends on an undocumented SDK behaviour.
+
+Suite: **552 green** (API 351, web 114, ETL 87); `pnpm check` and `pnpm build`
+clean; Playwright layout 20 passed.
+
+#### Rolling back `155e111`
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+cd /opt/laundrytwin
+sudo sed -i 's#^WEB_IMAGE=.*#WEB_IMAGE=10.10.0.117:5000/laundrytwin-web:deploy-84718f6-20261001#' .env
+sudo docker compose --env-file .env up -d --no-deps web
+```
