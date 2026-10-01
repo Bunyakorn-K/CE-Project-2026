@@ -612,6 +612,36 @@ a parseable UUID, while `toString()` is total.
 This is the argument for running new warehouse SQL against the real engine
 before deploying, and it belongs next to the other live-verified records here.
 
+#### What shipped
+
+`deploy-0663e76-20261001`, from pinned commit `0663e76` (the two commits above).
+Backup `backup-pre-events-20261001T032242Z.sqlite`, taken with the SQLite
+**online backup API** — never `cp`, because the WAL sidecar was 1.75 MB against a
+4 KB main file, so a copy would have captured almost nothing. Verified
+`integrity_check: ok`, 196,608 bytes, 15 tables. Rollback target was
+`deploy-170b527-20261001`; the intermediate `deploy-7e6d2dd` is retained and is
+the correct rollback for the gate fix alone.
+
+Smoke test over TLS at `https://laundrytwin.duckdns.org`: all five report routes
+**401 unauthenticated**, all pages 200. The authenticated response was verified
+by driving the deployed bundle in-process against the live warehouse:
+
+```json
+{ "contractVersion": "clickhouse-events", "source": "clickhouse",
+  "availability": "unavailable",
+  "reason": "fact_machine_event is present but empty; no machine events have been ingested",
+  "events": [], "nextCursor": null }
+```
+
+That is the whole point of the contract: a 200 that says the source cannot
+answer, with the reason attached — not a 503 implying breakage, and not an empty
+array implying a quiet week. Branch-scoped calls behave the same, and a
+malformed range is still rejected with `INVALID_RANGE`. **Browser E2E is still
+pending** — the LINE LIFF session had expired and `liff/exchange` cannot complete
+outside the LINE app, which is the known-unverified auth flow.
+
+Suite after the fix: **534 green** (API 346, web 101, ETL 87).
+
 ### Verified in a real browser, not just by status code
 
 Over TLS at `https://laundrytwin.duckdns.org` as a signed-in LINE user:
