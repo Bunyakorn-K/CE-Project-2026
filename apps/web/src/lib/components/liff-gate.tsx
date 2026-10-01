@@ -1,16 +1,22 @@
 import type { LiffIdentity } from "../../liff";
-import { getLiffInitError, initLiff, missingIdTokenReason } from "../../liff";
+import {
+  getLiffInitError,
+  initLiff,
+  isIdTokenExpired,
+  missingIdTokenReason,
+  staleLiffSessionMessage
+} from "../../liff";
 import { router } from "../../router";
 import type { PropsWithChildren } from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { apiUrl } from "../api/client";
 
-type State = "loading" | "ready" | "error";
+type State = "loading" | "ready" | "error" | "stale";
 type Phase = "init" | "exchange" | "session";
 type ExchangeResponse = { user: { id: string; name: string; email: string }; roles: string[] };
 type ApiErrorResponse = { error?: { code?: string; message?: string } };
 
-function LiffGateMessage({ phase, message }: { phase: Phase; message: string }) {
+function LiffGateMessage({ phase, message, onRetry }: { phase: Phase; message: string; onRetry?: () => void }) {
   const heading = phase === "init" ? "เริ่ม LINE LIFF ไม่สำเร็จ" : phase === "exchange" ? "แลกเปลี่ยนข้อมูล LINE ไม่สำเร็จ" : "ตรวจสอบเซสชันไม่สำเร็จ";
   return (
     <main className="public-page liff-public-page">
@@ -18,10 +24,47 @@ function LiffGateMessage({ phase, message }: { phase: Phase; message: string }) 
         <span className="brand-symbol" aria-hidden="true">LT</span>
         <h1>{heading}</h1>
         <p>{message}</p>
-        <button type="button" onClick={() => window.location.reload()} className="primary-button">ลองใหม่</button>
+        {/* When a fresh token is what is needed, re-login is the action. A reload
+            would re-run the identical exchange against the same stale token. */}
+        <button type="button" onClick={onRetry ?? (() => window.location.reload())} className="primary-button">
+          {onRetry ? "เข้าสู่ระบบด้วย LINE อีกครั้ง" : "ลองใหม่"}
+        </button>
       </section>
     </main>
   );
+}
+
+/**
+ * Sign in again, discarding the stale token.
+ *
+ * `liff.logout()` is what clears the cached token; without it the SDK replays
+ * the same expired one and the re-login lands back where it started. It returns
+ * void and navigates, so the reload below only runs if that navigation did not
+ * happen — a fallback, not the main path.
+ */
+function reauthenticateWithLiff(liffId: string): void {
+  void (async () => {
+    const liff = await initLiff(liffId);
+    if (liff) liff.logout();
+    window.location.reload();
+  })();
+}
+
+class LiffExchangeError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "LiffExchangeError";
+  }
+}
+
+/**
+ * A token the API refused, as opposed to an API that could not be reached.
+ *
+ * Only the former is fixed by signing in again. A 502 or 503 means LINE or the
+ * channel config is the problem, and re-logging the user in would be noise.
+ */
+function isRejectedTokenError(error: unknown): boolean {
+  return error instanceof LiffExchangeError && error.status === 401;
 }
 
 async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Promise<ExchangeResponse | null> {
@@ -38,7 +81,10 @@ async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Pr
   }
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as ApiErrorResponse | null;
-    throw new Error(data?.error?.message ?? `LINE exchange failed (HTTP ${response.status})`);
+    throw new LiffExchangeError(
+      data?.error?.message ?? `LINE exchange failed (HTTP ${response.status})`,
+      response.status
+    );
   }
   return (await response.json()) as ExchangeResponse;
 }
@@ -136,6 +182,15 @@ export function LiffGate({ children }: PropsWithChildren) {
         const [profile, idToken] = await Promise.all([liff.getProfile(), liff.getIDToken()]);
         if (cancelled) return;
         if (!idToken) throw new Error(await missingIdTokenReason(liff));
+        // Checked BEFORE the exchange. LIFF reports a stale token as a perfectly
+        // good one — isLoggedIn() is true and getIDToken() returns it happily —
+        // so the API is the only place the expiry surfaces, and its answer is
+        // an opaque failure. Catching it here lets the user re-login instead of
+        // retrying an exchange that cannot succeed.
+        if (isIdTokenExpired(idToken)) {
+          setState("stale");
+          return;
+        }
         setPhase("exchange");
         const exchanged = await exchangeIdentity({ displayName: profile.displayName, userId: profile.userId, idToken }, controller.signal);
         if (cancelled) return;
@@ -151,6 +206,13 @@ export function LiffGate({ children }: PropsWithChildren) {
         setState("ready");
       } catch (nextError) {
         if (cancelled) return;
+        // A 401 from the exchange means the token is no longer usable — it can
+        // expire between the check above and the response. Route it to the same
+        // re-login path rather than showing a dead "try again".
+        if (isRejectedTokenError(nextError)) {
+          setState("stale");
+          return;
+        }
         setError(nextError instanceof Error ? nextError.message : "LINE initialization failed");
         setState("error");
       }
@@ -165,6 +227,16 @@ export function LiffGate({ children }: PropsWithChildren) {
 
   if (state === "loading") {
     return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;
+  }
+
+  if (state === "stale") {
+    return (
+      <LiffGateMessage
+        phase="exchange"
+        message={staleLiffSessionMessage()}
+        onRetry={() => reauthenticateWithLiff(import.meta.env.VITE_LIFF_ID as string)}
+      />
+    );
   }
 
   if (state === "error") return <LiffGateMessage phase={phase} message={error ?? "ไม่สามารถเริ่ม LINE LIFF ได้"} />;

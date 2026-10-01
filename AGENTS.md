@@ -140,7 +140,16 @@ never quote a stale number), the dashboard response carries `cycleAttribution`
 and the web dashboard states the unattributed share in Thai; **a cycle count
 must never be presented as fully attributed.** This is
 code/test evidence, not production E2E. The LINE
-authentication flow is not yet verified end to end. Better Auth requires
+authentication flow is not yet verified end to end — **a live sign-in needs a
+real LINE account and consent, which no automated check here can perform.** What
+*is* verified (2026-10-01, in a real browser against production) is the failure
+path: LIFF reports a stale session as a healthy one — `isLoggedIn()` true and
+`getIDToken()` returning a token nine hours past its 60-minute life, twice in a
+row — so the expiry is invisible client-side and only the API rejects it. The
+browser now reads the `exp` claim itself, offers a re-login instead of a retry
+that cannot succeed, and the API answers **401** for a rejected token instead of
+the 502 that made a stale browser look like a server outage. See
+`apps/web/src/liff.ts` and `apps/api/src/liff-auth.ts`. Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded
 rate limits. Development access requires both `NODE_ENV=development` and
 `LAUNDRYTWIN_DEV_BYPASS=true`; it uses an in-memory `Development Owner`, reads
@@ -319,11 +328,13 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 534 tests green** — API 346, web 101,
+Local automated evidence on **2026-10-01: 547 tests green** — API 351, web 109,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** The API figure rose from 320 to 346 on 2026-10-01
+rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, and web
-from 92 to 101 with the Thai freshness and alert-source states. Older figures
+from 92 to 109 with the Thai freshness and alert-source states, and with the
+stale-LIFF-session handling (a browser holding an expired ID token, which LIFF
+reports as a healthy session and never refreshes). Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
 Playwright suite is 20 tests

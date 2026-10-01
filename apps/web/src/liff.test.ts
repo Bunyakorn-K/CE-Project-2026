@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missingIdTokenMessage } from "./liff";
+import { idTokenExpiryMs, isIdTokenExpired, missingIdTokenMessage, staleLiffSessionMessage } from "./liff";
 
 describe("missingIdTokenMessage", () => {
   it("blames the console when the LIFF app has no openid scope", () => {
@@ -33,5 +33,75 @@ describe("missingIdTokenMessage", () => {
   it("still says the scope to check when only the granted list is readable", () => {
     const message = missingIdTokenMessage({ appScopes: null, grantedScopes: [] });
     expect(message).toContain("ยังไม่ได้อนุญาต");
+  });
+});
+describe("idTokenExpiryMs", () => {
+  // A real ID token payload from the incident, with only `exp` meaningful here.
+  function token(payload: Record<string, unknown>): string {
+    const encode = (v: unknown) =>
+      btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(v))))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `${encode({ alg: "RS256" })}.${encode(payload)}.sig`;
+  }
+
+  it("reads exp as milliseconds", () => {
+    expect(idTokenExpiryMs(token({ exp: 1790794078 }))).toBe(1790794078000);
+  });
+
+  it("returns null rather than guessing when the token cannot be read", () => {
+    // A wrong guess here is what would send a valid user through a pointless
+    // re-login, so every unreadable shape must be null and not "expired".
+    expect(idTokenExpiryMs(null)).toBeNull();
+    expect(idTokenExpiryMs(undefined)).toBeNull();
+    expect(idTokenExpiryMs("")).toBeNull();
+    expect(idTokenExpiryMs("not-a-jwt")).toBeNull();
+    expect(idTokenExpiryMs("only.two")).toBeNull();
+    expect(idTokenExpiryMs(`a.${btoa("{not json")}`)).toBeNull();
+    expect(idTokenExpiryMs(token({ exp: "soon" }))).toBeNull();
+  });
+
+  it("decodes a multi-byte name without corrupting it", () => {
+    const thai = token({ exp: 1790794078, name: "ผู้ดูแลร้าน" });
+    expect(idTokenExpiryMs(thai)).toBe(1790794078000);
+  });
+});
+
+describe("isIdTokenExpired", () => {
+  function tokenWithExp(expSeconds: number): string {
+    const payload = btoa(JSON.stringify({ exp: expSeconds }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `a.${payload}.sig`;
+  }
+
+  it("treats the incident's token as expired", () => {
+    // exp 2026-09-30T18:47:58Z, observed at 2026-10-01T03:52Z — nine hours past
+    // a sixty-minute life. This is the token that dead-ended the login.
+    const stale = tokenWithExp(1790794078);
+    expect(isIdTokenExpired(stale, Date.parse("2026-10-01T03:52:00Z"))).toBe(true);
+  });
+
+  it("treats a live token as valid", () => {
+    const live = tokenWithExp(1790794078);
+    expect(isIdTokenExpired(live, Date.parse("2026-09-30T18:00:00Z"))).toBe(false);
+  });
+
+  it("expires slightly early so a token cannot die mid-flight", () => {
+    const token = tokenWithExp(Math.floor(Date.parse("2026-10-01T00:00:20Z") / 1000));
+    expect(isIdTokenExpired(token, Date.parse("2026-10-01T00:00:00Z"))).toBe(true);
+  });
+
+  it("does NOT call an unreadable token expired", () => {
+    // The dangerous direction: guessing "expired" re-logs-in a user whose token
+    // was fine. Unknown must stay unknown.
+    expect(isIdTokenExpired("garbage", Date.now())).toBe(false);
+    expect(isIdTokenExpired(null, Date.now())).toBe(false);
+  });
+});
+
+describe("staleLiffSessionMessage", () => {
+  it("offers a re-login rather than a retry, and says so in Thai", () => {
+    const message = staleLiffSessionMessage();
+    expect(message).toContain("หมดอายุ");
+    expect(message).toContain("เข้าสู่ระบบ");
   });
 });

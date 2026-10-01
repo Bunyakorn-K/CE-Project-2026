@@ -25,6 +25,7 @@ vi.mock("./access-store", async (importOriginal) => {
 
 import type { ClickHouseExecutor } from "./analytics/clickhouse";
 import { createApp } from "./index";
+import { LiffVerificationError } from "./liff-auth";
 
 describe("LaundryTwin API", () => {
   afterEach(() => {
@@ -1069,6 +1070,72 @@ describe("LaundryTwin API", () => {
       } finally {
         restore();
       }
+    });
+  });
+});
+
+describe("LINE exchange failure reporting", () => {
+  const headers = { "x-forwarded-for": "198.51.100.77", "content-type": "application/json" };
+
+  it("reports a rejected token as 401 so the browser re-logs in", async () => {
+    // A stale browser token is the common case, and the browser can only
+    // recover from it if the status says "your token", not "our server". A 502
+    // here is what produced a dead "try again" button that re-ran the same
+    // failing exchange forever.
+    const app = createApp({
+      liffVerifier: async () => {
+        throw new LiffVerificationError("LINE identity token is invalid", 401);
+      }
+    });
+
+    const response = await app.request("/api/auth/liff/exchange", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ idToken: "stale" })
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "LIFF_VERIFICATION_FAILED", message: "LINE identity token is invalid" }
+    });
+  });
+
+  it("keeps LINE being unreachable a 502", async () => {
+    // Re-logging the user in cannot fix an unreachable LINE, so this must stay
+    // visibly a server-side fault.
+    const app = createApp({
+      liffVerifier: async () => {
+        throw new LiffVerificationError("LINE identity verification is unavailable", 502);
+      }
+    });
+
+    const response = await app.request("/api/auth/liff/exchange", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ idToken: "tok" })
+    });
+
+    expect(response.status).toBe(502);
+  });
+
+  it("does not disguise an unknown failure as a LINE outage", async () => {
+    // The old fallback answered 502 for anything unrecognized, which asserts
+    // that LINE is down on no evidence. 401 is the honest, recoverable answer.
+    const app = createApp({
+      liffVerifier: async () => {
+        throw new Error("something unforeseen");
+      }
+    });
+
+    const response = await app.request("/api/auth/liff/exchange", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ idToken: "tok" })
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "LIFF_TOKEN_REJECTED", message: "LINE identity could not be verified" }
     });
   });
 });

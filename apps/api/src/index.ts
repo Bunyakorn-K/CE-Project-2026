@@ -983,14 +983,32 @@ function irisError(c: Context, error: unknown) {
   return apiError(c, 502, "REPORTING_SOURCE_FAILED", "IRIS reporting could not return a usable response");
 }
 
+/**
+ * Map a LIFF exchange failure to a status the browser can act on.
+ *
+ * The distinction that matters is WHO must fix it, and the old mapping threw
+ * that away: an unknown error became 502, which reads as a server or gateway
+ * fault. The common case by far is a browser holding a stale ID token — LINE
+ * answers 400 for those — and no amount of retrying fixes it. Only the user
+ * fetching a new token does, so that must not be dressed as an outage.
+ *
+ *   401  the token is expired, malformed, or signed for another channel:
+ *        the caller must obtain a new one. LINE being unreachable (502) and a
+ *        missing channel id (503) are the only genuine server-side faults.
+ *   429  the caller is being rate limited; the response already carries
+ *        Retry-After, which is the only thing that helps.
+ */
 function liffError(c: Context, error: unknown) {
   if (error instanceof Error && "status" in error && typeof error.status === "number") {
     const status = error.status;
-    if (status === 401 || status === 502 || status === 503) {
+    if (status === 401 || status === 502 || status === 503 || status === 429) {
       return apiError(c, status, "LIFF_VERIFICATION_FAILED", error.message);
     }
   }
-  return apiError(c, 502, "LIFF_VERIFICATION_FAILED", "LINE identity could not be verified");
+  // An unrecognized failure is still not evidence that LINE is down. Say what
+  // is actually known — this exchange failed — and let the browser re-login,
+  // which is safe to attempt because a fresh token cannot make it worse.
+  return apiError(c, 401, "LIFF_TOKEN_REJECTED", "LINE identity could not be verified");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

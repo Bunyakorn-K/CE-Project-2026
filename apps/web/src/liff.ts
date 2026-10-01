@@ -131,6 +131,66 @@ async function readScopes(read: () => unknown): Promise<string[] | null> {
   }
 }
 
+/**
+ * The `exp` claim of an ID token, as milliseconds, or null when it cannot be read.
+ *
+ * This exists because a STALE token is a distinct failure from a MISSING one,
+ * and the LIFF SDK does not tell them apart: `isLoggedIn()` stays true and
+ * `getIDToken()` keeps handing back the same expired token (observed
+ * 2026-10-01, a token 9 hours past its 60-minute life, still returned twice in
+ * a row). Sending that to the API produced an opaque 502 and a "try again"
+ * button that re-ran the identical failing exchange forever.
+ *
+ * The payload is decoded but NOT verified — this only decides what the user is
+ * told and whether to re-login. The signature is the server's job and remains
+ * so; trusting a client-side `exp` for anything but presentation would be
+ * exactly the "fabricate data" failure the project rules forbid.
+ */
+export function idTokenExpiryMs(idToken: string | null | undefined): number | null {
+  if (!idToken) return null;
+  const parts = idToken.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(base64UrlDecode(parts[1])) as { exp?: unknown };
+    return typeof payload.exp === "number" && Number.isFinite(payload.exp) ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function base64UrlDecode(value: string): string {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const withPadding = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  const binary = atob(withPadding);
+  // JWT payloads are UTF-8; the Thai display name in `name` is multi-byte, and
+  // treating those bytes as Latin-1 would corrupt it.
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+/** Treat a token as expired slightly early, so it cannot die in flight. */
+const ID_TOKEN_EXPIRY_SKEW_MS = 30 * 1000;
+
+export function isIdTokenExpired(
+  idToken: string | null | undefined,
+  now: number = Date.now()
+): boolean {
+  const expiry = idTokenExpiryMs(idToken);
+  // An unreadable `exp` is NOT an expiry. Guessing "expired" here would send a
+  // user through a pointless re-login for a token that may be perfectly valid.
+  return expiry !== null && expiry - ID_TOKEN_EXPIRY_SKEW_MS <= now;
+}
+
+/**
+ * What to tell someone whose LINE session went stale, and what to do about it.
+ *
+ * The fix is a fresh login, not a retry — so the UI has to offer one. Telling
+ * them to reload is what made this look like an unrecoverable outage.
+ */
+export function staleLiffSessionMessage(): string {
+  return "เซสชัน LINE หมดอายุแล้ว — กรุณาเข้าสู่ระบบด้วย LINE อีกครั้งเพื่อรับสิทธิ์เข้าใช้งานใหม่";
+}
+
 export async function connectLiff(liffId: string): Promise<LiffIdentity | null> {
   const liff = await initLiff(liffId);
   if (!liff) return null;
