@@ -10,7 +10,8 @@ Repository verification targets the Node.js 24.x line (see `.nvmrc`, which CI
 reads via `node-version-file`) and pnpm 10.33.4, which is exact because
 `packageManager: "pnpm@10.33.4"` is corepack-enforced. The Node range is
 documented, not enforced locally: no `package.json` declares `engines`, and
-`apps/web/Dockerfile` builds from the floating `node:24-bookworm-slim` tag. The
+`apps/api/Dockerfile` — which since 2026-10-01 builds the app, API and SPA
+together — builds from the floating `node:24-bookworm-slim` tag. The
 2026-09-27 run below used Node 24.21.0, within the 24.x line.
 
 ```bash

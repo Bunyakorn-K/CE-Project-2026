@@ -1,11 +1,17 @@
 services:
-  api:
-    image: ${API_IMAGE:-laundrytwin-api:latest}
+  # One container serves the API and the SPA. They were two images with two
+  # independent tags, but never two independent releases — the runbook deploys
+  # them as a pair because the web reads fields the API change introduces. The
+  # API process also answers the static routes (WEB_ROOT, apps/api/src/spa.ts),
+  # which is what nginx used to do, so there is no sidecar left to keep in step.
+  app:
+    image: ${APP_IMAGE:-laundrytwin:latest}
     env_file: .env
     environment:
       NODE_ENV: production
       PORT: 8787
       DATABASE_PATH: /data/laundrytwin.sqlite
+      WEB_ROOT: /app/public
     ports:
       - "8787:8787"
     restart: unless-stopped
@@ -17,15 +23,6 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
-
-  web:
-    image: ${WEB_IMAGE:-laundrytwin-web:latest}
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "8080:80"
-    restart: unless-stopped
 
   etl:
     image: ${ETL_IMAGE:-laundrytwin-etl:latest}

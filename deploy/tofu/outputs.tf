@@ -33,8 +33,7 @@ output "env_files" {
 output "images" {
   description = "Image references written to /opt/laundrytwin/.env and pulled by deploy/compose.yaml."
   value = {
-    api     = local.api_image
-    web     = local.web_image
+    app     = local.app_image
     etl     = local.etl_image
     weather = local.weather_image
   }

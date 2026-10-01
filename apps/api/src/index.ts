@@ -45,6 +45,7 @@ import {
   type IrisLiveSnapshot
 } from "./iris-read-client";
 import { isDemoModeEnabled } from "./demo-read-client";
+import { spaHandler } from "./spa";
 import { createBotHandler } from "./bot";
 import { LineAdapter } from "./bot/line-adapter";
 import { runAlertSweep } from "./alert-engine";
@@ -86,6 +87,10 @@ initializeDatabase();
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = new Hono<{ Variables: AppVariables }>();
+  // The built SPA directory. One image serves the whole product, so the API
+  // process also answers the static routes nginx used to — see spa.ts for why
+  // the fallback refuses server paths.
+  const webRoot = process.env.WEB_ROOT?.trim();
   const iris = dependencies.irisClient ?? createIrisReadClient();
   const liffVerifier = dependencies.liffVerifier ?? verifyLiffIdToken;
   const trustedOrigins = resolveTrustedOrigins();
@@ -599,6 +604,13 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
     return mcp.handle(c.req.raw);
   });
+
+  // Static + SPA fallback, registered LAST so every server route above wins.
+  // Absent when WEB_ROOT is unset (tests, the ETL image, a bare API run), which
+  // keeps a 404 a 404 rather than a read of a directory that is not there.
+  if (webRoot) {
+    app.use("*", spaHandler(webRoot));
+  }
 
   return app;
 }

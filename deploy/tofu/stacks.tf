@@ -41,20 +41,20 @@ resource "null_resource" "analytics_stack" {
   }
 }
 
-# App stack: api/web/etl deployed from registry images built with
-# per-app Dockerfiles (apps/*/Dockerfile) via turbo prune; compose pulls from
-# the internal registry (10.10.0.117:5000). The old standalone playground
-# app was merged into web as the /playground route.
+# App stack: the merged `laundrytwin` image (API + SPA in one container) plus
+# the etl and weather collectors, pulled from the internal registry
+# (10.10.0.117:5000). The api and web Dockerfiles were one file before the
+# merge; app_docker hashes the single one that now builds both halves, so a
+# change to either rebuilds and re-pulls the image that carries them.
 resource "null_resource" "app_stack" {
   depends_on = [null_resource.install_envs, null_resource.analytics_stack]
   triggers = {
     ref        = var.app_repo_ref
     app_dir    = local.app_dir
-    api_docker = filemd5("${path.module}/../../apps/api/Dockerfile")
-    web_docker = filemd5("${path.module}/../../apps/web/Dockerfile")
+    app_docker = filemd5("${path.module}/../../apps/api/Dockerfile")
     etl_docker = filemd5("${path.module}/../../apps/etl/Dockerfile")
     compose    = filemd5("${path.module}/../../compose.yaml")
-    # Without this, moving var.api_image_tag (or any env value) rewrites the
+    # Without this, moving var.app_image_tag (or any env value) rewrites the
     # .env files but leaves the containers on their old image - the *_IMAGE
     # keys would be delivered and then ignored. Hashed for the same reason as
     # the analytics trigger above.
@@ -64,7 +64,7 @@ resource "null_resource" "app_stack" {
     command = <<-EOT
       set -euo pipefail
       cd "${local.app_dir}"
-      sudo docker compose pull api web etl weather
+      sudo docker compose pull app etl weather
       sudo docker compose up -d
       echo "app stack up"
     EOT
@@ -98,9 +98,18 @@ resource "null_resource" "smoke" {
           echo "SMOKE OK: $name -> $code"
         fi
       }
-      check api        http://127.0.0.1:8787/health 200
-      check web        http://127.0.0.1:8080/        200
-      check web_playground http://127.0.0.1:8080/playground 200
+      check app_health http://127.0.0.1:8787/health 200
+      # The SPA and the API are one container on one port now, so these three
+      # are the merge's own smoke: a 200 on /health alone would pass with the
+      # static half missing, which is the failure this change could introduce.
+      # /playground is a client-side route with no extension — it 200s only if
+      # the SPA fallback resolves it to index.html rather than 404ing.
+      check app_root   http://127.0.0.1:8787/          200
+      check app_spa_route http://127.0.0.1:8787/playground 200
+      # A server path must NOT be answered with the SPA. 404 is correct: it
+      # proves the fallback did not swallow a mistyped API route, which would
+      # otherwise reach the browser as 200-with-HTML and map to no error code.
+      check app_api_404 http://127.0.0.1:8787/api/__smoke__ 404
       check clickhouse http://127.0.0.1:8123/ping    200
       check airflow    http://127.0.0.1:8081/api/v2/monitor/health 200
       check superset   http://127.0.0.1:8088/health  200

@@ -73,10 +73,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - service: api
+          # `app` is the merged image: it serves the API and the SPA from one
+          # container, because the two halves are not independently releasable —
+          # the web reads fields the API change introduces, which the runbook
+          # already recorded by deploying them as a pair. Two tags with two
+          # independent rollout inputs described a coupling the process did not
+          # have. The collectors keep their own entries and their own cadence.
+          - service: app
             dockerfile: apps/api/Dockerfile
-          - service: web
-            dockerfile: apps/web/Dockerfile
           - service: etl
             dockerfile: apps/etl/Dockerfile
 
@@ -185,7 +189,7 @@ jobs:
           {
             echo "Image tag published by this run: \`$tag\`"
             echo ""
-            echo "Record as last-known-good: \`$(ssh … docker inspect --format '{{{{index .Config.Labels \"org.opencontainers.image.revision\"}}}}' laundrytwin-api)\`"
+            echo "Record as last-known-good: \`$(ssh … docker inspect --format '{{{{index .Config.Labels \"org.opencontainers.image.revision\"}}}}' laundrytwin-app-1)\`"
             echo ""
             echo "On the VM, after the backup and the review:"
             echo '```bash'
@@ -208,7 +212,7 @@ jobs:
           # exist — or worse, an older image that does.
           for svc in $(echo "${{ inputs.services }}" | tr ',' ' '); do
             case "$svc" in
-              api|web|etl) ;;
-              *) echo "::error::unknown service '$svc'; expected api, web, or etl"; exit 1 ;;
+              app|etl) ;;
+              *) echo "::error::unknown service '$svc'; expected app or etl"; exit 1 ;;
             esac
           done

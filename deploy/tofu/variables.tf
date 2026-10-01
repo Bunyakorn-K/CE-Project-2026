@@ -119,15 +119,10 @@ variable "registry_url" {
   default     = "10.10.0.117:5000"
 }
 
-variable "api_image_tag" {
-  description = "Tag for laundrytwin-api. Pin an immutable tag (deploy-<sha>-<date>) for a real rollout; 'latest' only suits a fresh host."
+variable "app_image_tag" {
+  description = "Tag for laundrytwin, which serves BOTH the API and the SPA. Pin an immutable tag (deploy-<sha>-<date>) for a real rollout; 'latest' only suits a fresh host. One tag, not two: the web reads fields the API change introduces, so the halves have never been independently releasable."
   type        = string
   default     = "latest"
-}
-
-variable "web_image_tag" {
-  type    = string
-  default = "latest"
 }
 
 variable "etl_image_tag" {

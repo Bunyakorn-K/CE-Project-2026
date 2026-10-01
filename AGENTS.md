@@ -329,8 +329,52 @@ of one contract is the failure mode, not the current symptom.
 apps/api/   Hono API, Better Auth, local SQLite, RBAC, direct ClickHouse reports, MCP, LINE bot, AI console
 apps/web/   React/Vite mobile web and LINE LIFF interface
 apps/etl/   Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather) + TMD weather collector
-deploy/     Docker and Nginx deployment files (analytics compose: ClickHouse, Superset, Airflow, Postgres, Redis)
+deploy/     Docker deployment files (analytics compose: ClickHouse, Superset, Airflow, Postgres, Redis)
 ```
+
+**The API and the web are ONE image and ONE container.** `laundrytwin:`
+(built from `apps/api/Dockerfile`) serves the JSON API and the built SPA from
+a single process on a single port, `8787`. `apps/web/Dockerfile` and
+`deploy/nginx.conf` were deleted on 2026-10-01; there is no nginx layer and no
+second service. Both hostnames reverse-proxy to `127.0.0.1:8787`.
+
+The reason is that the two halves were never independently releasable. The
+runbook already recorded deploying them as a pair — "API and web together
+because the web reads fields the API change introduces" — so two image tags
+with two independent rollout inputs described a coupling the release process
+did not have, and nothing stopped a `web`-only rollout against a changed API
+contract. One image makes the constraint structural rather than documentary.
+
+The SPA is served by `apps/api/src/spa.ts`, which refuses to answer five path
+classes, and each refusal is a tested rule rather than a comment:
+
+1. **A server prefix is never the SPA's.** `/api`, `/webhooks`, `/mcp`,
+   `/docs`, `/health`. A mistyped API route must stay a 404, because the web
+   maps error codes through `api-errors.ts` and a 200 HTML body surfaces as a
+   parse failure with no code to map — the same "caller error reported as
+   something else" class as the 502-for-a-bad-cursor defect.
+2. **A non-GET is never the SPA's.** A POST to an unknown path is a wrong URL,
+   and 200-with-HTML would let a LINE webhook retry loop read as delivered.
+3. **A path may not escape the web root.** This handler reads the filesystem, so
+   the traversal rule is load-bearing. Note that the URL parser collapses `..`
+   *before* routing, so `/../../etc/passwd` arrives as `/etc/passwd`; the one
+   traversal form that survives encoded (`%2e%2e%2f`) is what the guard is for.
+4. **Every served file carries its own content type.** `c.body()` does not
+   infer a MIME type — it defaults to `text/plain`, which serves correct HTML
+   that a browser *displays as source text* instead of rendering. This was a
+   live defect on 2026-10-01, caught by the first smoke of the merged
+   container, not by a status code. An unlisted extension falls back to
+   `application/octet-stream`, which downloads rather than executes.
+5. **"Is this a file?" is answered by the content-type map, not a regex.**
+   The original `/\.[a-z0-9]{2,5}$/` matched every extension a Vite build emits
+   and silently missed `.webmanifest` (11 chars), so a request for a missing
+   manifest was routed to the SPA and answered **200 with HTML** — a missing
+   file wearing the one status indistinguishable from success. Two facts about
+   one set of extensions, expressed twice, is the failure mode.
+
+`index.html` is served `no-cache` and hashed assets
+`max-age=31536000, immutable`, because a cached shell survives a deploy and
+references files that no longer exist — a blank page with no error.
 
 Deployment scope: LaundryTwin has two deployment tiers — local (env files plus
 the `dev` run mode) and production on the existing VM
@@ -488,7 +532,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 675 tests green** — API 376, web 212,
+Local automated evidence on **2026-10-01: 710 tests green** — API 411, web 212,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
@@ -506,7 +550,9 @@ comparison, then to 182 with the API error-code coverage guard, then to 189 with
 the LIFF gate decision, then to 198 with the admin direct-grant form, then to 212
 with the live machine page's state-claim decision. The API
 figure rose from 360 to 376 with the grant route and the store function behind
-it, including the owner-only boundary and the duplicate refusal. `login.tsx` had
+it, including the owner-only boundary and the duplicate refusal, then to 411
+with the SPA handler the merge introduced — 33 tests, six of which were each
+verified to fail against deliberately broken code. `login.tsx` had
 **no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
@@ -646,6 +692,34 @@ against the built bundle, which reproduced the exact production markup
 guard was removed. Rendered in Chromium at 390px and 1440px against the measured
 production payload. **Not deployed** — production still runs the web image that
 carries the defect.
+
+**The api + web merge is verified locally and is NOT deployed.** The image
+`laundrytwin:ci-cbe7243-20261001` was built for real from `apps/api/Dockerfile`
+and run as a single container, and this is what it was checked against — the
+method is worth repeating, because the defect it caught had a correct status
+code:
+
+- Every status the merge's own smoke names (`deploy/tofu/stacks.tf`) came back
+  right: `/health` 200 JSON, `/` 200, `/playground` 200, `/api/__smoke__` 404.
+  **A `/health`-only smoke passes with the entire static half missing**, which
+  is the specific failure this change could introduce, so the smoke set was
+  widened rather than inherited.
+- The API is untouched by the fallback: `/api/me` and `/mcp` 401 unauthenticated,
+  `/api/openapi.json` 200 JSON, `/docs` 200, a missing asset 404, a `POST` to an
+  unknown path 404, and `%2e%2e%2f…/etc/passwd` 404.
+- Then the same requests **in Chromium**: `/login` and `/privacy` render, a hard
+  reload of the deep link `/privacy` boots the app (`lang="th"`, `#root` present,
+  stylesheet applied, `Noto Sans Thai:loaded` from the vendored woff2), every JS
+  chunk including the code-split route chunk 200, and no horizontal overflow at
+  390px. Same-origin `fetch` confirms the API answers on the same origin with
+  the same types.
+
+**What is not verified: anything about production.** No image was pushed to the
+registry, nothing was applied on the VM, and **the Pi Caddyfile still points at
+`:8080`**, so deploying this without repointing it makes
+`laundrytwin.duckdns.org` return 502. The key for the Pi is not authorized for
+VM 117, so that repoint is the operator's step and it is recorded in the
+runbook.
 
 ```bash
 pnpm test

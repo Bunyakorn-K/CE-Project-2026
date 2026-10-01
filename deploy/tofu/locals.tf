@@ -22,8 +22,11 @@ locals {
   # `laundrytwin-*:latest` defaults, which Docker Hub resolves - and
   # `docker compose pull` then fails or, worse, succeeds against the wrong
   # image.
-  api_image     = "${var.registry_url}/laundrytwin-api:${var.api_image_tag}"
-  web_image     = "${var.registry_url}/laundrytwin-web:${var.web_image_tag}"
+  # `laundrytwin` with no suffix: it serves the API and the SPA, which are not
+  # independently releasable (the web reads fields the API change introduces).
+  # The collectors keep their suffixes — they are separate processes on separate
+  # schedules and are rolled out on their own cadence.
+  app_image     = "${var.registry_url}/laundrytwin:${var.app_image_tag}"
   etl_image     = "${var.registry_url}/laundrytwin-etl:${var.etl_image_tag}"
   weather_image = "${var.registry_url}/laundrytwin-weather:${var.weather_image_tag}"
   gas_image     = "${var.registry_url}/laundrytwin-gas:${var.gas_image_tag}"
@@ -49,8 +52,7 @@ locals {
     CLICKHOUSE_PASSWORD=${var.clickhouse_reader_password}
     CLICKHOUSE_DATABASE=${var.clickhouse_database}
     VITE_LIFF_ID=${var.vite_liff_id}
-    API_IMAGE=${local.api_image}
-    WEB_IMAGE=${local.web_image}
+    APP_IMAGE=${local.app_image}
     ETL_IMAGE=${local.etl_image}
     WEATHER_IMAGE=${local.weather_image}
     ETL_ENV_FILE=${var.etl_env_file}

@@ -183,11 +183,49 @@ describe("tofu env contract", () => {
     // apps/etl/src/gas-run.ts requireEnv() throws without it, so the hourly gas
     // collector exits non-zero and retries into the same 401 forever.
     expect(produced.has("HA_TOKEN")).toBe(true);
-    // All five app images; without them compose resolves bare
-    // `laundrytwin-*:latest` against Docker Hub and the pull fails.
-    for (const key of ["API_IMAGE", "WEB_IMAGE", "ETL_IMAGE", "WEATHER_IMAGE", "GAS_IMAGE"]) {
+    // Every image compose pulls. Without these keys compose resolves its bare
+    // `laundrytwin*:latest` defaults against Docker Hub and the pull fails —
+    // or worse, succeeds against the wrong image.
+    for (const key of ["APP_IMAGE", "ETL_IMAGE", "WEATHER_IMAGE", "GAS_IMAGE"]) {
       expect(produced.has(key)).toBe(true);
     }
+  });
+
+  it("ships the SPA and the API from one image, with no sidecar left behind", () => {
+    // The api and web images were two tags that were never independently
+    // releasable — the web reads fields the API change introduces, which the
+    // runbook already recorded by deploying them as a pair. A single APP_IMAGE
+    // makes that structural. If a WEB_IMAGE or an `api:`/`web:` service ever
+    // comes back, the two halves can be rolled out apart again and the web can
+    // ship against an API that does not have the fields it reads.
+    expect(appCompose).not.toMatch(/WEB_IMAGE/);
+    expect(appCompose).not.toMatch(/laundrytwin-web/);
+    expect(appCompose).not.toMatch(/laundrytwin-api/);
+    // `app` is the merged service; `api` and `web` are the split ones.
+    expect(appCompose).toMatch(/^\s{2}app:/m);
+    expect(appCompose).not.toMatch(/^\s{2}(api|web):/m);
+    // WEB_ROOT is what makes the API process answer the static routes. Absent,
+    // the container serves the API and 404s every page.
+    expect(appCompose).toMatch(/WEB_ROOT/);
+    // The old in-stack nginx is gone; nothing should reintroduce a :8080
+    // listener in the app compose.
+    expect(appCompose).not.toMatch(/8080:80/);
+  });
+
+  it("smoke-tests the merged container's static half, not just its health", () => {
+    // `/health` returning 200 says nothing about the SPA, so a merge that
+    // dropped the static half would pass the old check and serve a 404 to
+    // every user. /playground is a client-side route with no file extension, so
+    // it only 200s if the fallback resolves it to index.html.
+    expect(stacks).toMatch(/check app_root\s+http:\/\/127\.0\.0\.1:8787\/\s+200/);
+    expect(stacks).toMatch(/check app_spa_route\s+http:\/\/127\.0\.0\.1:8787\/playground 200/);
+    // And the inverse: a mistyped API path must 404, not be answered with the
+    // shell. That 200-with-HTML is what would leave the browser with no error
+    // code to map.
+    expect(stacks).toMatch(/check app_api_404\s+http:\/\/127\.0\.0\.1:8787\/api\/__smoke__ 404/);
+    // The pull list must name the merged service; `pull api web` fails outright
+    // now that neither service exists.
+    expect(stacks).toMatch(/docker compose pull app etl weather/);
   });
 
   it("installs each env file where its compose service looks for it", () => {

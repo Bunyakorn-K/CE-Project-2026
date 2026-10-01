@@ -12,7 +12,7 @@ own compose file and its own install directory.
 ## Why auth is mandatory
 
 `registry:2` with no `auth` block accepts anonymous **push and pull**. Anything
-that can reach port 5000 can overwrite `laundrytwin-api`, `laundrytwin-web`,
+that can reach port 5000 can overwrite `laundrytwin` (the merged app image),
 `laundrytwin-etl` and `laundrytwin-weather`, and the next
 `docker compose pull` in `deploy/tofu/stacks.tf` deploys the attacker's image.
 `config.yml` therefore carries an `auth.htpasswd` block, and the smoke check in

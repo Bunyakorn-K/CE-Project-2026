@@ -16,8 +16,7 @@ Home-lab Pi  (Caddy — TLS edge, Let's Encrypt, HTTP→HTTPS)
    │  ZeroTier overlay (172.30.191.0/24)
    ▼
 VM 117  (172.30.191.48, host "laundrytwin")
-   ├─ laundrytwin-web-1        :8080  (nginx → SPA + /api/ → api:8787)
-   ├─ laundrytwin-api-1        :8787  (Hono API + public MCP route `/mcp`)
+   ├─ laundrytwin-app-1        :8787  (Hono API + SPA static routes + public MCP route `/mcp`)
    ├─ laundrytwin-etl-1        host   (batch ETL loop, IRIS Postgres → ClickHouse)
    ├─ laundrytwin-weather-1    host   (TMD weather collector loop, hourly)
    ├─ laundrytwin-gas-1        host   (Home Assistant gas-pressure collector, hourly; opt-in `profiles: ["gas"]`)
@@ -56,11 +55,11 @@ Pi's duckdns updater, not in this repo).
 
 | URL | Backend on VM | Notes |
 | :-- | :------------ | :---- |
-| `https://laundrytwin.duckdns.org` | web :8080 | SPA + `location /api/` → api:8787 (in-stack nginx, `deploy/nginx.conf`); `location = /webhooks/line` → api |
+| `https://laundrytwin.duckdns.org` | app :8787 | One container serves the SPA and the API. The static half is `apps/api/src/spa.ts`; the in-stack nginx that used to proxy `/api/` was removed in the merge. |
 | `https://superset.laundrytwin.duckdns.org` | superset :8088 | **Authentik SSO in front** — Caddy → Authentik outpost (`auth.notnotik.duckdns.org/application/o/authorize/...`) → superset. Only members of the `final project member` group can sign in. |
 | `https://clickhouse.laundrytwin.duckdns.org` | analytics-clickhouse :8123 | **Authentik removed 2026-09-18.** Caddy `basic_auth` (`reader`) + least-privilege ClickHouse `reader` user (SELECT on `laundrytwin_analytics` only). Never point this route at the `admin` credential. |
 | `https://airflow.laundrytwin.duckdns.org` | airflow-webserver :8081 | Airflow 3.x login (`admin` + `AIRFLOW_ADMIN_PASSWORD` from `/opt/analytics/.env`) |
-| `https://mcp.laundrytwin.duckdns.org` | api :8787 `/mcp` | Public MCP route. Requires `MCP_ACCESS_TOKEN`; server-side scope/revenue controls apply. |
+| `https://mcp.laundrytwin.duckdns.org` | app :8787 `/mcp` | Public MCP route on the same container as the app; the path is what separates them, not the port. Requires `MCP_ACCESS_TOKEN`; server-side scope/revenue controls apply. |
 | `https://chat.laundrytwin.duckdns.org` | LibreChat :3080 | LibreChat UI; users/passwords in MongoDB db `LibreChat` (ops recipe: `references/librechat-ops.md`) |
 | `https://registry.laundrytwin.duckdns.org` | registry :5000 | docker registry v2, htpasswd (user `laundrytwin`); **no double auth on Caddy** or `docker login` breaks |
 
@@ -81,7 +80,7 @@ for VM 117 is **not** authorized there). Expected shape:
 
 ```caddyfile
 laundrytwin.duckdns.org {
-    reverse_proxy http://172.30.191.48:8080
+    reverse_proxy http://172.30.191.48:8787
 }
 superset.laundrytwin.duckdns.org {
     reverse_proxy http://172.30.191.48:8088
@@ -324,8 +323,10 @@ until a real sign-in has landed on `/dashboard`.
   MCP inspector is local-only and is not the public MCP service.
 - **Weather cadence:** the TMD collector runs hourly with `sleep 3600` and
   tags observations by `tenant_id/branch_id`.
-- **No TLS inside the stack:** `deploy/nginx.conf` listens on :80 only; TLS
-  terminates on the Pi. Do not add TLS to the in-stack nginx.
+- **No TLS inside the stack:** the app listens on :8787 in plain HTTP; TLS
+  terminates on the Pi. The in-stack nginx that used to sit in front was
+  removed when the SPA moved into the API process — do not reintroduce a
+  TLS-terminating proxy inside the stack.
 - **Registry pull from the VM:** the VM cannot reach the registry via the
   public duckdns IP (NAT loopback fails) — compose pulls use the internal
   `127.0.0.1:5000` (daemon.json allowlists it as insecure). The Mac pushes via
@@ -379,12 +380,12 @@ deployment ref.
 
 ### Apply and smoke
 
-1. Set `app_repo_ref` to the approved immutable commit or tag and run `tofu apply` once.
-2. Check `sudo docker compose -f /opt/analytics/compose.yaml ps` and confirm ClickHouse, Postgres, Airflow roles, Superset, Redis, and API/web are healthy.
-3. Check `http://127.0.0.1:8787/health`, `http://127.0.0.1:8080/`, and `http://127.0.0.1:8088/health` on the VM.
+1. Set `app_repo_ref` to the approved immutable commit or tag, and `app_image_tag` to the immutable image tag the release run published, then run `tofu apply` once. One tag covers the API and the SPA: they are not independently releasable, and `api_image_tag`/`web_image_tag` no longer exist.
+2. Check `sudo docker compose -f /opt/analytics/compose.yaml ps` and confirm ClickHouse, Postgres, Airflow roles, Superset, Redis, and the app container are healthy.
+3. Check `http://127.0.0.1:8787/health`, `http://127.0.0.1:8787/`, `http://127.0.0.1:8787/playground`, and `http://127.0.0.1:8088/health` on the VM. The SPA and the API are one port now. `/playground` is a client-side route with no file extension, so a 200 there proves the static half is really being served and not just that the process is up. `http://127.0.0.1:8787/api/anything` must be **404**, not the SPA shell — a 200-with-HTML there would reach the browser with no error code to map.
 4. Verify an unauthenticated report request is denied, an approved session is branch-scoped, invalid calendar dates return `400`, and logout revokes the session.
 5. Verify the ClickHouse reader can query the analytics database and cannot use the admin credential from the API or browser.
-6. Verify public TLS routes only after internal smoke passes. Keep the MCP inspector local-only and keep `MCP_ALLOW_REVENUE=false` unless separately approved.
+6. Verify public TLS routes only after internal smoke passes. The Pi's Caddyfile must point `laundrytwin.duckdns.org` at **:8787**; the old `:8080` upstream no longer exists and the route will 502 until it is changed. Keep the MCP inspector local-only and keep `MCP_ALLOW_REVENUE=false` unless separately approved.
 
 ### Rollback
 

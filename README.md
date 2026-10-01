@@ -135,11 +135,14 @@ Twin may share visual primitives but must retain distinct operational meaning.
 ## Repository layout
 
 ```text
-apps/api/                 Hono API, auth/RBAC, reporting, analytics MCP server, LINE bot, AI console
+apps/api/                 Hono API, auth/RBAC, reporting, analytics MCP server, LINE bot, AI console.
+                          Its Dockerfile also builds the web bundle: the API and the SPA ship as
+                          ONE image (laundrytwin) in ONE container on :8787 — see AGENTS.md.
 apps/web/                 React/Vite LINE LIFF application (includes /playground route)
 apps/etl/                 Batch ETL: IRIS Postgres -> ClickHouse (usage/temperature/weather) + gas collector
 apps/playground/          (merged into web — see apps/web /playground)
-deploy/                   Container deployment config (per-app Dockerfiles, compose, tofu, nginx)
+deploy/                   Container deployment config (Dockerfiles, compose, tofu). The app image is
+                          built from apps/api/Dockerfile; there is no in-stack nginx.
 deploy/analytics/         Analytics compose (clickhouse, superset, airflow, postgres, redis, mcp)
 deploy/analytics/seed/    Superset dashboard seed (committed, placeholder password)
 docs/01_requirements/     CE Project requirements and user stories
@@ -270,11 +273,11 @@ watermark, and the ClickHouse/Postgres analytics volumes.
 
 ## Verification
 
-Local automated evidence on **2026-09-30: 417 tests green** (API 277, web 53,
-ETL 87). The count is maintained in one place only — see
+Local test counts are recorded in one place only — see
 [Verification in `AGENTS.md`](AGENTS.md#verification) for the current figure and
-its history.
-The separate Playwright suite is 20 tests and is not part of `pnpm test`.
+its history. A figure quoted here without a measurement date goes stale, and two
+copies of one number is a duplication bug.
+The separate Playwright layout suite is not part of `pnpm test`.
 Node 24.x is used (see `.nvmrc`). `pnpm --filter @laundrytwin/api check`, web
 check/test/build, and ETL test pass. Manual browser QA of the active router was
 performed on 2026-09-28 and found real defects, but it is manual, Chromium-only,

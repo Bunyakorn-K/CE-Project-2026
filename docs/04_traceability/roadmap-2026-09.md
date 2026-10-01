@@ -16,8 +16,11 @@ the runbook deliverable shipped (see below).
 ### 3a. TLS / reverse proxy (public fronting) — DONE 2026-09-06
 
 - **Current reality:** the home-lab Pi fronts `*.laundrytwin.duckdns.org`
-  (Caddy/TLS). The repo's `deploy/nginx.conf` is the in-stack app nginx
-  (no TLS by design).
+  (Caddy/TLS). The app itself served no TLS. ~~The repo's `deploy/nginx.conf` is
+  the in-stack app nginx~~ — that file was **deleted 2026-10-01** when the API
+  and web were merged into one image; the app is now a single container on `:8787`
+  that serves both the API and the SPA, so there is no in-stack nginx at all. The
+  Pi remains the only TLS edge.
 - **Decision:** keep the Pi as the TLS edge (it already works, avoids a second
   Caddy — a rejected alternative from 2026-08-31, per hindsight bank).
 - **Deliverable:** `docs/02_architecture/deploy-runbook.md` — DNS, Caddy

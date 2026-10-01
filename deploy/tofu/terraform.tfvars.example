@@ -80,8 +80,7 @@ line_login_channel_id  = ""
 # bare `laundrytwin-*:latest` names, which Docker Hub resolves instead of the
 # internal registry. Pin an immutable tag for a real rollout.
 registry_url           = "10.10.0.117:5000"
-api_image_tag          = "latest"
-web_image_tag          = "latest"
+app_image_tag          = "latest"
 etl_image_tag          = "latest"
 weather_image_tag      = "latest"
 gas_image_tag          = "latest"
