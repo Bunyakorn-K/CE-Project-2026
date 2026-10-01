@@ -37,6 +37,11 @@ type MachineStateRow = {
   status: string | null;
   last_active_at: string | null;
   cycle_count: string | number;
+  /** Every usage row for this machine in the window, regardless of status.
+   *  `count()` would count the placeholder row a LEFT JOIN emits for a
+   *  machine with no usage, because `join_use_nulls = 1` only changes the
+   *  column's type, not whether the row exists. */
+  usage_rows: string | number;
 };
 
 export function buildBranchSQL(): string {
@@ -140,7 +145,8 @@ SELECT
   m.machine_kind AS machine_kind,
   argMax(u.status, u.started_at) AS status,
   max(u.started_at) AS last_active_at,
-  countIf(u.status IN ('paid', 'finished')) AS cycle_count
+  countIf(u.status IN ('paid', 'finished')) AS cycle_count,
+  countIf(u.status IS NOT NULL) AS usage_rows
 FROM dim_machine AS m FINAL
 INNER JOIN dim_branch AS b FINAL ON m.tenant_id = b.tenant_id AND m.branch_id = b.branch_id
 LEFT JOIN fact_machine_usage AS u FINAL ON
@@ -188,12 +194,33 @@ export type MachineInfo = {
   branchName: string;
   status: MachineStatus;
   lastActiveAt: string | null;
+  /** How old the newest usage evidence for this machine is. This is a
+   *  SEPARATE axis from `status`: `status` is whatever the last usage row
+   *  said, which can be days old, while `freshness` says how much the reader
+   *  should trust it as a statement about right now. Collapsing them is what
+   *  let the Digital Twin render a week-old `running` exactly like a live one.
+   *
+   *  Computed here rather than in the view so the twin and the live endpoint
+   *  cannot drift apart. The thresholds are the ones
+   *  `apps/web/src/lib/machine-status.ts` labels in Thai. */
+  freshness: "fresh" | "stale" | "unavailable";
+  freshnessReason: string | null;
   cycleCount: number | null;
   /** Which definition `cycleCount` was taken from. It is NOT `machine_session_id`:
    *  the count is `countIf(status IN ('paid', 'finished'))` over usage rows, the
    *  canonical definition, so labelling it by that nullable field would
-   *  misdescribe it. */
-  cycleCountSource: "usage_row" | "unavailable";
+   *  misdescribe it.
+   *
+   *  `usage_row` means usage rows exist for this machine in the window — and
+   *  `cycleCount` may legitimately be `0`, because a row in
+   *  `pending_payment`/`admitted`/`cancelled` is not a counted cycle. `0` and
+   *  "never used" are different facts and the view used to render both as
+   *  `unavailable`, telling a technician investigating a busy machine that it
+   *  had no usage at all. `unavailable` is now reserved for a source that
+   *  reported a row count and it was zero. `unknown` is for a source with no
+   *  usage-row concept at all — the IRIS/demo projection — which is a
+   *  different claim from "this machine has no usage". */
+  cycleCountSource: "usage_row" | "unavailable" | "unknown";
 };
 
 /** How much of the dashboard `cycles` count rests on a `machine_session_id`.
@@ -255,6 +282,37 @@ function isFreshUsage(lastActiveAt: string | null): boolean {
   if (!lastActiveAt) return false;
   const age = Date.now() - new Date(lastActiveAt).getTime();
   return Number.isFinite(age) && age >= 0 && age <= 30 * 60 * 1000;
+}
+
+/** Freshness thresholds, shared with the `/api/report/live` projection in
+ *  `apps/api/src/index.ts`. Both call this so the twin and the live snapshot
+ *  cannot disagree about whether a machine's evidence is current. */
+export const FRESH_MAX_AGE_MS = 5 * 60 * 1000;
+export const STALE_MAX_AGE_MS = 30 * 60 * 1000;
+
+export function usageFreshnessOf(lastActiveAt: string | null): MachineInfo["freshness"] {
+  if (!lastActiveAt) return "unavailable";
+  const age = Date.now() - new Date(lastActiveAt).getTime();
+  // A timestamp in the future is not evidence of anything; treating it as
+  // fresh would let a clock skew read as a live machine.
+  if (!Number.isFinite(age) || age < 0) return "unavailable";
+  if (age <= FRESH_MAX_AGE_MS) return "fresh";
+  if (age <= STALE_MAX_AGE_MS) return "stale";
+  return "unavailable";
+}
+
+/** The reason is English and machine-readable: it is a contract field, and the
+ *  web layer maps it to Thai by keying on `freshness` (see
+ *  `apps/web/src/lib/machine-status.ts`), never by matching this prose. */
+function usageFreshnessReasonOf(freshness: MachineInfo["freshness"]): string | null {
+  if (freshness === "fresh") return null;
+  if (freshness === "stale") return "Usage data is older than 30 minutes";
+  return "No recent usage evidence is available for this machine";
+}
+
+function freshnessFields(lastActiveAt: string | null): Pick<MachineInfo, "freshness" | "freshnessReason"> {
+  const freshness = usageFreshnessOf(lastActiveAt);
+  return { freshness, freshnessReason: usageFreshnessReasonOf(freshness) };
 }
 
 export async function queryBranches(ch: ClickHouseExecutor, branchId?: string): Promise<BranchInfo[]> {
@@ -382,8 +440,21 @@ export async function queryMachineStates(
   };
 
   return rows.map((r: MachineStateRow) => {
+    // Three cases, not two. A machine can have usage rows and still count zero
+    // cycles, because `pending_payment`/`admitted`/`cancelled` rows are usage
+    // without being a finished cycle. Collapsing that into `null` is what made
+    // the view claim the machine had no usage rows at all.
+    //
+    // `usageRows` comes from a separate aggregate rather than from
+    // `countedCycles > 0`, precisely so that distinction survives. When the
+    // source reports no row count (a pre-migration response, or the IRIS/demo
+    // projection which has no such field) the denominator is unknown, and an
+    // unknown denominator must not become a usage-row claim — nor a bare
+    // number with no stated basis.
+    const usageRows = Number(r.usage_rows);
     const countedCycles = Number(r.cycle_count) || 0;
-    const cycleCount = countedCycles > 0 ? countedCycles : null;
+    const hasUsageRows = Number.isFinite(usageRows) && usageRows > 0;
+    const cycleCount = hasUsageRows ? countedCycles : null;
     return {
       tenantId: r.tenant_id ?? "unknown",
       machineId: r.machine_id,
@@ -393,8 +464,9 @@ export async function queryMachineStates(
       branchName: r.branch_name,
       status: statusMap[r.status ?? ""] ?? "unknown",
       lastActiveAt: r.last_active_at || null,
+      ...freshnessFields(r.last_active_at || null),
       cycleCount,
-      cycleCountSource: cycleCount === null ? "unavailable" : "usage_row"
+      cycleCountSource: hasUsageRows ? "usage_row" : "unavailable"
     };
   });
 }

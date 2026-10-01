@@ -10,7 +10,8 @@ import {
   queryBranches,
   queryDashboard,
   queryEvents,
-  queryMachineStates
+  queryMachineStates,
+  usageFreshnessOf
 } from "./clickhouse-report";
 
 function fakeExecutor(rows: Record<string, unknown>[]): ClickHouseExecutor {
@@ -222,7 +223,8 @@ describe("machine floor report", () => {
         branch_name: "Branch A",
         status: "finished",
         last_active_at: "2026-09-24 08:00:00",
-        cycle_count: "4"
+        cycle_count: "4",
+        usage_rows: "9"
       }
     ]);
 
@@ -267,7 +269,8 @@ describe("machine floor report", () => {
         branch_name: "Branch A",
         status: "finished",
         last_active_at: "2026-09-24 08:00:00",
-        cycle_count: "4"
+        cycle_count: "4",
+        usage_rows: "9"
       }
     ]);
 
@@ -337,7 +340,22 @@ describe("machine floor report", () => {
     expect(result.map((machine) => machine.status)).toEqual(["cancelled", "admitted"]);
   });
 
-  it("does not invent a cycle count without session evidence", async () => {
+  // Three states, not two. `countedCycles === 0` used to collapse into `null`,
+  // which made the view report "no usage rows" for a machine that HAS usage
+  // rows and simply has none of them in a paid/finished state. The technician
+  // investigating that machine was told to stop looking. The row count is now
+  // selected separately so the API — not the view — decides which of the two
+  // zero-shaped answers is true.
+  it("counts usage rows separately from counted cycles", () => {
+    const sql = buildMachineStateSQL();
+
+    // `join_use_nulls = 1` makes an unmatched LEFT JOIN row NULL, so
+    // `count()` would count the placeholder. `u.status IS NOT NULL` counts
+    // only rows that actually came from the fact table.
+    expect(sql).toContain("countIf(u.status IS NOT NULL) AS usage_rows");
+  });
+
+  it("reports zero counted cycles as zero, not as unavailable, when usage rows exist", async () => {
     const ch = fakeExecutor([
       {
         machine_code: "D3",
@@ -345,13 +363,107 @@ describe("machine floor report", () => {
         branch_name: "Branch A",
         status: "pending_payment",
         last_active_at: "2026-09-24 08:00:00",
-        cycle_count: "0"
+        cycle_count: "0",
+        usage_rows: "7"
+      }
+    ]);
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    // Seven usage rows exist; none reached paid/finished. That is a zero, and
+    // saying "unavailable" would claim the machine was never used.
+    expect(result[0]).toMatchObject({ cycleCount: 0, cycleCountSource: "usage_row" });
+  });
+
+  it("reports unavailable only when the machine has no usage rows at all", async () => {
+    const ch = fakeExecutor([
+      {
+        machine_code: "W9",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status: null,
+        last_active_at: null,
+        cycle_count: "0",
+        usage_rows: "0"
       }
     ]);
 
     const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
 
     expect(result[0]).toMatchObject({ cycleCount: null, cycleCountSource: "unavailable" });
+  });
+
+  it("does not claim a usage-row basis when the row count is absent from the response", async () => {
+    // A pre-migration or partially-projected response has no `usage_rows`
+    // field. The count is still real when it is non-zero, but with no
+    // denominator the honest answer is unavailable, never a bare number.
+    const ch = fakeExecutor([
+      {
+        machine_code: "W1",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        status: "finished",
+        last_active_at: "2026-09-24 08:00:00",
+        cycle_count: "3"
+      }
+    ]);
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    expect(result[0]).toMatchObject({ cycleCount: null, cycleCountSource: "unavailable" });
+  });
+
+  // Freshness is the axis the twin was missing entirely: `status` is whatever
+  // the last usage row said, which may be days old. These pin the thresholds
+  // the Thai labels in apps/web/src/lib/machine-status.ts describe.
+  it("marks recent usage as fresh and gives it no reason string", () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+
+    expect(usageFreshnessOf(recent)).toBe("fresh");
+  });
+
+  it("marks usage between 5 and 30 minutes old as stale", () => {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+
+    expect(usageFreshnessOf(tenMinutesAgo)).toBe("stale");
+  });
+
+  it("marks usage older than 30 minutes as unavailable rather than stale", () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
+
+    expect(usageFreshnessOf(twoDaysAgo)).toBe("unavailable");
+  });
+
+  it("does not treat a future timestamp as fresh evidence", () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+
+    expect(usageFreshnessOf(tomorrow)).toBe("unavailable");
+  });
+
+  it("carries freshness on the twin payload so a week-old running status is not read as live", async () => {
+    const ch = fakeExecutor([
+      {
+        machine_id: "machine-01",
+        branch_id: "branch-01",
+        machine_code: "W1",
+        machine_kind: "washer",
+        branch_name: "Branch A",
+        // The status says running. The evidence is six days old. Both facts
+        // must survive; the view decides how to present them together.
+        status: "running",
+        last_active_at: new Date(Date.now() - 6 * 24 * 60 * 60_000).toISOString(),
+        cycle_count: "2",
+        usage_rows: "5"
+      }
+    ]);
+
+    const result = await queryMachineStates(ch, "2026-09-18", "2026-09-25");
+
+    expect(result[0]).toMatchObject({
+      status: "running",
+      freshness: "unavailable",
+      freshnessReason: "No recent usage evidence is available for this machine"
+    });
   });
 
   it("keeps an unknown machine state unknown", async () => {
@@ -364,7 +476,8 @@ describe("machine floor report", () => {
         branch_name: "Branch A",
         status: "unrecognized",
         last_active_at: "2026-09-24 08:00:00",
-        cycle_count: "1"
+        cycle_count: "1",
+        usage_rows: "3"
       }
     ]);
 
@@ -383,7 +496,8 @@ describe("machine floor report", () => {
         branch_name: "Branch A",
         status: null,
         last_active_at: null,
-        cycle_count: "0"
+        cycle_count: "0",
+        usage_rows: "0"
       }
     ]);
 
@@ -400,7 +514,9 @@ describe("machine floor report", () => {
         status: "unknown",
         lastActiveAt: null,
         cycleCount: null,
-        cycleCountSource: "unavailable"
+        cycleCountSource: "unavailable",
+        freshness: "unavailable",
+        freshnessReason: "No recent usage evidence is available for this machine"
       }
     ]);
   });

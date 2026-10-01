@@ -55,6 +55,7 @@ import {
   queryDashboard,
   queryEvents,
   queryMachineStates,
+  usageFreshnessOf,
   type DashboardData,
   type MachineInfo
 } from "./report/clickhouse-report";
@@ -622,6 +623,13 @@ async function queryDemoDashboard(iris: IrisClient, from: string, to: string, br
   };
 }
 
+function demoFreshnessFields(lastSeen: string | null): Pick<MachineInfo, "freshness" | "freshnessReason"> {
+  const freshness = usageFreshnessOf(lastSeen);
+  if (freshness === "fresh") return { freshness, freshnessReason: null };
+  if (freshness === "stale") return { freshness, freshnessReason: "Usage data is older than 30 minutes" };
+  return { freshness, freshnessReason: "No recent usage evidence is available for this machine" };
+}
+
 async function queryDemoMachineStates(iris: IrisClient, branchId?: string): Promise<MachineInfo[]> {
   const response = await iris.getBranches();
   const selectedBranches = branchId ? response.branches.filter((branch) => branch.id === branchId) : response.branches;
@@ -639,8 +647,16 @@ async function queryDemoMachineStates(iris: IrisClient, branchId?: string): Prom
       branchName: branch.name,
       status: demoMachineStatus(machine.state),
       lastActiveAt: machine.lastSeen,
+      // Demo `lastSeen` is either ~25s ago or null (see demo-read-client), so
+      // it goes through the same freshness computation as real usage rather
+      // than being asserted fresh.
+      ...demoFreshnessFields(machine.lastSeen),
       cycleCount: null,
-      cycleCountSource: "unavailable" as const
+      // The demo projection has no usage-row field, so it cannot say whether
+      // the machine was used — only that it has no countable cycle evidence.
+      // `unavailable` would claim "no usage rows", which this source never
+      // measured. `unknown` is the honest answer and renders differently.
+      cycleCountSource: "unknown" as const
     }))
   );
 }
@@ -749,7 +765,9 @@ async function queryClickHouseLiveMachines(ch: ClickHouseExecutor, branchId?: st
 }
 
 function toClickHouseLiveMachine(state: MachineInfo): IrisLiveMachine {
-  const freshness = usageFreshness(state.lastActiveAt);
+  // Freshness is computed once, in queryMachineStates, and reused here. It was
+  // previously recomputed by a private copy of the same thresholds, which is
+  // how the twin and the live snapshot could disagree about the same machine.
   return {
     id: state.machineId,
     code: state.machineCode,
@@ -758,8 +776,8 @@ function toClickHouseLiveMachine(state: MachineInfo): IrisLiveMachine {
     state: state.status,
     remainingSeconds: null,
     lastSeen: state.lastActiveAt,
-    freshness,
-    ...(freshness !== "fresh" ? { reason: usageFreshnessReason(freshness) } : {}),
+    freshness: state.freshness,
+    ...(state.freshnessReason ? { reason: state.freshnessReason } : {}),
     coverage: {
       liveState: {
         available: false,
@@ -785,20 +803,6 @@ async function queryClickHouseLiveSnapshot(
     branchId,
     machines: await queryClickHouseLiveMachines(ch, branchId)
   };
-}
-
-function usageFreshness(lastActiveAt: string | null): IrisLiveMachine["freshness"] {
-  if (!lastActiveAt) return "unavailable";
-  const age = Date.now() - new Date(lastActiveAt).getTime();
-  if (!Number.isFinite(age)) return "unavailable";
-  if (age <= 5 * 60 * 1000) return "fresh";
-  if (age <= 30 * 60 * 1000) return "stale";
-  return "unavailable";
-}
-
-function usageFreshnessReason(freshness: IrisLiveMachine["freshness"]): string {
-  if (freshness === "stale") return "Usage data is older than 30 minutes";
-  return "No recent usage evidence is available for this machine";
 }
 
 function isRunningDemoMachine(machine: { state: string | null }) {
