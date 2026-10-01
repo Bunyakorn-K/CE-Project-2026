@@ -139,16 +139,22 @@ figure is a live metric recorded in `docs/06_ml/ml-training-data-guide.md` §9.1
 never quote a stale number), the dashboard response carries `cycleAttribution`
 and the web dashboard states the unattributed share in Thai; **a cycle count
 must never be presented as fully attributed.** This is
-code/test evidence, not production E2E. The LINE
-authentication flow is not yet verified end to end — **a live sign-in needs a
-real LINE account and consent, which no automated check here can perform.** What
-*is* verified (2026-10-01, in a real browser against production) is the failure
-path: LIFF reports a stale session as a healthy one — `isLoggedIn()` true and
-`getIDToken()` returning a token nine hours past its 60-minute life, twice in a
-row — so the expiry is invisible client-side and only the API rejects it. The
-browser now reads the `exp` claim itself, offers a re-login instead of a retry
-that cannot succeed, and the API answers **401** for a rejected token instead of
-the 502 that made a stale browser look like a server outage. Sign-in is one
+code/test evidence, not production E2E.
+
+**The LINE authentication flow is now verified end to end** (2026-10-01): the
+owner signed in with LINE in the real client against production and reached the
+dashboard (`deploy-155e111-20261001`). That exercises the `exchange` plan — a
+live token traded for a session cookie — which is the ordinary path and was the
+one a regression had made unreachable. The `renew` plan (an expired token
+forcing `logout()` and a fresh login) is covered by unit tests only; it was not
+reproduced live, because waiting out a real token expiry was not part of the
+check. The failure path is also verified: LIFF reports a stale session as a
+healthy one — `isLoggedIn()` true and `getIDToken()` returning a token nine
+hours past its 60-minute life, twice in a row — so the expiry is invisible
+client-side and only the API rejects it. The browser now reads the `exp` claim
+itself, offers a re-login instead of a retry that cannot succeed, and the API
+answers **401** for a rejected token instead of the 502 that made a stale browser
+look like a server outage. Sign-in is one
 shared path, `signInWithLiff`, behind the pure decision `planLineSignIn` —
 an earlier version logged out **any** logged-in session and therefore could
 not sign anyone in. See `apps/web/src/liff.ts` and
@@ -227,7 +233,10 @@ The direct ClickHouse report endpoints have local code/test evidence for
 server-side branch scope, zero-grant denial, strict calendar ranges, bound
 ClickHouse parameters, nullable revenue redaction, active-inventory retention,
 usage-derived freshness, and unknown-state preservation. Treat that as local
-verification only; production, LINE, and browser E2E are still pending.
+verification only. LINE sign-in itself is verified end to end (see the caveat
+above), but **browser E2E of these report endpoints against production is
+still pending**, and the per-branch scoping paths remain covered by unit tests
+rather than by a production account holding a narrower grant.
 
 The weather collector (`laundrytwin-weather-1` on VM 117) runs
 hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts

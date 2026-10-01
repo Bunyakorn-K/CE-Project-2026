@@ -1135,10 +1135,23 @@ entry bundle `index-sT6pqrPy.js` served, with the LIFF id and the Thai
 stale-session string baked in. All six report routes still **401**
 unauthenticated, so no fallback widened access.
 
-**Not verified: signing in from inside the LINE app.** That needs a real LINE
-account, which was deliberately not used. What is verified is that the decision
-is unit-tested against the exact regression, that the bundle is live, and that
-nothing in either call site depends on an undocumented SDK behaviour.
+**Verified end to end, 2026-10-01.** The owner signed in with LINE in the real
+client against production and reached the dashboard. This is the `exchange`
+plan — a live token traded for a session cookie — which is the ordinary path and
+precisely the one the regression had made unreachable, so it is the case worth
+having confirmed live rather than only in a unit test.
+
+Two things remain test-only, and should not be read as covered by that check:
+
+- **`renew`** — an expired token forcing `logout()` and a fresh login. Unit
+  tested against the exact regression, not reproduced live; doing so would mean
+  waiting out a real token expiry.
+- **`/api/me` and the redirect chain** after the exchange, which the successful
+  sign-in implies but which was not separately asserted.
+
+What the live check adds beyond the suite: `liff.init`, the openid scope and the
+user's consent all work in the real client, and the LIFF id baked into the image
+is the right one for this channel.
 
 Suite: **552 green** (API 351, web 114, ETL 87); `pnpm check` and `pnpm build`
 clean; Playwright layout 20 passed.
