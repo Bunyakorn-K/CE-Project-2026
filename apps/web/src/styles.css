@@ -1894,6 +1894,28 @@ main {
   gap: 10px;
 }
 
+/* The direct-grant form adds the account's address, so it needs a fourth
+   column rather than letting the button wrap onto its own row. */
+.grant-fields--email {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
+}
+
+.grant-fields input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  outline: none;
+}
+
+.grant-fields input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(43 146 146 / 16%);
+}
+
 .grant-fields label,
 .settings-form label {
   display: grid;

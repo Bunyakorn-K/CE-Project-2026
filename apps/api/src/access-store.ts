@@ -175,6 +175,113 @@ export function listActiveAccessGrants(): ActiveAccessGrant[] {
     .all();
 }
 
+/**
+ * Insert one grant. The single write path for both callers below.
+ *
+ * Approving a request and granting directly must not be able to disagree about
+ * what a grant is, so neither builds the row itself.
+ */
+function insertAccessGrant(input: {
+  userId: string;
+  role: Role;
+  branchId: string | null;
+  actorUserId: string;
+  grantedAt: Date;
+}): ActiveAccessGrant {
+  const id = randomUUID();
+  db.insert(accessGrant)
+    .values({
+      id,
+      userId: input.userId,
+      role: input.role,
+      branchId: input.branchId,
+      grantedByUserId: input.actorUserId,
+      grantedAt: input.grantedAt
+    })
+    .run();
+  const row = db
+    .select({
+      id: accessGrant.id,
+      userId: accessGrant.userId,
+      userName: user.name,
+      userEmail: user.email,
+      role: accessGrant.role,
+      branchId: accessGrant.branchId,
+      grantedAt: accessGrant.grantedAt
+    })
+    .from(accessGrant)
+    .innerJoin(user, eq(accessGrant.userId, user.id))
+    .where(eq(accessGrant.id, id))
+    .get();
+  if (!row) throw new Error("grant insert did not read back");
+  return row;
+}
+
+/** Look a user up by the address they sign in with, for the admin grant form. */
+export function findUserByEmail(email: string): UserIdentity | null {
+  const row = db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(eq(user.email, email))
+    .get();
+  return row ?? null;
+}
+
+/**
+ * Grant a role to someone who already has an account.
+ *
+ * Approving a pending request was the only way to create a grant, so an owner or
+ * manager who signed in on their own could never be given a narrower scope —
+ * the account had to arrive as a stranger first. That left branch scoping
+ * unverifiable on production, where no account holds a single-branch grant, and
+ * it is a real gap for a franchise: scoping a branch manager down to one branch
+ * is an ordinary operation.
+ *
+ * A user may hold several grants — `canAccessBranch` and `mayViewRevenue` are
+ * both `some()` over the list — so this adds a scope rather than replacing one.
+ * Granting the same role for the same branch twice is refused rather than
+ * silently stacking a duplicate, because the admin table lists grants one per
+ * row and a repeated row reads as two scopes where there is one.
+ */
+export function createAccessGrant(input: {
+  email: string;
+  role: Role;
+  branchId: string | null;
+  actorUserId: string;
+}): { ok: true; grant: ActiveAccessGrant } | { ok: false; reason: "user-not-found" | "duplicate" } {
+  const target = findUserByEmail(input.email);
+  if (!target) return { ok: false, reason: "user-not-found" };
+
+  const duplicate = db
+    .select({ id: accessGrant.id })
+    .from(accessGrant)
+    .where(
+      and(
+        eq(accessGrant.userId, target.id),
+        eq(accessGrant.role, input.role),
+        input.branchId === null ? isNull(accessGrant.branchId) : eq(accessGrant.branchId, input.branchId),
+        isNull(accessGrant.revokedAt)
+      )
+    )
+    .get();
+  if (duplicate) return { ok: false, reason: "duplicate" };
+
+  const grant = insertAccessGrant({
+    userId: target.id,
+    role: input.role,
+    branchId: input.branchId,
+    actorUserId: input.actorUserId,
+    grantedAt: new Date()
+  });
+  writeAudit(input.actorUserId, "access_grant.created", grant.id, {
+    role: input.role,
+    branchId: input.branchId,
+    userId: target.id,
+    email: target.email
+  });
+  return { ok: true, grant };
+}
+
 export function approveLiffAccessRequest(input: {
   requestId: string;
   role: Role;
@@ -188,16 +295,13 @@ export function approveLiffAccessRequest(input: {
   const existingUser = findLiffUser(request.lineUserId);
   const approvedUser = existingUser ?? createLiffUser(request.lineUserId, request.displayName, now);
 
-  db.insert(accessGrant)
-    .values({
-      id: randomUUID(),
-      userId: approvedUser.id,
-      role: input.role,
-      branchId: input.branchId,
-      grantedByUserId: input.actorUserId,
-      grantedAt: now
-    })
-    .run();
+  insertAccessGrant({
+    userId: approvedUser.id,
+    role: input.role,
+    branchId: input.branchId,
+    actorUserId: input.actorUserId,
+    grantedAt: now
+  });
   db.update(liffAccessRequest)
     .set({ approvedAt: now, approvedByUserId: input.actorUserId })
     .where(eq(liffAccessRequest.id, request.id))

@@ -44,6 +44,8 @@ const API_ERROR_COPY: Record<string, string> = {
   REVENUE_FORBIDDEN: "บทบาทของคุณไม่มีสิทธิ์ดูข้อมูลรายได้",
   LAST_OWNER: "ต้องมีเจ้าของระบบอย่างน้อยหนึ่งคน กรุณาเพิ่มเจ้าของใหม่ก่อนยกเลิกสิทธิ์นี้",
   INVALID_ROLE: "บทบาทการใช้งานไม่ถูกต้อง",
+  USER_NOT_FOUND: "ไม่พบบัญชีที่ใช้อีเมลนี้ กรุณาตรวจสอบที่อยู่อีเมลอีกครั้ง",
+  DUPLICATE_GRANT: "บัญชีนี้มีบทบาทและขอบเขตสาขานี้อยู่แล้ว",
   RATE_LIMITED: "คำขอถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
   // Kept distinct on purpose: one is a deployment gap, the other an outage.
   // Collapsing them loses the fact that decides who gets paged.

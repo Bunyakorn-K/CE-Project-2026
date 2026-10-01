@@ -1096,6 +1096,126 @@ describe("LaundryTwin API", () => {
       }
     });
   });
+
+  // Granting a role to an account that already exists. Until this route the only
+  // way to create a grant was to approve a pending access request, so a manager
+  // who signed in on their own could never be scoped down to one branch — which
+  // is also why production held no single-branch account to verify scoping with.
+  describe("admin grant route", () => {
+    function ownerApp(irisOverrides: Record<string, unknown> = {}) {
+      const getBranches = vi.fn().mockResolvedValue({
+        branches: [{ id: "branch-01", name: "สาขาทดสอบ", timezone: "Asia/Bangkok", active: true }]
+      });
+      const app = createApp({
+        irisClient: {
+          getBranches,
+          getDashboard: vi.fn(),
+          getLiveSnapshot: vi.fn(),
+          getAlerts: vi.fn(),
+          getEvents: vi.fn(),
+          ...irisOverrides
+        }
+      });
+      return { app, getBranches };
+    }
+
+    function post(app: ReturnType<typeof createApp>, body: unknown) {
+      return app.request("/api/admin/grants", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    }
+
+    it("refuses a principal who is not an owner", async () => {
+      authenticate([{ id: "manager-01", role: "manager", branchId: "branch-01" }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "OWNER_ROLE_REQUIRED" } });
+    });
+
+    it("refuses an unauthenticated caller", async () => {
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("refuses a manager grant with no branch, the same rule approve applies", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "manager" });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_BRANCH_SCOPE" } });
+    });
+
+    it("refuses an owner grant scoped to one branch", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "owner", branchId: "branch-01" });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_BRANCH_SCOPE" } });
+    });
+
+    it("refuses a role that is not one of the three", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "superuser", branchId: "branch-01" });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_ROLE" } });
+    });
+
+    it("refuses a branch the configured tenant does not have", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "someone@example.com", role: "manager", branchId: "branch-does-not-exist" });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "UNKNOWN_BRANCH" } });
+    });
+
+    it("requires an email address", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_INPUT" } });
+    });
+
+    it("does not read the branch list for a tenant-wide owner grant", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app, getBranches } = ownerApp();
+
+      await post(app, { email: "someone@example.com", role: "owner" });
+
+      // An owner grant has no branch, so validating one against the branch list
+      // would add a source round-trip that can only fail.
+      expect(getBranches).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing account as 404 naming the caller, not a source failure", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      const { app } = ownerApp();
+
+      const response = await post(app, { email: "nobody@example.com", role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "USER_NOT_FOUND" } });
+    });
+  });
 });
 
 describe("LINE exchange failure reporting", () => {

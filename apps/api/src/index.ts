@@ -11,8 +11,10 @@ import {
   approveLiffAccessRequest,
   createDemoSession,
   createLiffSession,
+  createAccessGrant,
   ensureDemoOwner,
   findLiffUser,
+  findUserByEmail,
   getDevelopmentOwnerPrincipal,
   getAcknowledgedAlertIds,
   listActiveAccessGrants,
@@ -513,27 +515,42 @@ export function createApp(dependencies: AppDependencies = {}) {
     const principal = requireOwner(c);
     if (principal instanceof Response) return principal;
     const body = await readJson(c);
-    const role = getRole(body, "role");
-    const branchId = getNullableString(body, "branchId");
-    if (!role) return apiError(c, 400, "INVALID_ROLE", "role must be owner, manager, or technician");
-    if ((role === "owner" && branchId !== null) || (role !== "owner" && !branchId)) {
-      return apiError(c, 400, "INVALID_BRANCH_SCOPE", "owner is tenant-wide; manager and technician need one branch");
-    }
+    const scope = await validateGrantScope(c, iris, body);
+    if (scope instanceof Response) return scope;
 
-    if (branchId) {
-      try {
-        const branches = await iris.getBranches();
-        if (!branches.branches.some((branch) => branch.id === branchId)) {
-          return apiError(c, 400, "UNKNOWN_BRANCH", "The branch is not available in the configured IRIS tenant");
-        }
-      } catch (error) {
-        return irisError(c, error);
-      }
-    }
-
-    const approvedUser = approveLiffAccessRequest({ requestId: c.req.param("id"), role, branchId, actorUserId: principal.user.id });
+    const approvedUser = approveLiffAccessRequest({ requestId: c.req.param("id"), role: scope.role, branchId: scope.branchId, actorUserId: principal.user.id });
     if (!approvedUser) return apiError(c, 404, "ACCESS_REQUEST_NOT_FOUND", "The access request is no longer pending");
     return c.json({ ok: true, user: approvedUser });
+  });
+
+  /**
+   * Grant a role to an existing account.
+   *
+   * Approving a pending request was the only way to create a grant, so an owner
+   * or manager who signed in on their own could never be given a narrower
+   * scope. This is what lets a franchise scope a manager to one branch, and it
+   * is what makes branch scoping verifiable on production at all — no account
+   * there holds a single-branch grant.
+   */
+  app.post("/api/admin/grants", async (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const body = await readJson(c);
+    const scope = await validateGrantScope(c, iris, body);
+    if (scope instanceof Response) return scope;
+    const email = getString(body, "email");
+    if (!email) return apiError(c, 400, "INVALID_INPUT", "email is required");
+
+    const result = createAccessGrant({ email, role: scope.role, branchId: scope.branchId, actorUserId: principal.user.id });
+    if (!result.ok) {
+      // The address is the caller's input, so both of these name what the caller
+      // must fix rather than reporting an outage.
+      if (result.reason === "user-not-found") {
+        return apiError(c, 404, "USER_NOT_FOUND", "No account uses that email address");
+      }
+      return apiError(c, 409, "DUPLICATE_GRANT", "That account already holds this role for that branch");
+    }
+    return c.json({ ok: true, grant: result.grant });
   });
 
   app.post("/api/admin/grants/:id/revoke", (c) => {
@@ -855,6 +872,39 @@ function requireOwner(c: Context<{ Variables: AppVariables }>) {
     : apiError(c, 403, "OWNER_ROLE_REQUIRED", "Only an owner can manage access");
 }
 
+/**
+ * The one definition of what a grant may be, shared by every route that writes
+ * one. Two copies of this rule would be free to drift, and a grant accepted on
+ * one path and rejected on the other is the kind of defect no unit test catches
+ * because each path is individually correct.
+ *
+ * Returns the validated scope, or the error response to send.
+ */
+async function validateGrantScope(
+  c: Context,
+  iris: IrisClient,
+  body: Record<string, unknown>
+): Promise<{ role: Role; branchId: string | null } | Response> {
+  const role = getRole(body, "role");
+  const branchId = getNullableString(body, "branchId");
+  if (!role) return apiError(c, 400, "INVALID_ROLE", "role must be owner, manager, or technician");
+  if ((role === "owner" && branchId !== null) || (role !== "owner" && !branchId)) {
+    return apiError(c, 400, "INVALID_BRANCH_SCOPE", "owner is tenant-wide; manager and technician need one branch");
+  }
+
+  if (branchId) {
+    try {
+      const branches = await iris.getBranches();
+      if (!branches.branches.some((branch) => branch.id === branchId)) {
+        return apiError(c, 400, "UNKNOWN_BRANCH", "The branch is not available in the configured IRIS tenant");
+      }
+    } catch (error) {
+      return irisError(c, error);
+    }
+  }
+  return { role, branchId };
+}
+
 function grantedReportBranchIds(principal: Principal): string[] | undefined {
   if (principal.grants.some((grant) => grant.role === "owner")) return undefined;
   return [...new Set(principal.grants.flatMap((grant) => (grant.branchId ? [grant.branchId] : [])))];
@@ -973,7 +1023,7 @@ function rateLimitError(c: Context, retryAfter: number) {
   return apiError(c, 429, "RATE_LIMITED", "Too many requests; try again later");
 }
 
-function apiError(c: Context, status: 400 | 401 | 403 | 404 | 429 | 502 | 503, code: string, message: string) {
+function apiError(c: Context, status: 400 | 401 | 403 | 404 | 409 | 429 | 502 | 503, code: string, message: string) {
   return c.json({ error: { code, message } }, status);
 }
 

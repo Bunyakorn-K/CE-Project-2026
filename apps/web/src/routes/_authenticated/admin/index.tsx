@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../../lib/api/client";
+import { buildGrantRequest, canSubmitGrant } from "../../../lib/admin-grant";
 import { authAtom } from "../../../lib/atoms/auth";
 import { isOwner as hasOwnerGrant } from "../../../lib/access";
 
@@ -89,6 +90,22 @@ export function AdminHome() {
     }
   });
 
+  const grantMutation = useMutation({
+    mutationFn: async ({ email, role, branchId }: { email: string; role: Role; branchId: string | null }) => {
+      const response = await fetch(apiUrl("/api/admin/grants"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, role, branchId })
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response, `ให้สิทธิ์ไม่สำเร็จ (HTTP ${response.status})`));
+      return (await response.json()) as { ok: boolean };
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "grants"] });
+    }
+  });
+
   if (!isOwner) {
     return (
       <div className="page-content">
@@ -126,6 +143,8 @@ export function AdminHome() {
       {approveMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">อนุมัติคำขอแล้ว</div>}
       {revokeMutation.isError && <div className="error-message" role="alert">เพิกถอนสิทธิ์ไม่สำเร็จ: {revokeMutation.error.message}</div>}
       {revokeMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">เพิกถอนสิทธิ์แล้ว</div>}
+      {grantMutation.isError && <div className="error-message" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}
+      {grantMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">ให้สิทธิ์แล้ว</div>}
 
       <Card variant="transparent" className="surface-card admin-section">
         <Card.Content>
@@ -145,6 +164,18 @@ export function AdminHome() {
               />
             ))}
           </div>
+        </Card.Content>
+      </Card>
+
+      <Card variant="transparent" className="surface-card admin-section">
+        <Card.Content>
+          <div className="section-heading"><h2>ให้สิทธิ์ผู้ใช้ที่มีบัญชีแล้ว</h2><span>เพิ่มขอบเขตโดยไม่ต้องรอคำขอ</span></div>
+          <p>ใช้เมื่อผู้ใช้เข้าสู่ระบบด้วยตัวเองแล้ว แต่ต้องจำกัดสิทธิ์ให้เหลือเฉพาะสาขาที่ดูแล</p>
+          <GrantForm
+            branches={branches}
+            pending={grantMutation.isPending}
+            onGrant={(email, role, branchId) => grantMutation.mutate({ email, role, branchId })}
+          />
         </Card.Content>
       </Card>
 
@@ -202,8 +233,61 @@ export function AdminHome() {
   );
 }
 
-function AccessRequestRow({ request, branches, pending, onApprove }: { request: AccessRequest; branches: Branch[]; pending: boolean; onApprove: (role: Role, branchId: string | null) => void }) {
+/**
+ * Grant a role to an account that already exists.
+ *
+ * Approving a pending request was the only path to a grant, so narrowing someone
+ * who had signed in on their own was impossible. The address is typed rather
+ * than picked from a list because the only accounts this can name are ones that
+ * have already signed in, and an owner knows an employee's address; offering a
+ * dropdown of everyone would read as a directory the product does not have.
+ */
+function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending: boolean; onGrant: (email: string, role: Role, branchId: string | null) => void }) {
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("manager");
+  const [branchId, setBranchId] = useState("");
+  useEffect(() => {
+    if (!branchId && branches[0]) setBranchId(branches[0].id);
+  }, [branchId, branches]);
+
+  return (
+    <form
+      className="access-request-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const request = buildGrantRequest({ email, role, branchId });
+        if (!request.ok) return;
+        onGrant(request.body.email, request.body.role, request.body.branchId);
+        setEmail("");
+      }}
+    >
+      <div className="grant-fields grant-fields--email">
+        <label>
+          <span>อีเมลผู้ใช้</span>
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="user@example.com" required />
+        </label>
+        <label>
+          <span>บทบาท</span>
+          <select value={role} onChange={(event) => setRole(event.target.value as Role)}>
+            <option value="owner">เจ้าของ · ทั้งผู้ใช้งาน</option>
+            <option value="manager">ผู้จัดการสาขา</option>
+            <option value="technician">ช่างเทคนิค</option>
+          </select>
+        </label>
+        <label>
+          <span>สาขา</span>
+          <select value={role === "owner" ? "" : branchId} disabled={role === "owner" || branches.length === 0} onChange={(event) => setBranchId(event.target.value)} required={role !== "owner"}>
+            {branches.length === 0 && <option value="">ไม่มีสาขาให้เลือก</option>}
+            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+          </select>
+        </label>
+        <button type="submit" className="primary-button" disabled={pending || !canSubmitGrant({ email, role, branchId })}>{pending ? "กำลังให้สิทธิ์…" : "ให้สิทธิ์"}</button>
+      </div>
+    </form>
+  );
+}
+
+function AccessRequestRow({ request, branches, pending, onApprove }: { request: AccessRequest; branches: Branch[]; pending: boolean; onApprove: (role: Role, branchId: string | null) => void }) {  const [role, setRole] = useState<Role>("manager");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   useEffect(() => {
     if (!branchId && branches[0]) setBranchId(branches[0].id);
