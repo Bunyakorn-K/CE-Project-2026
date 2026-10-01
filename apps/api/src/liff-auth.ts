@@ -57,21 +57,19 @@ export async function verifyLiffIdToken(input: {
     lastError = response;
   }
 
+  /**
+   * Every channel rejected the token, so the token itself is the problem.
+   *
+   * The status is **401**, deliberately not LINE's own 400. LINE answers an
+   * expired token, a token signed for another channel, and a malformed one
+   * identically — all three are the caller's to fix, by fetching a new token.
+   * Forwarding 400 (or collapsing everything into the 502 this path used to
+   * fall through to) tells the operator the server or a gateway is broken,
+   * which is not true, and leaves the browser's retry button re-running the
+   * same failing exchange forever.
+   *
+   * Only two conditions are genuinely the server's fault, and they stay
+   * distinct above: LINE unreachable (502) and no channel id configured (503).
+   */
   throw new LiffVerificationError("LINE identity token is invalid", 401);
 }
-
-/**
- * Why the API must not forward LINE's status verbatim.
- *
- * LINE answers a rejected ID token with **400** and a JWS error — the same
- * response for an expired token, a token signed for another channel, and a
- * malformed one. All three are the caller's problem: the browser holds a stale
- * token and must fetch a new one. Forwarding 400 (or collapsing everything into
- * a 502, which is what the route's fallback did) tells the operator the server
- * or a gateway is broken, and the browser's retry button re-runs the same
- * failing exchange forever.
- *
- * Only two things are genuinely the server's fault, and they are kept apart:
- * LINE being unreachable (502) and no channel id being configured (503).
- */
-export const LIFF_TOKEN_REJECTED = 401;
