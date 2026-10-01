@@ -184,7 +184,37 @@ look like a server outage. Sign-in is one
 shared path, `signInWithLiff`, behind the pure decision `planLineSignIn` —
 an earlier version logged out **any** logged-in session and therefore could
 not sign anyone in. See `apps/web/src/liff.ts` and
-`apps/api/src/liff-auth.ts`. Better Auth requires
+`apps/api/src/liff-auth.ts`.
+
+**The stale-session path was itself a defect, found in production by browser
+inspection on 2026-10-01 and fixed the same day.** The gate treated an expired
+cached ID token as a reason to block the whole app, which produced two
+outcomes, both observed on `https://laundrytwin.duckdns.org` while
+`/api/me` answered **200** with an owner grant: `/dashboard` rendered nothing
+but "เซสชัน LINE หมดอายุแล้ว" to a browser that was already authenticated, and
+`/login` rendered that same card **instead of** the sign-in page, hiding the
+email form, the demo button and the legal links. The rule now: an ID token is
+what *creates* a session, so once `/api/me` says one exists, an expired copy in
+the browser is not evidence about it — the gate asks the API and renders the
+route. `/login` is ungated for the same reason `/privacy` and `/terms` are, and
+because it *is* the sign-in surface. Two further consequences: the gate sits
+above `RouterProvider`, so while it blocks, `_authenticated`'s redirect to
+`/login` never runs — a sessionless visitor was stranded on `/dashboard` — and
+the card now carries an "เข้าสู่ระบบด้วยอีเมลแทน" link as the way out, alongside
+the LINE re-login that remains the right action when LINE is the problem. The
+card body is Thai copy keyed on the failing phase, because `initLiff` surfaces
+the SDK's raw failure and a network drop was reaching the page as the English
+string "Failed to fetch". Evidence: `decideGate` in
+`apps/web/src/lib/components/liff-gate.tsx` with `liff-gate.test.ts` for each
+state, and `apps/web/e2e/stale-liff-session.pw.ts` against the built bundle.
+**A real expired token still has not been reproduced** — the LIFF SDK discards a
+seeded localStorage store because it validates the cached access token against
+LINE's servers first, so those specs drive the gate into the same blocking
+state by making LINE unreachable instead, and the exact stale-token cause stays
+unexercised. The fix is code- and browser-verified; the production symptom it
+answers was measured, and re-measuring after the deploy is what confirms it.
+
+Better Auth requires
 `BETTER_AUTH_SECRET` outside test, disables public signup, and enables bounded
 rate limits. Development access requires both `NODE_ENV=development` and
 `LAUNDRYTWIN_DEV_BYPASS=true`; it uses an in-memory `Development Owner`, reads
@@ -413,7 +443,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 629 tests green** — API 360, web 182,
+Local automated evidence on **2026-10-01: 636 tests green** — API 360, web 189,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
@@ -427,14 +457,15 @@ reports as a healthy session and never refreshes) — including the sign-in
 decision that regression testing caught — then to 129 with the machine-facts
 decision functions and the Thai error-code copy, then to 179 with the dashboard
 working context: URL state, date presets, branch sort, and the prior-period
-comparison, then to 182 with the API error-code coverage guard. `login.tsx` had
+comparison, then to 182 with the API error-code coverage guard, then to 189 with
+the LIFF gate decision. `login.tsx` had
 **no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is 32 tests
+Playwright suite is 36 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts` and
 `twin-honesty.pw.ts` assert
@@ -442,13 +473,16 @@ rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
 that the executive summary is hidden over an empty window and states when
 its source is unavailable, and that a twin card draws no machine state its own
-pills disclaim. Node 24.x is used (see `.nvmrc`); no
+pills disclaim. `stale-liff-session.pw.ts` asserts that a blocking LINE gate
+neither hides a route the visitor may use nor replaces the sign-in page. Node
+24.x is used (see `.nvmrc`); no
 `package.json` declares `engines` and the Dockerfiles build from the floating
 `node:24-bookworm-slim` tag, so nothing local enforces a narrower Node version.
 `pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL test pass.
-Manual browser QA of the active router was performed on 2026-09-28; it remains
-manual, Chromium-only, and leaves no committed visual baseline. This does not
-establish production, LINE, or browser E2E.
+Manual browser QA of the active router was performed on 2026-09-28 and the
+LIFF-gate change on 2026-10-01, both in Chromium against a local build; they
+remain manual, Chromium-only, and leave no committed visual baseline. This does
+not establish production, LINE, or browser E2E.
 
 ```bash
 pnpm test

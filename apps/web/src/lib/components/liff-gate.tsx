@@ -17,6 +17,32 @@ type Phase = "init" | "exchange" | "session";
 type ExchangeResponse = { user: { id: string; name: string; email: string }; roles: string[] };
 type ApiErrorResponse = { error?: { code?: string; message?: string } };
 
+/**
+ * A machine-readable reason, as opposed to the SDK's own English prose.
+ *
+ * The gate renders on a Thai-first page, and `initLiff` surfaces the raw
+ * failure it caught — so a network drop reached the visitor as the card body
+ * reading "Failed to fetch", verbatim, inside an otherwise Thai sentence. This
+ * is the same defect `api-errors.ts` exists to prevent on the API side: a
+ * server-side string must never be the user-facing copy.
+ */
+function liffFailureMessage(phase: Phase, detail: string | null): string {
+  // The detail is dropped, not translated. `getLiffInitError()` carries LINE's
+  // own wording, which is neither stable enough to match on nor ours to render;
+  // what the visitor can act on is which step failed and what to do next.
+  if (phase === "init") {
+    return "ไม่สามารถเชื่อมต่อกับ LINE ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่";
+  }
+  if (phase === "exchange") {
+    return "แลกเปลี่ยนข้อมูลกับ LINE ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+  }
+  // `detail` is deliberately unread here: naming it would put the SDK's English
+  // back on the page. It stays a parameter so the failure text is still
+  // available to a caller that wants to log it.
+  void detail;
+  return "ตรวจสอบเซสชันไม่สำเร็จ กรุณาลองใหม่";
+}
+
 function LiffGateMessage({ phase, message, onRetry }: { phase: Phase; message: string; onRetry?: () => void }) {
   const heading = phase === "init" ? "เริ่ม LINE LIFF ไม่สำเร็จ" : phase === "exchange" ? "แลกเปลี่ยนข้อมูล LINE ไม่สำเร็จ" : "ตรวจสอบเซสชันไม่สำเร็จ";
   return (
@@ -30,6 +56,13 @@ function LiffGateMessage({ phase, message, onRetry }: { phase: Phase; message: s
         <button type="button" onClick={onRetry ?? (() => window.location.reload())} className="primary-button">
           {onRetry ? "เข้าสู่ระบบด้วย LINE อีกครั้ง" : "ลองใหม่"}
         </button>
+        {/* The way out for anyone the LINE button cannot help.
+            This card replaces the whole page, so without this a visitor whose
+            problem is not LINE — no LINE client, a browser they cannot use it
+            in — is left with a retry of the request that just failed. */}
+        <p className="liff-message-alt">
+          <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
+        </p>
       </section>
     </main>
   );
@@ -103,10 +136,15 @@ async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Pr
  * Privacy policy URL lands on the pending card instead of the document. Both
  * make the policy harder to produce, not easier.
  *
- * The URL is public and the pages hold no branch data, so the gate's only
- * effect here is to hide them.
+ * `/login` is here for the same reason and one more. It IS the sign-in surface:
+ * it carries the email form, the demo button and the legal links. A stale LINE
+ * session replaced all three with a card whose only action was "sign in with
+ * LINE again", so a browser user who cannot use LINE had no way forward at all
+ * — verified in production 2026-10-01, where /login rendered nothing but the
+ * stale card. The URL is public and none of these pages hold branch data, so
+ * the gate's only effect here is to hide them.
  */
-const UNGATED_PATHS = new Set(["/privacy", "/terms"]);
+const UNGATED_PATHS = new Set(["/login", "/privacy", "/terms"]);
 
 export function isUngatedPath(pathname: string): boolean {
   const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
@@ -149,11 +187,63 @@ function useCurrentPath(pathSource: PathSource): string {
   return useSyncExternalStore(pathSource.subscribe, pathSource.getPath, pathSource.getPath);
 }
 
+/** What the gate puts on screen. `render` means the route renders as usual. */
+export type GateDecision = "render" | "loading" | "stale" | "error" | "pending";
+
+/**
+ * What the gate should show, as a pure function of four facts.
+ *
+ * The defect this encodes is only reachable with a browser whose LIFF cache
+ * holds an expired ID token *while the API has already issued a working
+ * session* — measured on production 2026-10-01, where `/api/me` answered 200
+ * with an owner grant and `/dashboard` still refused to render, showing
+ * "เซสชัน LINE หมดอายุแล้ว". No button press reproduces that, so it is decided
+ * here instead and tested without a LINE client.
+ *
+ * The rule: an ID token is what CREATES a session. Once `/api/me` says one
+ * exists, an expired copy cached in the browser says nothing about whether that
+ * session is still good — the API owns that answer, and it has already given
+ * it. Blocking on the cached token then locks a signed-in owner out of the
+ * product on the strength of a value the server never re-checked.
+ */
+export function decideGate(input: {
+  bypass: boolean;
+  state: State;
+  pendingAccess: boolean;
+  sessionUsable: boolean;
+}): GateDecision {
+  if (input.bypass) return "render";
+  if (input.state === "loading") return "loading";
+  if (input.sessionUsable) return "render";
+  if (input.state === "stale") return "stale";
+  if (input.state === "error") return "error";
+  if (input.state === "ready" && input.pendingAccess) return "pending";
+  return "render";
+}
+
+/**
+ * Whether the API will vouch for this browser right now.
+ *
+ * `ok` alone, not the body: `/api/me` answers 401 without a session and 200
+ * with one, and the grants inside it are the authenticated routes' business to
+ * enforce. A network failure is `false` — the gate then falls back to its LINE
+ * card, which is the conservative answer.
+ */
+async function probeSession(signal: AbortSignal): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl("/api/me"), { credentials: "include", signal });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function LiffGate({ children }: PropsWithChildren) {
   const [state, setState] = useState<State>("loading");
   const [phase, setPhase] = useState<Phase>("init");
   const [error, setError] = useState<string | null>(null);
   const [pendingAccess, setPendingAccess] = useState(false);
+  const [sessionUsable, setSessionUsable] = useState(false);
   const pathname = useCurrentPath(routerPathSource);
   const bypass = isUngatedPath(pathname);
 
@@ -193,6 +283,8 @@ export function LiffGate({ children }: PropsWithChildren) {
         // an opaque failure. Catching it here lets the user re-login instead of
         // retrying an exchange that cannot succeed.
         if (isIdTokenExpired(idToken)) {
+          setSessionUsable(await probeSession(controller.signal));
+          if (cancelled) return;
           setState("stale");
           return;
         }
@@ -200,6 +292,8 @@ export function LiffGate({ children }: PropsWithChildren) {
         const exchanged = await exchangeIdentity({ displayName: profile.displayName, userId: profile.userId, idToken }, controller.signal);
         if (cancelled) return;
         if (exchanged === null) {
+          setSessionUsable(await probeSession(controller.signal));
+          if (cancelled) return;
           setPendingAccess(true);
           setState("ready");
           return;
@@ -208,6 +302,7 @@ export function LiffGate({ children }: PropsWithChildren) {
         const me = await fetch(apiUrl("/api/me"), { credentials: "include", signal: controller.signal });
         if (cancelled) return;
         if (!me.ok) throw new Error(`Session was created but /api/me failed (HTTP ${me.status})`);
+        setSessionUsable(true);
         setState("ready");
       } catch (nextError) {
         if (cancelled) return;
@@ -215,9 +310,16 @@ export function LiffGate({ children }: PropsWithChildren) {
         // expire between the check above and the response. Route it to the same
         // re-login path rather than showing a dead "try again".
         if (isRejectedTokenError(nextError)) {
+          setSessionUsable(await probeSession(controller.signal));
+          if (cancelled) return;
           setState("stale");
           return;
         }
+        // Same reasoning as the 401 branch: a LINE failure blocks only the
+        // people who still need LINE to get a session. Probed last so a genuine
+        // outage does not add a request on top of the one that just failed.
+        setSessionUsable(await probeSession(controller.signal));
+        if (cancelled) return;
         setError(nextError instanceof Error ? nextError.message : "LINE initialization failed");
         setState("error");
       }
@@ -228,27 +330,26 @@ export function LiffGate({ children }: PropsWithChildren) {
     };
   }, []);
 
-  if (bypass) return <>{children}</>;
+  switch (decideGate({ bypass, state, pendingAccess, sessionUsable })) {
+    case "render":
+      return <>{children}</>;
 
-  if (state === "loading") {
-    return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;
+    case "loading":
+      return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;
+
+    case "stale":
+      return (
+        <LiffGateMessage
+          phase="exchange"
+          message={staleLiffSessionMessage()}
+          onRetry={() => reauthenticateWithLiff(import.meta.env.VITE_LIFF_ID as string)}
+        />
+      );
+
+    case "error":
+      return <LiffGateMessage phase={phase} message={liffFailureMessage(phase, error)} />;
+
+    case "pending":
+      return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status"><span className="status-pill status-pill--warning">รอการอนุมัติ</span><h1>ส่งคำขอเข้าใช้งานแล้ว</h1><p>กรุณารอผู้ดูแลระบบอนุมัติสิทธิ์ แล้วเปิดหน้านี้อีกครั้ง</p></section></main>;
   }
-
-  if (state === "stale") {
-    return (
-      <LiffGateMessage
-        phase="exchange"
-        message={staleLiffSessionMessage()}
-        onRetry={() => reauthenticateWithLiff(import.meta.env.VITE_LIFF_ID as string)}
-      />
-    );
-  }
-
-  if (state === "error") return <LiffGateMessage phase={phase} message={error ?? "ไม่สามารถเริ่ม LINE LIFF ได้"} />;
-
-  if (state === "ready" && pendingAccess) {
-    return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status"><span className="status-pill status-pill--warning">รอการอนุมัติ</span><h1>ส่งคำขอเข้าใช้งานแล้ว</h1><p>กรุณารอผู้ดูแลระบบอนุมัติสิทธิ์ แล้วเปิดหน้านี้อีกครั้ง</p></section></main>;
-  }
-
-  return <>{children}</>;
 }

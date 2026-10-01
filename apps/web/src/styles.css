@@ -2095,6 +2095,25 @@ main {
   margin-bottom: 4px;
 }
 
+/* The alternative sign-in route. Visually secondary to the LINE button, since
+   for a visitor whose problem IS LINE the button is the right one — but never
+   hidden, because for everyone else it is the only way forward. */
+.liff-message-card .liff-message-alt {
+  margin: 0;
+  font-size: 14px;
+}
+
+.liff-message-card .liff-message-alt a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.liff-message-card .liff-message-alt a:hover,
+.liff-message-card .liff-message-alt a:focus-visible {
+  color: var(--ink);
+}
+
 .legal-page {
   min-height: 100vh;
   padding: 40px 20px;
