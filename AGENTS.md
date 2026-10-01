@@ -229,9 +229,41 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
-**As of 2026-10-01 production runs `deploy-0ffb7ff-20261001` for the API and
-`deploy-84da0f1-20261001` for the web** (record and rollback refs in
-`docs/02_architecture/deploy-runbook.md`). The API deploy removed the twin's
+**As of 2026-10-01 production runs the merged `deploy-97c45ac-20261001` as the
+single `app` container on `:8787`**, replacing `deploy-0ffb7ff-20261001` (API) and
+`deploy-84da0f1-20261001` (web), which are retained as the rollback target and
+still pinned in `.env` (record and rollback refs in
+`docs/02_architecture/deploy-runbook.md`). Every status matched its pre-deploy
+baseline across all three public hostnames, and the browser check was run
+against the public route rather than a fixture. **The authenticated dashboard is
+carried over from the `84da0f1` check, not re-established against this image** —
+signing in needs the owner's production password, which was not requested or
+handled; `/api/me` and every report route deny correctly unauthenticated, so
+nothing in the merge blocks authentication, but read the browser-verified
+dashboard claim below as belonging to the previous pair. The earlier API deploy
+removed the twin's machine illustration and made a caller's malformed `cursor` a
+400 instead of a 502 source outage; the earlier web deploy is the LIFF-gate
+session-probe fix below. Every status matched its pre-deploy baseline exactly and the shipped bundles
+were grepped for the changes themselves. **Authenticated report rendering in a
+browser is now verified** — the dashboard renders in production with a real
+owner session, which closes the longest-standing local-only caveat — while the
+new Thai error copy is verified as shipped bytes and as rendered output on the
+sign-in page, and the 400 for a bad cursor still has no live request behind it,
+because `fact_machine_event` holds 0 rows.
+
+**Caddy is part of this deploy, and it cannot be reloaded.** The Pi's Caddyfile
+sets `admin off`, so `caddy reload` always fails with `connection refused` on
+`:2019` and any Caddyfile change requires **recreating the container** — which
+blips every hostname that Caddy serves, not just LaundryTwin's. Two lines
+(`laundrytwin.duckdns.org` and `web.laundrytwin.duckdns.org`) moved from
+`10.10.0.117:8080` to `:8787`; two other `8080` references in that same file
+belong to unrelated services (`media.pve.local:8080`, `10.10.0.5:8080`) and must
+never be caught by a find-and-replace. Rolling the app back without rolling
+Caddy back leaves the route pointing at a port nothing listens on. `caddy
+validate` must pass before the recreate, and it hangs unless stdin is closed.
+Two non-defects worth not re-investigating: `/api/real` is **404** because that
+path exists only in a test fixture, and `/api/ai/*` returns **403** rather than
+401 because `requireOwner` runs in middleware ahead of authentication.
 machine illustration and made a caller's malformed `cursor` a 400 instead of a
 502 source outage; the web deploy is the LIFF-gate session-probe fix below.
 Every status matched its pre-deploy baseline exactly and the shipped bundles
@@ -414,7 +446,9 @@ holding a single-branch `manager` or `technician` grant. Read them as
 code-verified, not production-verified.
 
 **A grant can now be given to an account that already exists** (`56e9e33`,
-not deployed). Approving a pending access request was previously the *only* way
+deployed in `deploy-97c45ac-20261001`; `POST /api/admin/grants` is registered and
+returns 401 unauthenticated). Approving a pending access request was previously
+the *only* way
 to create a grant, so anyone who signed in on their own could never be scoped
 down to a single branch — the account had to arrive as a stranger first. For a
 franchise, narrowing a manager to their own branch is an ordinary operation,
@@ -737,10 +771,13 @@ absent coverage with unavailable fails 1), plus `e2e/live-machine-honesty.pw.ts`
 against the built bundle, which reproduced the exact production markup
 (`<span class="status-pill status-pill--success">กำลังใช้งาน</span>`) when the
 guard was removed. Rendered in Chromium at 390px and 1440px against the measured
-production payload. **Not deployed** — production still runs the web image that
-carries the defect.
+production payload. **Deployed as part of `deploy-97c45ac-20261001`**, which
+carries this fix in the merged image. The rendering above was verified locally
+against the measured production payload; what the deploy establishes is that the
+shipped bundle is the one carrying the guard, not that the fix was re-checked in
+a production browser.
 
-**The api + web merge is verified locally and is NOT deployed.** The image
+**The api + web merge was verified locally, then deployed.** The image
 `laundrytwin:ci-cbe7243-20261001` was built for real from `apps/api/Dockerfile`
 and run as a single container, and this is what it was checked against — the
 method is worth repeating, because the defect it caught had a correct status
@@ -761,12 +798,20 @@ code:
   390px. Same-origin `fetch` confirms the API answers on the same origin with
   the same types.
 
-**What is not verified: anything about production.** No image was pushed to the
-registry, nothing was applied on the VM, and **the Pi Caddyfile still points at
-`:8080`**, so deploying this without repointing it makes
-`laundrytwin.duckdns.org` return 502. The key for the Pi is not authorized for
-VM 117, so that repoint is the operator's step and it is recorded in the
-runbook.
+**Deployed as `deploy-97c45ac-20261001`, and the Pi Caddyfile is repointed.** Both
+Caddy lines for `laundrytwin.duckdns.org` and
+`web.laundrytwin.duckdns.org` now read `:8787`; two unrelated `8080` upstreams in
+that same file were left alone. Every status above was re-confirmed over public
+TLS on all three hostnames, content types included, and the Chromium checks were
+repeated against the live route at 390px and 1440px with **zero console and page
+errors** and the real LIFF ID present in the shipped bundle. ClickHouse was
+queried from inside the running container (engine `26.3.26.3`, 8,086 usage rows),
+so the report path is proven rather than assumed. SQLite was backed up via
+`db.backup()` before the cutover, never `cp`. **The one thing this deploy does
+not establish is the authenticated dashboard**, because signing in needs the
+owner's production password, which was not requested or handled; it is carried
+over from the `84da0f1` check against the previous pair. Full record and the
+rollback procedure (app and Caddy are one change, not two) in the runbook.
 
 ```bash
 pnpm test

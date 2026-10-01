@@ -1512,3 +1512,149 @@ prove it was still expired at the moment of the check — the session cookie was
 used as the evidence instead, which is what the gate itself now trusts. And the
 sign-in flow itself has still not been observed completing fresh in the LINE
 client.
+
+## `deploy-97c45ac-20261001` — api + web merged into one image and container
+
+**Status: deployed.** Commit `97c45ac`, image `laundrytwin:deploy-97c45ac-20261001`
+(208 MB, built `linux/amd64` from `apps/api/Dockerfile` with `VITE_LIFF_ID`
+baked at build time). Replaces `api:deploy-0ffb7ff-20261001` and
+`web:deploy-84da0f1-20261001`, both of which are retained as the rollback
+target and are still pinned in `.env`.
+
+This is the deploy that makes the api+web merge structural rather than
+documentary: **one image, one container, one port (`:8787`)**, serving both the
+JSON API and the built SPA from one process.
+
+### What had to happen outside the compose file
+
+`compose.yaml` was swapped for `compose.merged.yaml` and `docker compose up -d
+--remove-orphans app` removed `laundrytwin-api-1` as an orphan and created
+`laundrytwin-app-1`. The container resolves by **service** (`app`), not by a
+hardcoded name, per the correction recorded above.
+
+The Caddyfile on the Pi is a **second, separate** deployment and the compose
+swap alone is not sufficient. Two lines in `/home/dietpi/stack/caddy/Caddyfile`
+pointed `reverse_proxy` at `10.10.0.117:8080` — the old `web` container's port,
+which ceases to exist with the merge, so the public route **502s until they are
+repointed at `:8787`**:
+
+```text
+327:  laundrytwin.duckdns.org    → :8080 → :8787
+446:  web.laundrytwin.duckdns.org → :8080 → :8787
+```
+
+Two other `8080` references exist in that file and were **deliberately not
+touched** — they belong to other services (`media.pve.local:8080` at line 117 and
+`10.10.0.5:8080` at line 223). A blunt find-and-replace would have broken them,
+so the edit was anchored on the full upstream string `10.10.0.117:8080`, which
+occurs in exactly those two lines. `diff` against the backup confirms two lines
+changed and nothing else.
+
+**Caddy could not be reloaded, and the reason is a deliberate setting.** The
+global options block sets `admin off`, so Caddy's admin API on `:2019` refuses
+connections and `caddy reload` cannot work — it fails with
+`Post "http://localhost:2019/load": connection refused`. The container must be
+**recreated** for any Caddyfile change on this host, which briefly blips every
+hostname this Caddy serves, not only LaundryTwin's. The ~10 `Caddyfile.pre-*`
+files in that directory are the record of that having been the procedure all
+along. `caddy validate` must pass **before** the recreate; note it also hangs if
+stdin is left attached, so it needs `</dev/null`.
+
+Captured before the recreate, since a faithful rebuild depends on them:
+image `caddy:2-alpine`, `--network proxy`, `-p 80:80 -p 443:443`,
+`--restart unless-stopped`, three bind mounts (`stack_caddy_config/_data`,
+`stack_caddy_data/_data`, and the Caddyfile itself read-only), no caps, not
+privileged.
+
+### Smoke after the swap
+
+Every status matches the pre-deploy baseline exactly, across all three public
+hostnames.
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/health` | 200 `{"ok":true,"reportingConfigured":false,"demoMode":false}` | **200, byte-identical** |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `POST /api/auth/liff/exchange` no token | 400 | **400** |
+| `POST /api/admin/grants` (new route) unauth | — | **401** |
+| `POST` to an unknown `/api/*` path | 404 `text/plain` | **404 `text/plain`** |
+| `/api/__smoke__` | 404 | **404** |
+| `/`, `/login`, `/privacy`, `/terms` | 200 | **200** |
+| entry bundle | `index-E6iFYXm0.js` | **`index-10WERJ5R.js`** |
+
+**The static half was checked, not assumed.** A `/health`-only smoke passes with
+the entire SPA missing, which is the specific failure this merge could
+introduce, so the content types are part of the result: `/` and `/playground`
+serve `text/html; charset=utf-8`, the entry bundle `text/javascript`, the
+stylesheet `text/css`, and `/fonts/noto-sans-thai-subset.woff2` `font/woff2` —
+the `text/plain` default that renders HTML as source text, which was a live
+defect caught by the first smoke of the merged container, did not recur.
+
+`/api/real` answers **404** and is correct: that path exists only in
+`spa.test.ts`'s fixture app, not in the real server. `/api/ai/settings` and
+`/api/ai/models` answer **403**, not 401, because `requireOwner` runs in
+middleware before any authentication check (`ai-routes.ts:45-51`). Both are
+pre-existing and unrelated to this merge — recorded here so a future reader does
+not read them as new.
+
+ClickHouse was reached **from inside the app container** rather than assumed from
+the host: engine `26.3.26.3`, **8,086** rows in `fact_machine_usage`. The
+container has `CLICKHOUSE_*` set and rendering correctly, so `reportingConfigured:
+false` on `/health` is the expected baseline — that flag reports
+`IRIS_READ_BASE_URL`, the optional read-only IRIS integration production does not
+configure, and the body is byte-identical to every prior deploy.
+
+### In a real browser, against the public route
+
+Chromium at 390px and 1440px, over TLS, no fixtures:
+
+- `/login` renders the real page — LINE button, email and password inputs, both
+  legal links, and **no** `.liff-message-card` (which would mean the LIFF gate
+  had replaced it again).
+- Hard navigation to the deep link `/privacy` boots the app: `lang="th"`,
+  `#root` populated, stylesheet applied, `document.fonts.check` true for the
+  vendored Noto Sans Thai.
+- No horizontal overflow at 390px (`scrollWidth - clientWidth === 0`).
+- **Zero page errors and zero console errors** on either width.
+- The real LIFF ID appears in the shipped entry bundle, so the LINE branches
+  compiled in rather than being optimised out by an empty build arg.
+
+**Not verified:** the **authenticated** dashboard over this image. Signing in
+requires the owner's production password, which was not requested, copied off the
+VM, or handled. Unauthenticated, `/api/me` answers 401 correctly and every
+report route is registered and denying properly, so nothing in the merge blocks
+authentication — but "the dashboard renders for a signed-in owner" is carried
+over from the `84da0f1` check against the **previous** image, not re-established
+against this one. The narrower-grant path (single-branch `manager` or
+`technician`, revenue redaction, zero-grant denial) remains unit-verified only,
+because no such production account exists yet.
+
+### Other state on the VM
+
+`laundrytwin-app-1` up 12 minutes, **0 restarts**, no errors in its log. `etl`
+(23h), `gas` (23h) and `weather` (45h) were not touched and kept their uptime;
+`gas` still runs behind its `profiles: ["gas"]`. SQLite was backed up through
+`await db.backup(...)` before the cutover — **not** `cp`, because the database is
+in WAL mode and a file copy yields a plausible stub with zero rows — and verified
+with `integrity_check`, a table count and per-table row counts. The backup file is
+`backup-pre-merge-20261001T124223Z.sqlite` on the VM.
+
+Also on the VM, as rollback material: `compose.yaml.bak-pre-merge-20261001` and
+`.env.bak-pre-merge-20261001`. On the Pi: `Caddyfile.bak-pre-merge-20261001`.
+
+### Rollback
+
+Restore `/opt/laundrytwin/compose.yaml.bak-pre-merge-20261001` and
+`/opt/laundrytwin/.env.bak-pre-merge-20261001`, bring the pair back up, then
+repoint **both** Caddy lines to `10.10.0.117:8080` and recreate the Caddy
+container. Rolling the app back without rolling Caddy back leaves the route
+pointing at `:8787` with nothing listening; the two are one change, not two.
+
+### Also shipped in this image, previously unverified in production
+
+The machines-page state-claim fix (`1bda914`, `ab4d884`) and the direct-grant
+route (`56e9e33`) ride along in the same image. `POST /api/admin/grants` is
+registered and returns 401 unauthenticated; granting an account that already
+exists still needs a single-branch production account to be created before
+branch scoping can be verified against anything but unit tests.
