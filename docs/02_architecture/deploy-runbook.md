@@ -431,10 +431,25 @@ container. The script replicates `approveLiffAccessRequest` from
 ```bash
 scp apps/api/scripts/approve-liff-access.mjs uunw@10.10.0.117:/tmp/
 ssh -J notnotik-pve uunw@10.10.0.117
-sudo docker cp /tmp/approve-liff-access.mjs laundrytwin-api-1:/app/approve-liff-access.mjs
-sudo docker exec -u 0 laundrytwin-api-1 node /app/approve-liff-access.mjs \
+# Resolve the container by service, not by a hardcoded name. The service is
+# `app` (it was `api` before the 2026-10-01 merge, and the container is
+# `laundrytwin-app-1`) — Compose derives that suffix from the project and
+# service names, so a hardcoded name breaks the moment either changes, and it
+# breaks as "no such container" rather than as anything recognisable.
+app_container=$(sudo docker compose -f /opt/laundrytwin/compose.yaml ps -q app)
+# `compose ps -q` exits 0 with EMPTY output when the service is not running, so
+# the substitution alone would hand `docker cp` an empty destination and fail
+# with a message about the argument, not about the missing container. Check it.
+test -n "$app_container" || { echo "app container not found — is it running?"; exit 1; }
+sudo docker cp /tmp/approve-liff-access.mjs "${app_container}:/app/approve-liff-access.mjs"
+sudo docker exec -u 0 "${app_container}" node /app/approve-liff-access.mjs \
   <requestId> owner - <actorUserId>
 ```
+
+Set `app_container` once per shell session and reuse it for follow-up commands.
+The empty check is not defensive noise: `docker compose ps -q` exits **0** for a
+stopped service, so without it a stopped or renamed service surfaces as a
+confusing `docker cp` argument error rather than as "the app is not running".
 
 `owner` takes `-` for the branch because it is tenant-wide; `manager` and
 `technician` each take exactly one `branchId`. The actor must hold a live
