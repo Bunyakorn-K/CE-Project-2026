@@ -383,9 +383,19 @@ deployment ref.
 1. Set `app_repo_ref` to the approved immutable commit or tag, and `app_image_tag` to the immutable image tag the release run published, then run `tofu apply` once. One tag covers the API and the SPA: they are not independently releasable, and `api_image_tag`/`web_image_tag` no longer exist.
 2. Check `sudo docker compose -f /opt/analytics/compose.yaml ps` and confirm ClickHouse, Postgres, Airflow roles, Superset, Redis, and the app container are healthy.
 3. Check `http://127.0.0.1:8787/health`, `http://127.0.0.1:8787/`, `http://127.0.0.1:8787/playground`, and `http://127.0.0.1:8088/health` on the VM. The SPA and the API are one port now. `/playground` is a client-side route with no file extension, so a 200 there proves the static half is really being served and not just that the process is up. `http://127.0.0.1:8787/api/anything` must be **404**, not the SPA shell — a 200-with-HTML there would reach the browser with no error code to map.
-4. Verify an unauthenticated report request is denied, an approved session is branch-scoped, invalid calendar dates return `400`, and logout revokes the session.
-5. Verify the ClickHouse reader can query the analytics database and cannot use the admin credential from the API or browser.
-6. Verify public TLS routes only after internal smoke passes. The Pi's Caddyfile must point `laundrytwin.duckdns.org` at **:8787**; the old `:8080` upstream no longer exists and the route will 502 until it is changed. Keep the MCP inspector local-only and keep `MCP_ALLOW_REVENUE=false` unless separately approved.
+4. **Check the content type, not only the status code.** A status-only smoke passed while the merged container served the entire SPA as `text/plain`, because `c.body()` does not infer a MIME type — every code was correct and a browser displayed the page as source text. So:
+
+   ```bash
+   curl -sI http://127.0.0.1:8787/ | grep -i '^content-type'   # want text/html
+   asset=$(curl -s http://127.0.0.1:8787/ | grep -o '/assets/[^"]*\.js' | head -1)
+   curl -sI "http://127.0.0.1:8787$asset" | grep -i '^content-type'   # want text/javascript
+   ```
+
+   Both are served by `apps/api/src/spa.ts`, which refuses to answer a request
+   under a server prefix, a non-GET, or a path escaping the web root.
+5. Verify an unauthenticated report request is denied, an approved session is branch-scoped, invalid calendar dates return `400`, and logout revokes the session.
+6. Verify the ClickHouse reader can query the analytics database and cannot use the admin credential from the API or browser.
+7. Verify public TLS routes only after internal smoke passes. The Pi's Caddyfile must point `laundrytwin.duckdns.org` at **:8787**; the old `:8080` upstream no longer exists and the route will 502 until it is changed. Keep the MCP inspector local-only and keep `MCP_ALLOW_REVENUE=false` unless separately approved.
 
 ### Rollback
 
