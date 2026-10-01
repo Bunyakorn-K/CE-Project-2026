@@ -1393,3 +1393,93 @@ to `84718f6`/`155e111` is safe here even though the web at `0ffb7ff` reads
 `cycleCountSource` and `freshness` — that contract was already deployed by
 `cbe7243`, which is newer than both rollback targets. No schema migration
 shipped, so the SQLite backup is insurance rather than a restored artifact.
+
+## Deploy record — 2026-10-01, web only (`84da0f1`)
+
+The LIFF-gate session-probe fix. Web only; the API image was not rebuilt, so no
+data, schema, or migration change was involved. This deploy **restored
+production for every authenticated user** — the gate was blocking all of them.
+
+| Field | Value |
+| :--- | :--- |
+| Deployed ref | `84da0f15ee8597c77a864fea196fb1b383639f90` (`fix(web): stop a stale LINE token from locking out a signed-in browser`) |
+| Images | `10.10.0.117:5000/laundrytwin-web:deploy-84da0f1-20261001`, repo digest `sha256:d088e488…`, image `sha256:8b8b86d3…` |
+| Rollback ref | `10.10.0.117:5000/laundrytwin-web:deploy-0ffb7ff-20261001`, repo digest `sha256:eb695773…`, image `sha256:00274571…` |
+| Scope | `docker compose up -d --no-deps web`; `WEB_IMAGE` repointed in `/opt/laundrytwin/.env`, previous file kept at `.env.pre-84da0f1`. API, ETL, gas, and weather kept their uptimes (44 min / 20 h / 20 h / 41 h). Volume count 17 before and after. |
+| App DB backup | `/opt/backups/pre-84da0f1-20261001T092818Z/laundrytwin.sqlite`, 196,608 bytes, `integrity_check: ok`, 15 tables, 3 users, 3 access grants |
+| Suite before deploy | **636 green** (API 360, web 189, ETL 87); `pnpm check` and `pnpm build` clean; Playwright **36** (32 + 4 new, each verified to fail against the old code) |
+
+Built on the VM from a throwaway `/tmp/lt-84da0f1` clone at the exact commit
+(`git rev-parse HEAD` == `origin/main` == `84da0f15ee8…`), with
+`--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`.
+
+**The build context is the repo root, not `apps/web`.** `apps/web/Dockerfile`
+copies `deploy/nginx.conf` in its runtime stage, so
+`docker build -f apps/web/Dockerfile … apps/web` fails with
+`failed to calculate checksum … "/deploy/nginx.conf": not found`. The path in
+`-f` and the context argument are different things; the Dockerfile's own header
+comment says "Build from the repo root".
+
+### Bundle checks before the swap
+
+A green status list does not prove the fix shipped, so the built image was
+grepped for the fix's own strings first:
+
+| Marker | Found in |
+| :--- | :--- |
+| LIFF id `2011592166-uToRdTwS` | `index-E6iFYXm0.js`, `login-C6R0-UK9.js` |
+| `เข้าสู่ระบบด้วยอีเมลแทน` (the escape link) | `index-E6iFYXm0.js` |
+| `ไม่สามารถเชื่อมต่อกับ LINE ได้` (the Thai failure copy) | `index-E6iFYXm0.js` |
+| `/api/me` (the session probe) | 4 occurrences in `index-E6iFYXm0.js` |
+
+`Failed to fetch` still appears **once** in the bundle. Its context is Vite's
+internal dynamic-import handler
+(`startsWith("Failed to fetch dynamically imported module")`), not the gate's
+card copy — the card renders the Thai string instead. Do not read that grep hit
+as a leak.
+
+### Smoke after the swap
+
+Every status matches the pre-swap baseline exactly, so no fallback widened and no
+route regressed.
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `POST /api/auth/liff/exchange` no token | 400 | **400** |
+| `/health` | 200 `{"ok":true,"reportingConfigured":false,"demoMode":false}` | **200, identical** |
+| `/`, `/login`, `/privacy`, `/terms` | 200 | **200** |
+| entry bundle | `index-BsdEn03p.js` | **`index-E6iFYXm0.js`** |
+| web container restarts | — | **0** |
+
+The same four markers were re-grepped in the **running** container after the
+swap and all were present, so the deployed bundle is the one that was checked.
+
+### The production symptom is now closed, in the browser that had it
+
+This is the first deploy in this runbook with a **browser-level before/after on
+the actual defect**, rather than a status list. The same Chrome profile that
+produced the bug — the one holding `ด.ช.นน`'s session — was re-checked after the
+swap:
+
+- `/login` renders the real page: the LINE button, the email form, and both
+  legal links. Before the deploy it rendered **nothing but the stale card**,
+  because the card replaced the whole page.
+- `/dashboard` renders the full dashboard — topbar, sign-out, branch filter,
+  KPIs, and both branch cards. `/api/me` answers **200** with the tenant-wide
+  `owner` grant `441da252-…`, and `.liff-message-card` is absent.
+
+That closes the limit recorded with the fix: the exact cause — an expired
+cached ID token in a browser that already holds a working session — could not be
+reproduced synthetically, because the LIFF SDK discards a seeded localStorage
+store and a real provider token must never be handled. It was reproduced anyway
+by the user who actually had it, in the browser that actually had it.
+
+**What is still unverified.** The `renew` plan (an expired token forcing
+`logout()` and a fresh login) remains covered by unit tests only. The LIFF store
+is encrypted by the SDK, so the cached token's `exp` could not be read back to
+prove it was still expired at the moment of the check — the session cookie was
+used as the evidence instead, which is what the gate itself now trusts. And the
+sign-in flow itself has still not been observed completing fresh in the LINE
+client.

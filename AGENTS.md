@@ -229,15 +229,39 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
-**As of 2026-10-01 production runs `deploy-0ffb7ff-20261001` for both API and
-web** (record and rollback refs in `docs/02_architecture/deploy-runbook.md`).
-That deploy removed the twin's machine illustration and made a caller's malformed
-`cursor` a 400 instead of a 502 source outage. Every status matched its
-pre-deploy baseline exactly and the shipped bundles were grepped for the changes
-themselves — but **authenticated report rendering in a browser remains
-unverified**, and the new Thai error copy is verified as shipped bytes, not as
-rendered output. The 400 for a bad cursor likewise has no live request behind
-it, because `fact_machine_event` holds 0 rows.
+**As of 2026-10-01 production runs `deploy-0ffb7ff-20261001` for the API and
+`deploy-84da0f1-20261001` for the web** (record and rollback refs in
+`docs/02_architecture/deploy-runbook.md`). The API deploy removed the twin's
+machine illustration and made a caller's malformed `cursor` a 400 instead of a
+502 source outage; the web deploy is the LIFF-gate session-probe fix below.
+Every status matched its pre-deploy baseline exactly and the shipped bundles
+were grepped for the changes themselves. **Authenticated report rendering in a
+browser is now verified** — the dashboard renders in production with a real
+owner session, which closes the longest-standing local-only caveat — while the
+new Thai error copy is verified as shipped bytes and as rendered output on the
+sign-in page, and the 400 for a bad cursor still has no live request behind it,
+because `fact_machine_event` holds 0 rows.
+
+**A blocked page must never be the only page, and an expired ID token is not a
+statement about the session.** The LIFF gate ran above `RouterProvider` and
+decided from the SDK's own state whether to render, so it could replace the
+entire product — including `/login` itself — with a card offering only "sign in
+with LINE again". Measured on production 2026-10-01: `/api/me` answered **200**
+with an owner grant while `/dashboard` showed nothing but
+"เซสชัน LINE หมดอายุแล้ว", and `/login` showed the same card instead of the
+email form. Every authenticated route was broken for real users. The SDK keeps a
+token past its 60-minute life and still reports `isLoggedIn() === true`, so the
+expiry is invisible client-side. The rule now encoded in `decideGate`: an ID
+token **creates** a session, so once `/api/me` says one exists, a stale copy
+cached in the browser says nothing about it — a gate that blocks on it locks a
+signed-in owner out of the product on a value the server never re-checked.
+`/login`, `/privacy`, and `/terms` are ungated, the card carries an email
+sign-in escape, and the card's failure copy is Thai rather than the SDK's
+English. Deployed as `deploy-84da0f1-20261001` and confirmed in the very
+browser that had the defect: `/dashboard` and `/login` both render, `/api/me`
+200, no card. Still unverified: the `renew` plan (expired token forcing
+`logout()`) is unit-tested only, and the LIFF store is SDK-encrypted so the
+cached token's `exp` could not be read back as independent proof.
 
 **A caller-supplied error must be attributed to the caller, not to the source.**
 The events route answered **502 `REPORTING_SOURCE_FAILED`** for a malformed
@@ -335,11 +359,15 @@ LINE LIFF/browser -> React web -> Hono API + SQLite -> optional IRIS read API
 The direct ClickHouse report endpoints have local code/test evidence for
 server-side branch scope, zero-grant denial, strict calendar ranges, bound
 ClickHouse parameters, nullable revenue redaction, active-inventory retention,
-usage-derived freshness, and unknown-state preservation. Treat that as local
-verification only. LINE sign-in itself is verified end to end (see the caveat
-above), but **browser E2E of these report endpoints against production is
-still pending**, and the per-branch scoping paths remain covered by unit tests
-rather than by a production account holding a narrower grant.
+usage-derived freshness, and unknown-state preservation. LINE sign-in itself is
+verified end to end (see the caveat above). **The dashboard rendering these
+endpoints is now verified in a production browser** — `deploy-84da0f1-20261001`
+rendered the topbar, branch filter, KPIs, and both branch cards from real
+ClickHouse data for a tenant-wide owner. What that check does **not** establish
+is the narrower-grant path: branch scoping, zero-grant denial, and revenue
+redaction are still covered by unit tests rather than by a production account
+holding a single-branch `manager` or `technician` grant. Read them as
+code-verified, not production-verified.
 
 The weather collector (`laundrytwin-weather-1` on VM 117) runs
 hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts
