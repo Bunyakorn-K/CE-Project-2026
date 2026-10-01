@@ -35,6 +35,8 @@ LaundryTwin combines existing laundry telemetry and business records with server
 - The current reporting path combines optional read-only IRIS integration with direct ClickHouse analytics. Batch ETL moves normalized usage, temperature, and weather data into ClickHouse; Superset and Airflow support operational analytics workflows.
 - Machine data may be delayed, stale, incomplete, or unavailable. Operators need source, freshness, demo, unknown, stale, and unavailable states to remain visible.
 - The product is evaluated as operational software under real branch conditions, not only as a prototype or marketing demonstration.
+- Production runs as one deployment on a single VM with no staging tier, so a change is verified in place against a named rollback image rather than promoted from a lower environment. The analytics warehouse has no automated backup; a recoverable copy is taken by hand before a specific change, which makes backup a deliberate step in any release rather than an assumed one.
+- Access is delivered through LINE: the LINE bot pushes notifications, and MCP serves six allow-listed analytics functions (`get_revenue_daily`, `get_cycles_daily`, `get_utilization_heatmap`, `get_temperature_curve`, `get_weather_usage_correlation`, `get_off_peak_windows`) to external tools. Both carry the same scope and redaction rules as the interface.
 
 ## Capabilities and Constraints
 
@@ -44,6 +46,7 @@ Current confirmed capabilities include:
 - A Digital Twin view for known machine state, remaining time, temperature, and data freshness when those fields are supported by verified evidence.
 - Role-based access grants for owners, managers, and technicians, with branch scope and revenue permissions enforced by the server.
 - Allow-listed MCP analytics and an AI console that cannot execute arbitrary model-generated SQL.
+- An owner-only diagnostics playground that reports system health and runs allow-listed analytics checks.
 - Local alert acknowledgement, AI settings, access grants, sessions, and audit-related workflows.
 - Explicitly labeled demo mode for intentional local or stakeholder demonstrations.
 
@@ -55,7 +58,15 @@ Durable constraints and boundaries:
 - Pressure trends may support a low-gas estimate only when evaluated with supported machine state and temperature. Pressure alone is not gas-leak detection, and cloud estimates are not a replacement for local life-safety alarms.
 - Unknown or unresolved fields such as `paid` semantics, coin-box resets, register meanings, units, and model-specific mappings must remain explicit until verified.
 - Money remains integer satang through application logic and is formatted only for presentation.
-- Direct ClickHouse report scope, revenue redaction, strict date validation, and LINE authentication still require production verification; they must not be described as completed security guarantees.
+- LINE authentication is verified end to end in the real client (2026-10-01). Direct ClickHouse report scope, revenue redaction, and strict date validation still require production verification; they must not be described as completed security guarantees. Per-branch scoping paths remain covered by unit tests rather than by a production account holding a narrower grant.
+
+Data constraints that bound what the product can honestly claim:
+
+- Machine-event telemetry is not yet ingested. The event feed reports its source as present-but-unwritten with a stated reason, never as an empty list — an empty list would read as "no events in this window", which the warehouse cannot support. Absent, present-but-unwritten, and present-with-data are three distinct states and must never render the same.
+- A majority of real usage rows carry no `machine_session_id`, so a cycle count must never be presented as fully attributed; the unattributed share is stated in Thai.
+- Usage volume is short of the three months needed for the seasonal and gradient-boosting model candidates, so only the percentile baseline is supported today.
+- A missing day in a usage series is a genuine source gap, not a zero, and must not be silently filled.
+- Gas-pressure readings are an additive source that feeds no KPI, no Digital Twin state, and no alert.
 
 ## Brand Commitments
 
@@ -63,6 +74,8 @@ Durable constraints and boundaries:
 - The current identity uses a typographic `LT` mark and an operations-workspace context; no standalone logo asset is established in the repository.
 - Product language is Thai-first. English remains appropriate for established technical terms such as Digital Twin, ClickHouse, MCP, API, and model names.
 - Product copy must remain operational, direct, and explicit about evidence, permissions, and uncertainty.
+- **A server-supplied reason must not reach a Thai-first page untranslated.** Rendering an English freshness or availability reason verbatim under a Thai heading was a real defect; presentation state belongs in the view layer, keyed on a stable contract field rather than on matching English prose, so rewording the server string cannot silently break the check.
+- **The privacy policy and terms pages stay readable without signing in.** They are legal documents governing user data, not product surface; gating them would put a pending-access card where a LINE reviewer expects the policy.
 - Emoji must not serve as primary navigation or KPI iconography.
 
 ## Evidence on Hand
@@ -74,6 +87,9 @@ Durable constraints and boundaries:
 - Current interface tokens and responsive behavior: `apps/web/src/styles.css`
 - Current optional IRIS contract: `docs/integration/iris-laundrytwin-read-api.md`
 - ML feature and evidence limits: `docs/06_ml/ml-training-data-guide.md`
+- Production deployment topology, verification, and rollback targets: `docs/02_architecture/deploy-runbook.md`
+- Allow-listed analytics functions: `apps/api/src/analytics/mcp.ts`
+- Thai-first presentation state mapping: `apps/web/src/lib/machine-status.ts`, `apps/web/src/lib/alerts-view.ts`
 
 No customer testimonial, documented case study, adoption benchmark, or independent product-research corpus has been established. Future work must not fabricate these forms of proof.
 
