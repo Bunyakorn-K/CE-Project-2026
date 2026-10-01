@@ -292,9 +292,39 @@ but the ETL **must never write it**: it re-syncs every other dim on each
 5-minute cycle and would clobber an operator's hours within one run. A test
 asserts no insert ever targets it.
 
-**It is currently empty**, which is the intended shipping state: `unknown`
-everywhere, rendering exactly what production renders today. Provisioning the
-rows is a separate ops step with its own review.
+### What production is provisioned with (2026-10-01)
+
+Provisioned on VM 117 for the real branch only, as `open_minute=0`,
+`close_minute=1440`, `open_days=[]`, `version=1` — i.e. **trades 24 hours,
+every day**, because that is what the usage data shows and not a guess:
+
+- All 24 hours and all 7 ISO weekdays carry usage across the 71-day history.
+  No hour and no weekday is ever empty.
+- Every overnight row belongs to the real branch. At 00:00 there are 123 rows
+  across 39 distinct days, and at 04:00 there are 19 rows across 15 days. A
+  staffed shop does not trade at 04:00 on 15 separate days; a coin-op
+  self-service laundromat does.
+- Overnight is genuinely quieter — 19–63 rows for 02:00–07:00 against 355–663
+  for the 09:00–20:00 peak — but **quieter is not closed**, and a threshold
+  that reads "no usage" as "shut" is exactly the mistake this axis exists to
+  prevent.
+
+The SANDBOX branch (`e9b98f78-…`) is deliberately **not** provisioned. Its
+name states it is not a real branch and it holds zero usage rows, so any hours
+written for it would be a fabricated business fact.
+
+**A consequence worth stating plainly: with a 24/7 schedule, `branchOpenState`
+resolves to `open` for this branch at every minute, so no machine pill changes
+appearance today.** That is the correct outcome, not a failed fix — the
+measurements show the branch really was trading when 19 machines read
+`unavailable` at ~22:15, so the red `ไม่พร้อมใช้งาน` pills were reporting a real
+absence of evidence and suppressing them would have been wrong. Verified after
+provisioning: the row returns `open` and `effectiveAvailability("unavailable",
+"open")` stays `unavailable` at every probe.
+
+What this fixes is the **honesty of the axis**: `unknown` becomes a positive,
+evidence-backed `open`, so a future branch that genuinely closes will be
+represented rather than guessed at.
 
 ### Failure handling
 

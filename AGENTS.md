@@ -297,25 +297,50 @@ because `apps/api/src/reporting.ts` tallies `freshness` into the AI context and
 widening that union would make closed machines vanish from the tally rather than
 being counted as unobservable.
 
-**No opening hours exist yet, anywhere** — not in `dim_branch`, not in IRIS's
-synced columns, not in the codebase; IRIS's `status` maps to `active` ("this
-branch exists"), not to "open now". `dim_branch_hours` is declared in
-`apps/etl/src/schema.ts` so the DDL pass creates it, and the ETL **must never
-write it** — it re-syncs every other dim each 5-minute cycle and would clobber
-an operator's hours within one run; a test asserts no insert targets it. So
-production resolves `unknown` everywhere and renders exactly what it renders
-today. Provisioning the rows is a separate ops step. The hours lookup is a
-separate, independently fault-tolerant query rather than a JOIN precisely
-because the table does not exist on every warehouse: a JOIN would fail the whole
-machine query with `Code: 60 UNKNOWN_TABLE`, turning an optional refinement into
-an outage of the page that reports broken machines. Full contract:
+**No opening hours existed as a stored fact, anywhere** — not in `dim_branch`,
+not in IRIS's synced columns, not in the codebase; IRIS's `status` maps to
+`active` ("this branch exists"), not to "open now". `dim_branch_hours` is
+declared in `apps/etl/src/schema.ts` so the DDL pass creates it, and the ETL
+**must never write it** — it re-syncs every other dim each 5-minute cycle and
+would clobber an operator's hours within one run; a test asserts no insert
+targets it. The hours lookup is a separate, independently fault-tolerant query
+rather than a JOIN precisely because the table does not exist on every
+warehouse: a JOIN would fail the whole machine query with
+`Code: 60 UNKNOWN_TABLE`, turning an optional refinement into an outage of the
+page that reports broken machines. Full contract:
 `docs/03_data_contracts/data_contracts.md`.
 
-**Not deployed.** The user's authorization covered the api+web merge only.
-Evidence: 38 API tests on the pure decision and 13 on the ClickHouse wiring,
-15 web tests, and `e2e/closed-branch-honesty.pw.ts` against the built bundle;
-every guard verified to fail against deliberately broken code, including
-dropping the web wire, which reproduced the exact production markup
+**Production is now provisioned (2026-10-01), and it says the branch trades
+24/7.** Ops created `dim_branch_hours` on VM 117 with the exact `schema.ts` DDL,
+granted `INSERT, CREATE TABLE` to `etl_writer`, and inserted one row for the real
+branch: `open_minute=0, close_minute=1440, open_days=[], version=1`. That value
+is **measured, not guessed** — all 24 hours and all 7 weekdays carry usage
+across the 71-day history, no hour is ever empty, and every overnight row belongs
+to the real branch (00:00 has 123 rows over 39 days; 04:00 has 19 over 15). The
+SANDBOX branch is deliberately left unprovisioned: it states it is not a real
+branch and holds zero usage rows. The `reader` credential was verified to run
+the app's own `buildBranchHoursSQL` and return the row, and the provisioned row
+was checked against the real decision code — `open` at every probe, with
+`effectiveAvailability("unavailable", "open")` still `unavailable`.
+
+**So no machine pill changes appearance today, and that is the correct outcome,
+not a failed fix.** A 24/7 schedule resolves `open` at every minute, so the red
+`ไม่พร้อมใช้งาน` pills on the 19 machines at ~22:15 remain — and they should,
+because the branch really was trading, so that absence of evidence was real and
+suppressing it would have been the defect. The gain is that `unknown` became an
+evidence-backed `open`, so a future branch that genuinely closes will be
+represented rather than guessed at. **Do not read "no machine changed" as a
+broken deployment.**
+
+**The code is still not deployed.** The running app is
+`laundrytwin:deploy-97c45ac-20261001`, the commit *before* `38c338b`, so nothing
+reads the new table yet and provisioning changed no user-visible behaviour. The
+data change and the reader are independently shippable in that order: the row
+sits inert until an image carrying `branchOpenState` is deployed. Evidence:
+38 API tests on the pure decision and 13 on the ClickHouse wiring, 15 web tests,
+and `e2e/closed-branch-honesty.pw.ts` against the built bundle; every guard
+verified to fail against deliberately broken code, including dropping the web
+wire, which reproduced the exact production markup
 (`<span class="status-pill status-pill--danger">ไม่พร้อมใช้งาน</span>`).
 
 **A blocked page must never be the only page, and an expired ID token is not a
