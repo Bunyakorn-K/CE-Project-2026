@@ -369,6 +369,23 @@ redaction are still covered by unit tests rather than by a production account
 holding a single-branch `manager` or `technician` grant. Read them as
 code-verified, not production-verified.
 
+**A grant can now be given to an account that already exists** (`56e9e33`,
+not deployed). Approving a pending access request was previously the *only* way
+to create a grant, so anyone who signed in on their own could never be scoped
+down to a single branch — the account had to arrive as a stranger first. For a
+franchise, narrowing a manager to their own branch is an ordinary operation,
+and the same gap is why production held no single-branch account to verify
+scoping against. `POST /api/admin/grants` takes an email, a role, and a branch,
+with the role/branch rule extracted into `validateGrantScope` so it and the
+approve route cannot drift. A repeated role-for-branch is **409**, not a second
+row, and a revoked scope can be re-granted. On the web, the payload and the
+button's disabled state come from one pure function, `buildGrantRequest` in
+`apps/web/src/lib/admin-grant.ts`; the failure that matters is an empty branch
+resolving to tenant-wide, which would hand a manager *every* branch instead of
+erroring, so that direction is tested and was verified to fail against the
+widened code. **Creating such an account on production is still outstanding**,
+so branch scoping remains unit-verified only.
+
 The weather collector (`laundrytwin-weather-1` on VM 117) runs
 hourly (`sleep 3600`). It fetches TMD NWP forecasts and inserts
 into `fact_weather_sample` tagged by `tenant_id/branch_id`.
@@ -471,7 +488,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 636 tests green** — API 360, web 189,
+Local automated evidence on **2026-10-01: 661 tests green** — API 376, web 198,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
@@ -486,7 +503,9 @@ decision that regression testing caught — then to 129 with the machine-facts
 decision functions and the Thai error-code copy, then to 179 with the dashboard
 working context: URL state, date presets, branch sort, and the prior-period
 comparison, then to 182 with the API error-code coverage guard, then to 189 with
-the LIFF gate decision. `login.tsx` had
+the LIFF gate decision, then to 198 with the admin direct-grant form. The API
+figure rose from 360 to 376 with the grant route and the store function behind
+it, including the owner-only boundary and the duplicate refusal. `login.tsx` had
 **no test at all** when
 a broken LINE sign-in button shipped through a green suite; a UI path that can
 only be exercised inside the LINE client needs its decision logic extracted as
