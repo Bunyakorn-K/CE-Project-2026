@@ -12,35 +12,35 @@ import type { Page } from "@playwright/test";
  * - 1019/1020 and 1041/1042  the two superseded nav-collapse thresholds
  *            (1041 first, 1019 before it) and the exact bands where the inline
  *            nav wrapped to two and three line boxes and grew the topbar.
- * - 1199/1200  the current threshold, which owns the nav collapse. 1200 is the
+ * - 1239/1240  the current threshold, which owns the nav collapse. 1240 is the
  *            narrowest viewport at which the owner header's inline nav is shown,
- *            and it sits 26.7px clear of the header's measured 1173.30px
- *            intrinsic width. The margin is the point: the previous threshold
- *            cleared that measurement by 0.70px and so passed on the machine
- *            that measured it while CI failed at 1174 with an 83px topbar. See
- *            the comment above `@media (max-width: 1199px)` in styles.css.
+ *            and it sits 37.19px clear of the header's WORST measured intrinsic
+ *            width (1202.81px on Linux; it is 1173.30px on macOS). The margin is
+ *            the point: the previous threshold cleared its own measurement by
+ *            0.70px and so passed on the machine that measured it while CI failed
+ *            at 1174 with an 83px topbar. See the comment above
+ *            `@media (max-width: 1239px)` in styles.css for the full table.
  *
- * The intermediate widths (768-1199) are included precisely because the
+ * The intermediate widths (768-1239) are included precisely because the
  * topbar-growth defect lived there and a boundary-only check would miss it.
  */
 export const VIEWPORTS = [
   320, 375, 414, 480, 540, 600, 639, 640, 700, 767, 768, 800, 900, 1000,
-  1019, 1020, 1040, 1041, 1042, 1100, 1173, 1174, 1199, 1200, 1280, 1440
+  1019, 1020, 1040, 1041, 1042, 1100, 1173, 1174, 1200, 1239, 1240, 1280, 1440
 ] as const;
 
 /** The widths the manual QA walked when the sign-out button was off-screen. */
-export const SIGNOUT_WIDTHS = [640, 768, 1020, 1100, 1199, 1200] as const;
+export const SIGNOUT_WIDTHS = [640, 768, 1020, 1100, 1239, 1240] as const;
 
 /**
  * The narrowest viewport at which the inline nav must fit on one 72px line.
  *
- * This is the number `styles.css` derives its `@media` threshold from, kept here
- * as the single place it is asserted. It is a measured constant, not a guess: the
- * header's intrinsic width is 1173.30px, and 1200 leaves room for the
- * macOS-vs-Linux Thai glyph shaping difference that made a 0.70px margin fail in
- * CI on 2026-10-01.
+ * A measured constant, not a guess: the owner header's intrinsic width is
+ * 1202.81px on Linux and 1173.30px on macOS, and 1240 clears the worse of the
+ * two. It is asserted against the stylesheet by a test in `layout.pw.ts`, so the
+ * CSS and this number cannot drift apart.
  */
-export const INLINE_NAV_MIN_WIDTH = 1200;
+export const INLINE_NAV_MIN_WIDTH = 1240;
 
 /**
  * The headroom the inline nav must keep, in px.
@@ -50,6 +50,10 @@ export const INLINE_NAV_MIN_WIDTH = 1200;
  * it, a longer account name or a new nav link widens the header until the bar
  * wraps, and the only symptom is a 72px-to-83px height change that CI reports
  * as a mystery rather than as the cause.
+ *
+ * 20px is chosen against the largest platform delta measured on 2026-10-01: the
+ * header is 29.51px wider on Linux than on macOS, so a margin smaller than that
+ * would not survive a platform change even at the current threshold.
  */
 export const INLINE_NAV_HEADROOM_PX = 20;
 

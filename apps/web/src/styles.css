@@ -1050,47 +1050,61 @@ main {
   }
 }
 
-/* The owner header's intrinsic width is 1173.30px: brand 197.78 + gap 24 + nav
-   629.97 (six links totalling 609.97 plus five 4px gaps) + gap 24 + account
-   249.55 + 2x24 padding. Nothing in that row can shrink -- `.brand-lockup` is
-   min-width max-content and `.primary-nav` has no min-width 0 -- so below that
-   width the nav wraps to a second line box and the bar grows from 72px to 83px.
-   The superseded thresholds (1041, then 1019, then 1171, then 1173) all came
-   from treating some other measurement as the header width; 1042-1091 rendered
-   three line boxes at 102.5px and 1092-1173 two at 83px.
+/* The owner header's intrinsic width is NOT a single number, and treating it as
+   one is what broke this threshold four times. Measured on 2026-10-01 in
+   Chromium 153 / Playwright 1.63 with the same self-hosted woff2 loaded
+   (`document.fonts` reports `Noto Sans Thai:loaded` on both platforms):
 
-   WHY 1199 AND NOT 1173: the old threshold left 0.70px between the measured
-   1173.30 and the 1174 that has to work. That is not headroom, it is a rounding
-   coincidence, and it held only on the machine that measured it. CI failed on
-   `main` from 07:24 on 2026-10-01 with exactly the predicted symptom --
-   "1174px: 83px, expected 72px" -- on the same Chromium build (v1243) and the
-   same self-hosted woff2, so the difference is macOS-vs-Linux Thai glyph shaping
-   and subpixel rounding, not a font or version drift. Verified: the face loads
-   in both (`document.fonts` reports `Noto Sans Thai:loaded`), and blocking it
-   locally does not reproduce 83px, because macOS falls through to Avenir Next,
-   which is narrower than the Linux fallback.
+   | part          | macOS  | Linux amd64 | Linux arm64 |
+   |---------------|--------|-------------|-------------|
+   | brand         | 197.78 |     205.81  |     205.81  |
+   | nav (6 links) | 629.97 |     641.00  |     641.00  |
+   | account       | 249.55 |     260.00  |     260.00  |
+   | total         | 1173.30|    1202.81  |    1202.81  |
 
-   So the threshold now carries deliberate margin: the nav appears at 1200px,
-   26.7px clear of the 1173.30 measurement, which absorbs that platform delta
-   without another round trip through CI. The cost is that 1174-1199 now gets
-   the hamburger, which is the correct trade -- a collapsed nav is a smaller
-   defect than a topbar that silently changes height across the middle of a
-   range, which is the defect this whole threshold exists to prevent.
+   Two distinct effects, and the second is the one that made a 0.70px margin
+   look safe. First, Thai glyphs measure ~19px wider in total on Linux than on
+   macOS for identical text and identical font file. Second, and discrete rather
+   than gradual: `.account-name` is capped at `max-width: 130px`, and the
+   dev-bypass owner `Development Owner` renders 123.67px on macOS but hits the
+   130px cap exactly on Linux. A cap being reached is a step, not a drift, so no
+   amount of sub-pixel headroom absorbs it.
 
-   Two things still move the measurement. `.account-name` is capped at 130px but
-   is otherwise driven by the signed-in user's name (123.67px of the 249.55px
-   account block for the dev-bypass owner `Development Owner`), and a non-owner
-   header carries three nav links rather than six. `intrinsicTopbarWidth` in
-   e2e/support/viewports.ts re-measures this on every run and the suite fails
-   with the real number if the header outgrows the margin above, so a longer
-   name or a new nav link reports itself instead of waiting to be seen as an
-   83px topbar in CI. Keep the `@font-face` above and the vendored woff2 in
-   public/fonts/ together, or this measurement goes stale again.
+   Nothing in the row can shrink -- `.brand-lockup` is min-width max-content and
+   `.primary-nav` has no min-width 0 -- so below the intrinsic width the nav
+   wraps to a second line box and the bar grows from 72px to 83px (and to
+   102.5px for three line boxes, which is what 1100-1118 renders on Linux).
+
+   So the threshold is set from the WORST measured platform, 1202.81, with
+   margin: the nav appears at 1240px, 37.19px clear. The superseded thresholds
+   (1041, then 1019, then 1171, then 1173, then 1199) each came from measuring
+   on one machine and treating that machine as the world; 1173 cleared its own
+   measurement by 0.70px and CI failed from 07:24 on 2026-10-01 with exactly the
+   predicted symptom, "1174px: 83px, expected 72px", on the same Chromium build
+   and the same font.
+
+   The cost is that 1174-1239 now gets the hamburger, which is the right trade: a
+   collapsed nav is a smaller defect than a topbar that silently changes height
+   across the middle of a range, which is the defect this threshold exists to
+   prevent.
+
+   Do not re-derive this by hand. `intrinsicTopbarWidth` in
+   e2e/support/viewports.ts re-measures the real header on every layout run and
+   fails with the measured number if the headroom here is insufficient, and a
+   second test asserts this stylesheet's threshold against
+   `INLINE_NAV_MIN_WIDTH` so the CSS and the test cannot drift apart -- which is
+   precisely how the 1173 threshold outlived the measurement that justified it.
+   If either fails, raise `INLINE_NAV_MIN_WIDTH` and this block together.
+
+   Two things still move the measurement: `.account-name` is capped at 130px but
+   otherwise driven by the signed-in user's name, and a non-owner header carries
+   three nav links rather than six. A longer name that reaches the cap, or a new
+   nav link, widens the header and the headroom test will say so with the number.
 
    Reuse the 639px block's two declarations verbatim; `.account-actions` is
    content-sized and nests `.mobile-nav`, so `margin-left: 0` on it strands the
    hamburger mid-header. */
-@media (max-width: 1199px) {
+@media (max-width: 1239px) {
   .primary-nav {
     display: none;
   }
