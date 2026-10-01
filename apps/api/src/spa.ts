@@ -141,7 +141,13 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".txt": "text/plain; charset=utf-8",
-  ".webmanifest": "application/manifest+json"
+  ".webmanifest": "application/manifest+json",
+  // `apps/web/public/fonts/` ships a README.md and OFL.txt alongside the woff2,
+  // and `public/` is copied verbatim into the bundle, so both are served files
+  // whether or not a browser requests them. Found by the bundle test, which
+  // reads the real `apps/web/dist` rather than a fixture tree — a fixture only
+  // ever contains extensions its author already thought of.
+  ".md": "text/markdown; charset=utf-8"
 };
 
 /** The content type for a served file, by extension. */
