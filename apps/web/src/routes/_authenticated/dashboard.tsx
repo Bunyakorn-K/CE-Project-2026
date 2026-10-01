@@ -680,7 +680,6 @@ function MachineCard({ machine }: { machine: Machine }) {
             <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>
           </div>
         )}
-        <div className="machine-floor-visual"><MachineDrum kind={machine.machineKind} status={machine.status} /></div>
         <p className="machine-card-branch">{machine.branchName}</p>
         <div className="machine-facts machine-floor-facts">
           <div><span>รอบในช่วง</span><strong>{cycles.value}</strong></div>
@@ -689,23 +688,5 @@ function MachineCard({ machine }: { machine: Machine }) {
         <p className="kpi-detail">ใช้งานล่าสุด {machine.lastActiveAt ? formatDateTime(machine.lastActiveAt) : "ไม่มีข้อมูล"}</p>
       </Card.Content>
     </Card>
-  );
-}
-
-function MachineDrum({ kind, status }: { kind: string; status: string | null }) {
-  const running = status === "running" || status === "washing" || status === "drying";
-  const offline = status === "offline";
-  const warm = kind === "dryer";
-  return (
-    <svg className={`machine-drum machine-drum--${status ?? "unknown"}`} viewBox="0 0 120 100" aria-hidden="true">
-      <rect className="machine-drum-body" x="18" y="8" width="84" height="84" rx="12" />
-      <rect className="machine-drum-panel" x="30" y="17" width="60" height="7" rx="3.5" />
-      <circle className="machine-drum-door" cx="60" cy="57" r="24" />
-      <circle className="machine-drum-glass" cx="60" cy="57" r="17" />
-      {running && <path className="machine-drum-wave" d="M47 60q7-7 13 0t13 0" />}
-      {warm && <path className="machine-drum-heat" d="M55 72q-5-6 0-12t0-8" />}
-      {offline && <path className="machine-drum-offline" d="M48 69 72 45" />}
-      <circle className="machine-drum-led" cx="88" cy="20" r="2" />
-    </svg>
   );
 }

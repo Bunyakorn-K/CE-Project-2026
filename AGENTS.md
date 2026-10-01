@@ -385,13 +385,15 @@ only be exercised inside the LINE client needs its decision logic extracted as
 a pure function so it can be tested without one. Older figures
 (413/384/227, then 493, then 499) were superseded, and web briefly fell to 1
 after the dead-code deletion removed `dashboard-metrics.test.ts`. The separate
-Playwright suite is 28 tests
+Playwright suite is 32 tests
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
-`analytics.pw.ts`, `dashboard.pw.ts` and `dashboard-context.pw.ts` assert
+`analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts` and
+`twin-honesty.pw.ts` assert
 rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
-and that the executive summary is hidden over an empty window and states when
-its source is unavailable. Node 24.x is used (see `.nvmrc`); no
+that the executive summary is hidden over an empty window and states when
+its source is unavailable, and that a twin card draws no machine state its own
+pills disclaim. Node 24.x is used (see `.nvmrc`); no
 `package.json` declares `engines` and the Dockerfiles build from the floating
 `node:24-bookworm-slim` tag, so nothing local enforces a narrower Node version.
 `pnpm --filter @laundrytwin/api check`, web check/test/build, and ETL test pass.

@@ -101,6 +101,7 @@ No customer testimonial, documented case study, adoption benchmark, or independe
 4. **One operations system across contexts.** Mobile LINE LIFF and desktop browser views serve the same product truth with task-appropriate density and interaction.
 5. **AI assists, it does not bypass controls.** AI features operate through allow-listed functions, inherit server-enforced scope, and preserve auditability.
 6. **Existing infrastructure remains an asset.** LaundryTwin derives value from deployed laundry systems without assuming permission to change hardware or physical safety equipment.
+7. **Decoration must not assert what the text disclaims.** A picture that encodes a machine state is a claim, and it is held to the same standard as the words beside it. The Digital Twin cards used to carry a 116×96px drum illustration whose two bits of information — running or not, washer or dryer — were already stated in the status and kind pills, and which read `status` alone, so a machine whose freshness was `unavailable` was drawn with the same live wave as a fresh one. It was removed. An illustration earns its place by carrying a fact the text does not, not by occupying the largest region of a card.
 
 ## Accessibility & Inclusion
 
