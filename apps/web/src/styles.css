@@ -1549,6 +1549,206 @@ main {
   background: var(--surface-muted);
 }
 
+/* Daily trend. The card is deliberately quiet: a single accent-coloured series
+   on a white surface with hairline gridlines, because on this page the chart is
+   context for the KPI row above it, not a second headline competing with it. */
+.trend-card {
+  margin-bottom: 16px;
+}
+
+/* The heading keeps its metric switch on the same baseline as every other
+   section heading, so the page reads as one column of peer sections. */
+.trend-card-head {
+  align-items: center;
+}
+
+.trend-metric-switch {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.trend-metric-switch .secondary-button {
+  padding: 6px 12px;
+  font-size: 11px;
+}
+
+/* The plot box. Fixed height because the SVG scales x only — the y axis has to
+   stay 1:1 for the geometry's pixel positions to land on the real marks. */
+.trend-figure {
+  margin: 0;
+}
+
+.trend-plot {
+  position: relative;
+  height: 220px;
+}
+
+.trend-svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+  overflow: visible;
+}
+
+/* The per-day hit targets sit over the marks as a separate overlay, so the
+   drawn line never inherits a pointer target and the day column can be wider
+   than its dot without either of them moving. */
+.trend-days {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* `left`, not the parent's `padding`: an absolutely positioned child is offset
+   against the containing block's PADDING box, so a padded parent would put the
+   hit targets under the y-axis labels as well. */
+.trend-day {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 56px;
+}
+
+.trend-day-svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+
+.trend-day rect {
+  fill: transparent;
+}
+
+.trend-day:hover rect {
+  fill: rgb(15 98 105 / 5%);
+}
+
+.trend-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The baseline is the only line in the plot that asserts zero, so it is the one
+   that gets the stronger stroke. */
+.trend-gridline:last-of-type {
+  stroke: var(--border-strong);
+}
+
+.trend-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-dot {
+  fill: var(--accent);
+}
+
+/* A day with no row. Drawn as a tick on the baseline in neutral grey, never in
+   a status colour — it is an absence of evidence, not a fault. */
+.trend-gap {
+  stroke: var(--border-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-axis {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* The y labels are absolutely positioned on their own gridlines and pulled back
+   onto it by half a line, so the type is optically centred rather than sitting
+   below it. */
+.trend-axis--y {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 48px;
+}
+
+.trend-axis--y .trend-axis-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+/* The x labels are a two-column grid: first date flush left, last flush right,
+   so the pair reads as the window's extent rather than as two floating dates. */
+.trend-axis--x {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 22px;
+  padding-top: 6px;
+}
+
+.trend-axis--x .trend-axis-label {
+  white-space: nowrap;
+}
+
+.trend-caption {
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* The gap caveat. It sits under the chart rather than in the header because it
+   qualifies the drawn line specifically — a reader who only sees the header has
+   not been told what the break means. */
+.trend-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* An unmeasurable source gets the same dashed card the rest of the product uses
+   for "this cannot be answered", so the state reads as a known one rather than
+   as a chart that failed to load. */
+.trend-placeholder {
+  margin: 0;
+}
+
+@media (max-width: 639px) {
+  /* The switch drops under the heading rather than squeezing it: two Thai labels
+     beside "แนวโน้มรายวัน" leave no room for the date range underneath. */
+  .trend-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .trend-plot,
+  .trend-svg,
+  .trend-day-svg {
+    height: 190px;
+  }
+
+  .trend-caption {
+    font-size: 11px;
+  }
+}
+
 /* Cycle coverage under the floor total, so a partial sum is never read as the
    floor's own figure. */
 .machine-floor-coverage {

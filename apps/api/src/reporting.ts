@@ -29,7 +29,12 @@ export function redactDashboardDataRevenue(dashboard: DashboardData, mayViewReve
   return {
     ...dashboard,
     totals: { ...dashboard.totals, revenueSatang: null },
-    branches: dashboard.branches.map((branch) => ({ ...branch, revenueSatang: null }))
+    branches: dashboard.branches.map((branch) => ({ ...branch, revenueSatang: null })),
+    // The daily series carries revenue too, and leaving it in would hand a
+    // technician without the money grant the entire revenue trend while the
+    // KPI beside it reads "ไม่พร้อมใช้งาน" — the redaction would be undone by
+    // the chart drawn next to the redacted number.
+    trend: dashboard.trend === null ? null : dashboard.trend.map((point) => ({ ...point, revenueSatang: null }))
   };
 }
 

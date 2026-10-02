@@ -526,6 +526,49 @@ original extraction was meant to remove. The web does not render
 risk rather than a visible-prose defect; it is fixed anyway because two copies
 of one contract is the failure mode, not the current symptom.
 
+**A chart is the easiest thing on this dashboard to make lie, because every way
+of getting it wrong still renders as pixels.** The daily trend card
+(`apps/web/src/lib/components/trend-chart.tsx`, decisions in
+`apps/web/src/lib/dashboard-trend.ts`, series from
+`buildDashboardTrendSQL`) is hand-built inline SVG, not a charting library,
+because the decisions that can make it lie — where the line breaks, what the
+axis claims, what is drawn when the source cannot answer — are exactly the part
+this repository refuses to delegate. `buildDashboardTrendSQL` repeats
+`buildDashboardSQL`'s WHERE and **both** joins verbatim so `sum(daily) ==
+totals`; if the chart can disagree with the KPI beside it, it is a second,
+softer claim rather than a rendering of the same one.
+
+**A gap is a break, never a dip to zero.** `2026-07-27` is a real source gap, so
+a missing day is a day the warehouse cannot speak about, not a day the branch did
+no business. The series omits it, the line breaks there, a neutral baseline tick
+marks it, and a Thai note names it. **Measured zero and unmeasured are different
+facts, on both axes** — a `hasValues` flag carries the distinction, because a
+revenue series that is entirely null was rendering a `฿0` axis, which states the
+branch took no money on days nobody measured. That was found by a Playwright
+spec, not by reading the code. Revenue is redacted in the daily series by
+`redactDashboardDataRevenue` for the same reason it is redacted in the totals:
+leaving it would hand a technician the whole revenue trend while the KPI beside
+it reads unavailable. Revenue ticks are chosen in **baht**, so the axis reads ฿4,000
+/ ฿3,000 rather than multiples of 25 satang.
+
+**The axis labels are HTML, not SVG**, because the plot is fluid in width and
+fixed in height, so `preserveAspectRatio="none"` stretches x and leaves y —
+correct for geometry, unreadable for Thai glyphs.
+
+**A bounding-box assertion caught the one defect every count-based spec passed
+through.** The marks SVG set its `viewBox` to start at the plot's left padding
+while the points inside were *also* offset by that padding, so the offset
+applied twice: the first point rendered ~97px left of the y-axis labels and the
+series hung outside its own frame. Every element, count, label, caption and note
+asserted green throughout. `trend-honesty.pw.ts` now compares the first
+polyline's bounding box to the plot's left edge and the last to its right at
+both widths, and the guard is verified to fail against the reintroduced bug
+(87.7 against 182). **Three specs in this file's history turned out to be
+theatre** — passing in both directions because the state they asserted could not
+render — and were rewritten rather than shipped. A spec whose fixture is stubbed
+has to be asked which state it is actually in before its pass counts as
+evidence.
+
 ## Strict physical and safety boundaries
 
 - Do not propose hardware modifications, new sensors, or rewiring unless the
@@ -760,15 +803,17 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-02: 794 tests green** — API 471, web 236,
+Local automated evidence on **2026-10-02: 840 tests green** — API 485, web 268,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** Web rose from 227 to 234 with the post-sign-in
 redirect (7 tests; see the LINE double-press paragraph above for what the defect
 was), then to 236 with the sign-out that did not sign out (2 tests; see the
-sign-out paragraph above). API rose from 420 to 471 with the closed-branch
+sign-out paragraph above), then to 268 with the daily trend chart (32 tests; see
+the chart paragraph above). API rose from 420 to 471 with the closed-branch
 mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
 including that a warehouse without `dim_branch_hours` resolves every machine to
-`unknown` rather than failing the report. The API figure rose from 320 to 351 on 2026-10-01
+`unknown` rather than failing the report, then to 485 with the dashboard's daily
+trend series. The API figure rose from 320 to 351 on 2026-10-01
 with tests for the four report routes that answered 503 in production, then to
 359 with the machine-state provenance fix (a `cycleCount` of zero and an
 unavailable `cycleCount` are different facts, and the Digital Twin was calling
@@ -809,10 +854,11 @@ after the dead-code deletion removed `dashboard-metrics.test.ts`. Web rose from
 212 to 227 with the closed-branch view — including the guard that an
 **unrecognised** branch state renders as unknown rather than closed, since both
 are neutral and only the label separates them. The separate
-Playwright suite is **54 tests**
+Playwright suite is **65 tests** (56 pass locally, 9 skip without
+`VITE_LIFF_ID`)
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
-`twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert
+`twin-honesty.pw.ts`, `live-machine-honesty.pw.ts` and `trend-honesty.pw.ts` assert
 rendered honesty labels — that a
 weather window never reads "ข้อมูลจริง", that a missing temperature is "ไม่ทราบ",
 that the executive summary is hidden over an empty window and states when

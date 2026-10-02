@@ -288,6 +288,34 @@ used only to report how much of that count has session-level evidence behind
 it. On the IRIS/demo path the field is `null`, because that source cannot
 measure attribution at all.
 
+#### The daily trend is the same number per day
+
+The dashboard response also carries `dashboard.trend`
+(`DashboardTrendPoint[] | null`), added 2026-10-02 so the dashboard can show a
+daily series (F-08). It is served from `/api/report/dashboard` rather than the
+analytics daily endpoints because those are role-gated to owner/manager and
+grouped `BY date, branchId, branchName` — reusing one would leave a technician's
+dashboard with a chart it could not fill, and would plot N-branch-days on the
+x-axis.
+
+`buildDashboardTrendSQL` repeats `buildDashboardSQL`'s WHERE clause and **both**
+joins verbatim so **`sum(trend.cycles) == totals.cycles`** and
+**`sum(trend.revenueSatang) == totals.revenueSatang`**. That repetition is the
+traceability: the chart is a rendering of the KPI beside it, not a second,
+softer claim about the same number. A test asserts the sums; the query text has
+to stay identical for the assertion to keep meaning anything.
+
+`trend: null` (a source that cannot report per day — demo/IRIS) and `trend: []`
+(asked, and nothing in this window) are different facts and render differently. A
+day absent from the array is a **gap** — `2026-07-27` is a real source gap — and
+is never zero-filled: a filled gap draws a dip to nothing on exactly the day that
+would most mislead an owner. Revenue is nulled on every daily point by
+`redactDashboardDataRevenue` whenever it is nulled on the totals, so the series
+is nullable per point **even when the totals are not**. Full contract:
+`docs/03_data_contracts/data_contracts.md`.
+
+#### The twin tab's `cycleCountSource`
+
 The twin tab's `cycleCountSource` was `"machine_session_id"`, which was honest
 while the count came from that field and would have become a lie the moment it
 did not. It is now `"usage_row" | "unavailable"`, and the Thai card label moved

@@ -352,3 +352,52 @@ wrong schedule.
 `version` mirrors `dim_branch_location` — an integer revision counter, bumped
 by ops on re-provision. A String version column makes the CREATE fail with
 `Code 169 BAD_TYPE_OF_FIELD`, which aborts `runEtl` before any fact table exists.
+
+## `dashboard.trend` — the daily series, 2026-10-02
+
+`GET /api/report/dashboard` returns `trend: DashboardTrendPoint[] | null` beside
+its `totals` and `branches`. It is the only per-day field on the dashboard, and
+it exists because the analytics daily endpoints cannot serve a chart: they are
+role-gated to owner/manager and grouped `BY date, branchId, branchName`, so
+reusing one would leave a technician's dashboard with a chart it could not fill
+and would plot N-branch-days on the x-axis.
+
+Each point is `{ date, cycles, revenueSatang, usageRows }`, where `date` is the
+**business day** (`toDate(started_at)`), matching the freshness DAG's
+discontinuity axis rather than the UTC calendar day. `cycles` is the canonical
+paid/finished **row** count — the same `countIf(status IN ('paid', 'finished'))`
+the totals use.
+
+**`buildDashboardTrendSQL` repeats `buildDashboardSQL`'s WHERE clause and both
+joins verbatim.** That repetition is load-bearing, not incidental: it is what
+makes `sum(trend.cycles) == totals.cycles` and `sum(trend.revenueSatang) ==
+totals.revenueSatang`. If the two queries drift, the chart becomes a second,
+softer claim about the same number rather than a rendering of it, and nothing in
+the response would say so. A test asserts the equality; **it is the query text
+that has to stay identical, so the assertion is on the sums, not on the strings.**
+
+### `null` and `[]` are different facts
+
+`trend: null` is a **source that cannot report a daily series** — the demo/IRIS
+path, which has no per-day field. `trend: []` is a **window the warehouse was
+asked about and had nothing for**. They must never render the same, because
+"cannot measure this" reading as "there was nothing here" is the fabrication the
+whole report surface exists to prevent.
+
+### A missing day is a gap, not a zero
+
+The series carries only the days the warehouse returned. `2026-07-27` is a real
+source gap, so a day absent from the array is a day the warehouse cannot speak
+about — **not** a day the branch did no business. Consumers must not interpolate
+or zero-fill it; a filled gap draws a dip to nothing on exactly the day that
+would most mislead an owner reading a dip as bad news.
+
+### `revenueSatang` is nullable for a reason
+
+`redactDashboardDataRevenue` nulls the revenue on **every daily point** whenever
+it nulls the totals. Leaving the series intact would hand a technician the entire
+revenue trend while the KPI beside it reads unavailable. The daily series is
+therefore nullable per point **even when `totals.revenueSatang` is not** — a
+consumer must key on the metric it is about to plot, not on the totals, because
+a partial series, a source reporting cycles without amounts, or an older API
+build can disagree.

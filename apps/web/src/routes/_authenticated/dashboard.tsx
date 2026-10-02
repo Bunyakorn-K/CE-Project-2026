@@ -42,6 +42,8 @@ import {
   type SummaryEnvelope
 } from "../../lib/summary-view";
 import { machineAvailability } from "../../lib/branch-availability-view";
+import { TrendChart } from "../../lib/components/trend-chart";
+import type { TrendPoint } from "../../lib/dashboard-trend";
 
 /** The URL is the single source of truth for the working context, so a LINE
  *  user tapping back lands where they were and an owner can send a colleague
@@ -70,6 +72,10 @@ type DashboardData = {
   /** How much of `totals.cycles` carries a `machine_session_id`. `null` on the
    *  demo/IRIS path, which cannot measure it. */
   cycleAttribution: { countedRows: number; attributedRows: number; unattributedRows: number } | null;
+  /** Per-business-day series, ascending. Only the days the warehouse actually
+   *  returned — a missing day is a gap, not a zero. `null` on the demo/IRIS
+   *  path, which has no per-day field to read at all. */
+  trend?: TrendPoint[] | null;
   totals: {
     revenueSatang: number | null;
     cycles: number;
@@ -487,6 +493,17 @@ function DashboardPage() {
                   </span>
                 ))}
               </div>
+
+              {/* The chart goes here, between the comparison strip and the branch
+                  table: it is the window's shape, which is what the strip's single
+                  before/after number and the per-branch rows below both omit. */}
+              <TrendChart
+                trend={dashData.trend}
+                presence={presence}
+                from={dashData.from}
+                to={dashData.to}
+                mayViewRevenue={dashData.totals.revenueSatang !== null}
+              />
 
               <section>
                 <div className="section-heading">

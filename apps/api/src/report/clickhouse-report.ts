@@ -1,4 +1,5 @@
 import { createClickHouseClient, type ClickHouseExecutor } from "../analytics/clickhouse";
+import { isCalendarDate } from "../calendar-date";
 import { isDemoModeEnabled } from "../demo-read-client";
 import type { Principal } from "../access-store";
 import {
@@ -24,6 +25,15 @@ type MachineUsageRow = {
   usageRows: string;
   started_at: string;
   last_active_at: string;
+};
+
+/** One row of `buildDashboardTrendSQL`. ClickHouse returns every aggregate as
+ *  a string, so the numbers are parsed rather than trusted as numbers. */
+type DailyUsageRow = {
+  usage_date: string;
+  revenueSatang: string;
+  cycles: string;
+  usageRows: string;
 };
 
 type BranchRow = {
@@ -141,6 +151,43 @@ WHERE u.started_at >= {from:String}
   AND u.started_at < plus(toDate({to:String}), 1)
   AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
 GROUP BY u.tenant_id, u.branch_id, u.machine_id, b.branch_name, m.machine_code, m.machine_kind`;
+}
+
+/**
+ * The same aggregation as `buildDashboardSQL`, bucketed by business day.
+ *
+ * Deliberately a separate query rather than a rollup of the per-machine rows:
+ * that result set is already aggregated to one row per machine, so a day cannot
+ * be recovered from it, and the daily buckets have to come from
+ * `fact_machine_usage` themselves.
+ *
+ * It repeats the WHERE clause and BOTH joins of `buildDashboardSQL` verbatim,
+ * and that is load-bearing rather than tidiness. If the trend read a wider set
+ * than the totals — no `dim_branch`/`dim_machine` join, or a laxer branch
+ * predicate — the chart's bars would not add up to the KPI printed beside them,
+ * and a reader comparing the two would be right to distrust both. The invariant
+ * `sum(daily) == totals` is what makes the chart a rendering of the numbers
+ * rather than a second, softer claim; see `queryDashboard`'s test for it.
+ *
+ * `toDate(u.started_at)` is the same business-day expression the freshness DAG
+ * checks for day-shaped holes (`deploy/analytics/dags/laundrytwin_warehouse_freshness.py`),
+ * so a gap in this chart is a gap the warehouse itself reports.
+ */
+export function buildDashboardTrendSQL(): string {
+  return `
+SELECT
+  toString(toDate(u.started_at)) AS usage_date,
+  sumIf(u.amount_satang, u.status IN ('paid', 'finished')) AS revenueSatang,
+  countIf(u.status IN ('paid', 'finished')) AS cycles,
+  count() AS usageRows
+FROM fact_machine_usage AS u FINAL
+INNER JOIN dim_branch AS b FINAL ON u.tenant_id = b.tenant_id AND u.branch_id = b.branch_id
+INNER JOIN dim_machine AS m FINAL ON u.tenant_id = m.tenant_id AND u.branch_id = m.branch_id AND u.machine_id = m.machine_id
+WHERE u.started_at >= {from:String}
+  AND u.started_at < plus(toDate({to:String}), 1)
+  AND ({branchId:String} = '' OR toString(u.branch_id) = {branchId:String})
+GROUP BY usage_date
+ORDER BY usage_date`;
 }
 
 export function buildMachineStateSQL(): string {
@@ -351,6 +398,28 @@ export type DashboardBranch = {
   running: number;
 };
 
+/** One business day of the dashboard window.
+ *
+ *  A day the warehouse returned no rows for is ABSENT from the array, not
+ *  present with a zero. That distinction is the whole reason this type exists:
+ *  AGENTS.md records that the known `2026-07-27` source gap is a genuine
+ *  discontinuity in the series, and interpolating or zero-filling it would draw
+ *  a dip to nothing that reads as "the branch did no business that day" — a
+ *  claim the warehouse cannot support. The web renders an absent day as a gap
+ *  in the line, labelled as one. */
+export type DashboardTrendPoint = {
+  /** `YYYY-MM-DD`, the business day, from `toDate(started_at)`. */
+  date: string;
+  /** `null` where the caller may not see revenue — withheld by grant, never
+   *  absent. Zero would read as "the branch took no money that day", which is a
+   *  different and unsupported claim. */
+  revenueSatang: number | null;
+  cycles: number;
+  /** Usage rows of every status on that day, so a day can carry usage without
+   *  carrying a finished cycle and still be present in the series. */
+  usageRows: number;
+};
+
 export type DashboardData = {
   from: string;
   to: string;
@@ -370,6 +439,12 @@ export type DashboardData = {
   cycleAttribution: CycleAttribution | null;
   totals: DashboardTotals;
   branches: DashboardBranch[];
+  /** Per-business-day series for the window, ascending. Only the days the
+   *  warehouse actually returned are present — see `DashboardTrendPoint`.
+   *
+   *  `null` on the IRIS/demo path, which has no per-day field to read, so the
+   *  chart must render "unavailable" rather than a flat line at zero. */
+  trend: DashboardTrendPoint[] | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -429,15 +504,55 @@ export async function queryBranches(ch: ClickHouseExecutor, branchId?: string): 
   }));
 }
 
+/**
+ * Maps the trend rows into the series the web charts.
+ *
+ * Two things are dropped rather than repaired, and both are the same decision:
+ * a day the source could not describe is absent from the series, exactly as a
+ * day with no rows is. Coercing an unreadable aggregate to `0` would draw a
+ * drop to nothing — the one reading this whole feature exists to prevent — and
+ * keeping the row with `NaN` would poison every scale it feeds downstream.
+ *
+ * `toDate()` cannot actually produce a malformed day, so this is a guard on a
+ * driver contract rather than a live case; the guarantee it makes is the one
+ * the web relies on, that every `date` here is a real calendar day it can index
+ * a gap against.
+ */
+function dailyTrend(rows: DailyUsageRow[]): DashboardTrendPoint[] {
+  const byDate = new Map<string, DashboardTrendPoint>();
+
+  for (const row of rows) {
+    const revenueSatang = Number(row.revenueSatang);
+    const cycles = Number(row.cycles);
+    const usageRows = Number(row.usageRows);
+    if (
+      typeof row.usage_date !== "string" ||
+      !isCalendarDate(row.usage_date) ||
+      !Number.isFinite(revenueSatang) ||
+      !Number.isFinite(cycles) ||
+      !Number.isFinite(usageRows) ||
+      revenueSatang < 0 ||
+      cycles < 0 ||
+      usageRows < 0
+    ) {
+      continue;
+    }
+    byDate.set(row.usage_date, { date: row.usage_date, revenueSatang, cycles, usageRows });
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export async function queryDashboard(
   ch: ClickHouseExecutor,
   from: string,
   to: string,
   branchId?: string
 ): Promise<DashboardData> {
-  const [rows, currentStates] = await Promise.all([
+  const [rows, currentStates, trendRows] = await Promise.all([
     ch<MachineUsageRow>(buildDashboardSQL(), { from, to, branchId: branchId ?? "" }),
-    queryMachineStates(ch, to, to, branchId)
+    queryMachineStates(ch, to, to, branchId),
+    ch<DailyUsageRow>(buildDashboardTrendSQL(), { from, to, branchId: branchId ?? "" })
   ]);
 
   const branchMap = new Map<
@@ -511,6 +626,7 @@ export async function queryDashboard(
       machines: machines.size,
       running: Array.from(branchMap.values()).reduce((total, branch) => total + branch.running, 0)
     },
+    trend: dailyTrend(trendRows),
     branches: Array.from(branchMap.values()).map((b) => ({
       branchId: b.branchId,
       branchName: b.branchName,

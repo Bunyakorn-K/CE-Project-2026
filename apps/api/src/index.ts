@@ -31,6 +31,7 @@ import {
 import { createClickHouseClient, type ClickHouseExecutor } from "./analytics/clickhouse";
 import { createMcpServer, type McpTransport } from "./analytics/mcp";
 import { buildOpenApiDocument } from "./analytics/openapi";
+import { isCalendarDate } from "./calendar-date";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { parseAnalyticsRange } from "./analytics/scope";
 import { auth, resolveTrustedOrigins } from "./auth";
@@ -644,6 +645,11 @@ async function queryDemoDashboard(iris: IrisClient, from: string, to: string, br
     // Likewise the demo projection carries no `machine_session_id`, so the
     // attribution gap cannot be measured and must not be reported as zero.
     cycleAttribution: null,
+    // The IRIS dashboard contract has no per-day field either, so the trend is
+    // unknown rather than empty. An empty array here would render a chart with
+    // nothing on it, which reads as "no trading" instead of "this source cannot
+    // say" — the same distinction `usageRowsInRange: null` above draws.
+    trend: null,
     totals: {
       revenueSatang: response.totals.revenueSatang,
       cycles: response.totals.cycles,
@@ -959,11 +965,6 @@ function readRange(c: Context) {
     return apiError(c, 400, "INVALID_RANGE", "from and to must be YYYY-MM-DD dates");
   }
   return range.value;
-}
-
-function isCalendarDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function readLimit(c: Context) {

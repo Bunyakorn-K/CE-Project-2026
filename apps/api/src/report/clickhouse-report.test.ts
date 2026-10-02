@@ -3,6 +3,7 @@ import type { ClickHouseExecutor } from "../analytics/clickhouse";
 import {
   buildBranchSQL,
   buildDashboardSQL,
+  buildDashboardTrendSQL,
   buildEventsSQL,
   buildBranchHoursSQL,
   buildMachineStateSQL,
@@ -19,6 +20,29 @@ import {
 
 function fakeExecutor(rows: Record<string, unknown>[]): ClickHouseExecutor {
   return vi.fn().mockResolvedValue(rows) as unknown as ClickHouseExecutor;
+}
+
+/**
+ * A fake that answers by WHAT WAS ASKED rather than by call order.
+ *
+ * `queryDashboard` runs three queries in parallel and `queryMachineStates` runs
+ * two of its own, so a `mockResolvedValueOnce` chain has to guess a five-deep
+ * call order to say anything about the dashboard — and it silently mislabels
+ * itself the moment a query is added. That is not a hypothetical: the trend
+ * query added here broke two of these tests with "rows is not iterable", which
+ * reads like a product defect and is really a fixture that was too brittle.
+ *
+ * `rows` is keyed by a distinctive substring of the SQL, so each fixture states
+ * which query it is answering and a wrong key fails as a missing key rather
+ * than as a mismatched assertion.
+ */
+function sqlRouter(rows: Record<string, Record<string, unknown>[]>): ClickHouseExecutor {
+  const executor = vi.fn(async (sql: string) => {
+    const match = Object.entries(rows).find(([fragment]) => sql.includes(fragment));
+    if (!match) throw new Error(`no fixture for query: ${sql.slice(0, 120)}`);
+    return match[1];
+  });
+  return executor as unknown as ClickHouseExecutor;
 }
 
 describe("machine floor report", () => {
@@ -99,10 +123,9 @@ describe("machine floor report", () => {
       started_at: "2026-09-24 08:00:00",
       last_active_at: "2026-09-24 08:00:00"
     });
-    const executor = vi
-      .fn()
-      .mockResolvedValueOnce([usageRow("W1", "paid", "1200"), usageRow("W1", "running", "12")])
-      .mockResolvedValueOnce([
+    const ch = sqlRouter({
+      "AS attributedCycles": [usageRow("W1", "paid", "1200"), usageRow("W1", "running", "12")],
+      "argMax(u.status": [
         {
           tenant_id: "tenant-01",
           machine_id: "W1",
@@ -114,8 +137,9 @@ describe("machine floor report", () => {
           last_active_at: "2026-09-24 08:00:00",
           cycle_count: "900"
         }
-      ]);
-    const ch = executor as unknown as ClickHouseExecutor;
+      ],
+      "AS usage_date": []
+    });
 
     const result = await queryDashboard(ch, "2026-07-01", "2026-08-25");
 
@@ -178,9 +202,8 @@ describe("machine floor report", () => {
   });
 
   it("reports cycle attribution as the counted rows and how many carry a session id", async () => {
-    const executor = vi
-      .fn()
-      .mockResolvedValueOnce([
+    const ch = sqlRouter({
+      "AS attributedCycles": [
         {
           tenant_id: "tenant-01",
           branch_id: "branch-01",
@@ -195,9 +218,10 @@ describe("machine floor report", () => {
           started_at: "2026-09-24 08:00:00",
           last_active_at: "2026-09-24 08:00:00"
         }
-      ])
-      .mockResolvedValueOnce([]);
-    const ch = executor as unknown as ClickHouseExecutor;
+      ],
+      "argMax(u.status": [],
+      "AS usage_date": []
+    });
 
     const result = await queryDashboard(ch, "2026-07-22", "2026-09-25");
 
@@ -206,6 +230,159 @@ describe("machine floor report", () => {
       attributedRows: 120,
       unattributedRows: 780
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // The daily trend the dashboard chart draws
+  // -------------------------------------------------------------------------
+
+  const day = (date: string, cycles: string, revenueSatang = "0", usageRows = "0") => ({
+    usage_date: date,
+    cycles,
+    revenueSatang,
+    usageRows
+  });
+
+  function dashboardWithTrend(trend: Record<string, unknown>[]) {
+    return sqlRouter({
+      "AS attributedCycles": [
+        {
+          tenant_id: "tenant-01",
+          branch_id: "branch-01",
+          machine_id: "W1",
+          branch_name: "Branch A",
+          machine_code: "W1",
+          machine_kind: "washer",
+          revenueSatang: "60000",
+          cycles: "120",
+          attributedCycles: "120",
+          usageRows: "150",
+          started_at: "2026-09-24 08:00:00",
+          last_active_at: "2026-09-24 08:00:00"
+        }
+      ],
+      "argMax(u.status": [],
+      "AS usage_date": trend
+    });
+  }
+
+  it("reads the trend from the same scope as the totals, so the chart can be checked against the KPI", async () => {
+    const executor = vi.fn().mockResolvedValue([]);
+    const ch = executor as unknown as ClickHouseExecutor;
+
+    await queryDashboard(ch, "2026-09-18", "2026-09-25", "branch-01");
+
+    const trendCall = executor.mock.calls.find(
+      ([sql]) => typeof sql === "string" && sql.includes("AS usage_date")
+    ) as [string, Record<string, string>] | undefined;
+
+    expect(trendCall, "the dashboard must issue a trend query").toBeDefined();
+    const [sql, params] = trendCall!;
+    expect(params).toEqual({ from: "2026-09-18", to: "2026-09-25", branchId: "branch-01" });
+    // Both joins, because a trend that read a wider set than the totals would
+    // not add up to the KPI printed beside it — which would be a chart making a
+    // second, softer claim rather than rendering the first.
+    expect(sql).toContain("INNER JOIN dim_branch AS b FINAL");
+    expect(sql).toContain("INNER JOIN dim_machine AS m FINAL");
+    expect(sql).toContain("toString(u.branch_id) = {branchId:String}");
+    expect(sql).toContain("u.started_at < plus(toDate({to:String}), 1)");
+    // Bound, never interpolated — a range reaching the SQL text would be an
+    // injection surface, and the totals query is bound.
+    expect(sql).not.toContain("2026-09-18");
+    expect(sql).not.toContain("branch-01");
+  });
+
+  it("keeps the same cycle definition in the trend as in the totals", () => {
+    const sql = buildDashboardTrendSQL();
+
+    expect(sql).toContain("countIf(u.status IN ('paid', 'finished')) AS cycles");
+    expect(sql).toContain("sumIf(u.amount_satang, u.status IN ('paid', 'finished')) AS revenueSatang");
+    // The enum-renumbering hazard that bit the totals query applies here too.
+    expect(sql).not.toMatch(/status\s+(?:NOT\s+)?IN\s*\(\s*\d/);
+  });
+
+  it("buckets by business day, the same expression the freshness DAG checks for holes", () => {
+    expect(buildDashboardTrendSQL()).toContain("toString(toDate(u.started_at)) AS usage_date");
+  });
+
+  it("reports days in ascending order with their cycles and revenue", async () => {
+    const ch = dashboardWithTrend([
+      day("2026-09-26", "40", "20000", "60"),
+      day("2026-09-24", "30", "15000", "45"),
+      day("2026-09-25", "50", "25000", "70")
+    ]);
+
+    const result = await queryDashboard(ch, "2026-09-24", "2026-09-26");
+
+    // Unsorted input, because the ORDER BY in the SQL is a convenience and the
+    // web's line is drawn in array order — a chart whose x-axis runs backwards
+    // is a defect the SQL cannot be relied upon to prevent once a cache or a
+    // future source returns rows in whatever order it likes.
+    expect(result.trend).toEqual([
+      { date: "2026-09-24", cycles: 30, revenueSatang: 15000, usageRows: 45 },
+      { date: "2026-09-25", cycles: 50, revenueSatang: 25000, usageRows: 70 },
+      { date: "2026-09-26", cycles: 40, revenueSatang: 20000, usageRows: 60 }
+    ]);
+  });
+
+  // The invariant that makes the chart a rendering of the numbers rather than a
+  // second claim about them. It only holds because both queries read the same
+  // rows — which is why the test states it rather than trusting the SQL.
+  it("sums the trend to the totals it sits beside", async () => {
+    const ch = dashboardWithTrend([day("2026-09-24", "50", "25000"), day("2026-09-25", "70", "35000")]);
+
+    const result = await queryDashboard(ch, "2026-09-24", "2026-09-25");
+
+    const trendCycles = result.trend!.reduce((total, point) => total + point.cycles, 0);
+    const trendRevenue = result.trend!.reduce((total, point) => total + (point.revenueSatang ?? 0), 0);
+    expect(trendCycles).toBe(result.totals.cycles);
+    expect(trendRevenue).toBe(result.totals.revenueSatang);
+  });
+
+  // A gap day is a genuine source gap, not a day the branch did no business.
+  // AGENTS.md records 2026-07-27 as exactly that, so a zero-filled day would
+  // draw a dip to nothing on the one day the warehouse cannot speak about.
+  it("leaves a day with no rows ABSENT from the series rather than reporting it as zero", async () => {
+    const ch = dashboardWithTrend([day("2026-07-26", "10", "5000"), day("2026-07-28", "12", "6000")]);
+
+    const result = await queryDashboard(ch, "2026-07-26", "2026-07-28");
+
+    // 2026-07-27 is missing from the array, so the web can draw it as a gap.
+    expect(result.trend!.map((point) => point.date)).toEqual(["2026-07-26", "2026-07-28"]);
+    expect(result.trend!.some((point) => point.date === "2026-07-27")).toBe(false);
+  });
+
+  it("keeps a day that has usage but no finished cycle in the series", async () => {
+    // A day of `pending_payment` rows is usage evidence and belongs on the
+    // chart; dropping it would repeat the "no rows" claim for a day the
+    // warehouse did report on.
+    const ch = dashboardWithTrend([day("2026-07-26", "0", "0", "31")]);
+
+    const result = await queryDashboard(ch, "2026-07-26", "2026-07-26");
+
+    expect(result.trend).toEqual([{ date: "2026-07-26", cycles: 0, revenueSatang: 0, usageRows: 31 }]);
+  });
+
+  it("drops a row whose aggregates the driver returned unreadable, rather than plotting it as zero", async () => {
+    const ch = dashboardWithTrend([
+      day("2026-09-24", "30", "15000"),
+      { usage_date: "2026-09-25", cycles: "not-a-number", revenueSatang: "25000", usageRows: "70" },
+      // A date the API's own `isCalendarDate` would reject. The web indexes
+      // gaps by calendar day, so a malformed one would corrupt the axis.
+      { usage_date: "2026-02-31", cycles: "10", revenueSatang: "5000", usageRows: "10" }
+    ]);
+
+    const result = await queryDashboard(ch, "2026-09-24", "2026-09-26");
+
+    expect(result.trend!.map((point) => point.date)).toEqual(["2026-09-24"]);
+  });
+
+  it("reports an empty trend for an empty window, distinct from a source that cannot report one", async () => {
+    const result = await queryDashboard(dashboardWithTrend([]), "2026-09-24", "2026-09-26");
+
+    // `[]` is a measurement — the warehouse was asked and returned nothing.
+    expect(result.trend).toEqual([]);
+    expect(result.usageRowsInRange).toBe(150);
   });
 
   // The twin tab and the KPI are one screen. Two different definitions for one
