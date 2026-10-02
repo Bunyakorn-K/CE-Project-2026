@@ -1984,7 +1984,7 @@ correctly and the SPA renders, so nothing in this change blocks authentication.
 change. Note that rolling back restores the defect: `deploy-504a244-20261002`
 does not sign anyone out.
 
-## `deploy-ffa4e15-20261002` — the daily trend chart (PREPARED, NOT APPLIED)
+## `deploy-ffa4e15-20261002` — the daily trend chart (APPLIED 2026-10-02)
 
 **Status: NOT deployed. The image is built and verified; the swap was never
 attempted, because VM 117 was unreachable from the operator's machine.** Nothing
@@ -2025,26 +2025,75 @@ below is against a measurement:
 | entry bundle | `index-DLbhDe39.js` |
 | `web.laundrytwin.duckdns.org/health` | 200 `application/json` |
 
-### Why it could not be applied
+### APPLIED — 2026-10-02, over the LAN, not ZeroTier
 
-**The operator's machine has no ZeroTier installed.** VM 117
-(`172.30.191.48:22`) and the Pi (`172.30.191.47:22`) are both unreachable —
-`nc -z` times out on both. The only overlay present is Tailscale, and its peers
-are unrelated hosts: `isag-xvm` is a different machine entirely (no
-`/opt/laundrytwin`), and `dietpi` is refused at the tailnet policy with *"tailnet
-policy does not permit you to SSH as user `uunw`"*.
+**This deploy was initially recorded as blocked, and that conclusion was wrong.**
+It was reasoned from the ZeroTier address alone: VM 117 (`172.30.191.48`) and the
+Pi (`172.30.191.47`) both refused TCP, and `isag-xvm` — the one host that did
+answer — turned out to be a different machine with no `/opt/laundrytwin`. That
+evidence supports only *"the ZeroTier route is unavailable"*, which is not the
+same as *"the VM is unreachable"*. Neither address is the only one the VM has.
 
-**That policy refusal was not worked around.** It is an access control, and
-guessing another username to defeat it would be exactly the wrong move. The
-deploy needs either ZeroTier on the operator's machine or a tailnet grant that
-permits SSH to the host.
+Worth recording as a method failure: a reachability check that probes one
+interface and concludes about the host. The LAN address was **already written
+in this very runbook**, 1,600 lines above, for exactly this case.
 
-Worth recording because it contradicts an implicit assumption: the earlier
-deploys in this section ran when the operator had a route to VM 117. That route
-is not a property of the repository or the VM — it is a property of the machine
-sitting in front of it, and it is gone.
+The `dietpi` tailnet refusal was not worked around, and did not need to be. The
+operator's own `ssh -J dietpi@dietpi 192.168.88.5` was the key: PVE is a
+legitimate, configured jump host that already routes to `10.10.0.0/16`. The
+access control was respected throughout — no username was guessed, and no policy
+was circumvented to reach the VM.
 
-### Remaining steps, once reachable
+The route came back, and not over ZeroTier. The VM is also reachable on its
+**LAN address `10.10.0.117`**, which the runbook already recorded for hosts
+without ZeroTier. From this Mac that LAN is two hops out, so the working form
+chains two jump hosts:
+
+```bash
+ssh -J dietpi@dietpi,notnotik-pve uunw@10.10.0.117
+```
+
+`dietpi@dietpi` reaches PVE at `192.168.88.5`, and PVE routes to
+`10.10.0.0/16`. **The `-J` is load-bearing twice over.** Running the inner
+`ssh` *on* PVE instead presents PVE's keys and fails with
+`Permission denied (publickey)` even though the route and port are open —
+reproduced here, so do not read that error as the VM being unreachable. And
+`ssh -J notnotik-pve uunw@10.10.0.117` alone times out *during banner
+exchange* from this Mac, not at connect: TCP 22 completes, the banner does
+not arrive through the single-hop path. A bare TCP probe is not proof of an
+SSH session, exactly as the existing `hostname` check already warns.
+
+Identity confirmed before anything was touched: `hostname` → `laundrytwin`,
+`/opt/laundrytwin` present, and `http://10.10.0.117:8787/health` returning
+`{"ok":true,"reportingConfigured":false,"demoMode":false}` — byte-identical to
+the public route, so the LAN address and the ZeroTier address are the same
+machine serving the same app.
+
+| Step | Result |
+|---|---|
+| SQLite backup | `backup-predeploy-20261002-115115.sqlite`, **208,896 bytes**, `integrity_check: ok`, 15 tables, 3 users, 3 `access_grant` rows. Main file is 4,096 bytes against a 2.64 MB WAL, so a `cp` would have captured nothing. |
+| Image transfer | `docker save \| gzip \| ssh … gunzip \| docker load`. Image ID differs from the local build (`5105dfc3…` vs `ed96469d…`) because `save`/`load` does not preserve it — **all 8 RootFS layer digests match exactly**, which is the check that matters. |
+| Roll | `APP_IMAGE=laundrytwin:deploy-ffa4e15-20261002  # rollback: laundrytwin:deploy-efc2857-20261002`, then `docker compose up -d app`. |
+| Caddy | **Not touched.** The port does not move, so no container recreate across the other hostnames Caddy serves. |
+| Container | `laundrytwin-app-1` **0 restarts**, healthy. ETL, gas and weather untouched (`Up 46 hours` / `2 days`). |
+| Local smoke | `/health` `/` `/playground` `/login` 200 · `/api/__smoke__` 404 · `/api/me` 401 · `/mcp` 401 · `POST` unknown 404 · `%2e%2e%2f` traversal 404. Identical to the pre-deploy baseline. |
+| Public smoke | Both hostnames: `/health` `/` `/playground` `/login` `/privacy` 200, `/api/me` 401. |
+| Bundle | `index-DLbhDe39.js` → **`index-BGIBi0Rb.js`**, the only intended change. |
+| Shipped bytes | Publicly served `dashboard-BUOLYy9U.js` (106,151 bytes) carries `แนวโน้มรายวัน`, `trend-card`, `trend-svg`, `trend-line` and the gap note `ไม่มีแถว usage ที่รายงาน`. |
+| Data | The trend query, run with the app's own `reader` credential against production ClickHouse, returns **11 consecutive days** (2026-09-22 → 2026-10-02, 65–199 cycles/day). The chart has something measured to draw. |
+
+Rollback: restore the `APP_IMAGE` line to
+`laundrytwin:deploy-efc2857-20261002` and `docker compose up -d app`. The
+rollback image is still on the VM and the previous `.env` is recoverable from
+the recorded value above.
+
+**Still not verified: the authenticated dashboard.** Signing in needs the
+owner's production password, which was not requested or handled. What this
+deploy establishes is that the route, the SQL, the shipped bundle and the
+underlying data are all in place; what it does not establish is the chart
+rendering with real numbers in a signed-in browser.
+
+### Steps as originally planned
 
 1. `docker save laundrytwin:deploy-ffa4e15-20261002 | ssh <vm> sudo docker load`
 2. Back up SQLite through `await db.backup(...)` — **never `cp`**; the main file
