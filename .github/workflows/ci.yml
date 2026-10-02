@@ -92,10 +92,11 @@ jobs:
         # VITE_LIFF_ID is a PLACEHOLDER, not the real channel ID, and must never
         # be the real one here: these specs abort every *.line.me request, so the
         # value only has to be non-empty for the LIFF gate to compile its branches
-        # in. Without it, all four `stale-liff-session.pw.ts` specs skip and CI
-        # reports a green "40 passed" that has quietly stopped covering the
-        # production defect they exist for. Verified: the suite reports 44 passed
-        # with this set, and 4 skipped with it absent.
+        # in. Without it, the 9 specs in `stale-liff-session.pw.ts` and
+        # `closed-branch-honesty.pw.ts` skip and CI reports a green "56 passed"
+        # that has quietly stopped covering the production defect they exist
+        # for. Verified 2026-10-03: 65 passed with this set, 56 passed and 9
+        # skipped with it absent.
         env:
           VITE_LIFF_ID: ci-placeholder-not-a-real-liff-id
         run: |

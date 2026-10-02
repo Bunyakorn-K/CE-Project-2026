@@ -831,9 +831,11 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-02: 840 tests green** — API 485, web 268,
-ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** Web rose from 227 to 234 with the post-sign-in
+Local automated evidence on **2026-10-03: 858 tests green** — API 485, web 268,
+ETL 105. **This is the only place the count is recorded; `README.md` points here
+rather than repeating it.** ETL rose from 87 to 105 with the source coverage
+audit — 13 on the pure classifier and 5 on the source helpers behind it; see
+`docs/04_traceability/ops-verification-2026-10-02-source-coverage-audit.md`. Web rose from 227 to 234 with the post-sign-in
 redirect (7 tests; see the LINE double-press paragraph above for what the defect
 was), then to 236 with the sign-out that did not sign out (2 tests; see the
 sign-out paragraph above), then to 268 with the daily trend chart (32 tests; see
@@ -894,17 +896,19 @@ its source is unavailable, and that a twin card draws no machine state its own
 pills disclaim. `stale-liff-session.pw.ts` asserts that a blocking LINE gate
 neither hides a route the visitor may use nor replaces the sign-in page, that a
 signed-in browser reaches the dashboard from the sign-in page in one load, that
-the legal documents are never redirected away from, and that the redirect does
-not reload `/dashboard` into itself — and
+the legal documents are never redirected away from, that the redirect does
+not reload `/dashboard` into itself, and that a browser which signs out is
+**refused** by the API on a later visit rather than merely shown a card over a
+session it still holds — and
 `closed-branch-honesty.pw.ts` asserts that a shut branch paints no card red
 while an *open* branch with identical evidence still does.
 
-**Four of those 49 were skipping in CI, which is the same defect a third
+**Nine of those specs were skipping in CI, which is the same defect a third
 time.** `stale-liff-session.pw.ts` guards the production defect measured
 earlier on 2026-10-01, and it skips unless `VITE_LIFF_ID` is set, because the
 gate compiles every LIFF branch out of a build without one. `ci.yml` never set
-it, so **all four specs skipped on every run and CI reported a green
-`40 passed`** — a tick that had quietly stopped covering the one production
+it, so **all of them skipped on every run and CI reported a green tick** — one
+that had quietly stopped covering the one production
 defect in this repository found by using the product. Three separate classes of
 "green means nothing" now, all in this file's history: a platform-derived font
 threshold, a bundle test skipped for want of a build, and a spec file skipped
@@ -912,8 +916,32 @@ for want of an env var. The value does not need to be real — the specs abort
 every `*.line.me` request, so a placeholder is never used as a credential, only
 as a compile-time flag. `ci.yml` now sets one and **fails the step if the suite
 reports any skip**, so the condition cannot be reintroduced silently. Verified
-both directions: 44 passed with the variable set, 4 skipped and the guard trips
-without it.
+both directions on 2026-10-03: **65 passed** with the variable set, **56 passed
+and 9 skipped** without it and the guard trips.
+
+**A spec can be green because of the layer above it, not because of the
+code it names.** `stale-liff-session.pw.ts` was the cause of five consecutive
+red CI runs — the only red on `main` — and the defect was in the spec, not the
+product. Its last block asserted `toHaveURL(/\/login$/)` on the reasoning
+that "with LINE reachable, the API is what refuses". `page.unroute()` does not
+make LINE reachable: it stops aborting the request and sends it to the real
+internet, where a placeholder LIFF ID cannot initialise, so the gate stayed in
+its `init`-error card and `_authenticated`'s `beforeLoad` never ran. The block
+could only ever have passed against a real LINE client. The spec's own comment
+warned that asserting the URL "would be asserting an accident of which layer
+happens to run first" — and then asserted it.
+
+What replaced it asserts the claim the block was actually for: the browser
+**asked** and was **refused**, read off the statuses the API stub served, not
+off the URL. That is unsatisfiable by a card painted over a browser that still
+holds a session, which is the exact failure the neighbouring comment warns
+about. Verified against deliberately broken code: with the stub never revoking,
+this assertion fails with `Expected: 401 / Received: 200` while every URL
+assertion around it passes. The first mutation I tried — making the stub refuse
+to revoke unless the request carries the JSON content-type — proved nothing,
+because the fixed client does send it, so the stub still revoked. **A mutation
+that only bites when the code is already correct is a tautology, and the suite
+reports it green.**
 
 Node
 24.x is used (see `.nvmrc`); no

@@ -237,8 +237,13 @@ test.describe("signing out", () => {
    * 200 and becomes 401 once the sign-out request lands, and the sign-out route
    * is asserted to be the one that was called with the header it needs.
    */
-  async function installRevocableSession(page: Page): Promise<{ signOutRequests: Array<{ contentType: string | null; body: string | undefined }> }> {
+  async function installRevocableSession(page: Page): Promise<{
+    signOutRequests: Array<{ contentType: string | null; body: string | undefined }>;
+    /** Every status the stub served for `/api/me`, in order. */
+    meStatuses: number[];
+  }> {
     const signOutRequests: Array<{ contentType: string | null; body: string | undefined }> = [];
+    const meStatuses: number[] = [];
     let revoked = false;
 
     await page.route("**/api/**", async (route) => {
@@ -253,6 +258,7 @@ test.describe("signing out", () => {
         return;
       }
       if (url.pathname === "/api/me") {
+        meStatuses.push(revoked ? 401 : 200);
         await route.fulfill({
           status: revoked ? 401 : 200,
           contentType: "application/json",
@@ -272,7 +278,7 @@ test.describe("signing out", () => {
       });
     });
 
-    return { signOutRequests };
+    return { signOutRequests, meStatuses };
   }
 
   test("revokes the session, and the browser stays signed out", async ({ page }) => {
@@ -306,7 +312,7 @@ test.describe("signing out", () => {
   });
 
   test("does not return to the dashboard on a later visit either", async ({ page }) => {
-    await installRevocableSession(page);
+    const { meStatuses } = await installRevocableSession(page);
     await blockLineEndpoint(page);
 
     await page.goto("/dashboard");
@@ -328,14 +334,28 @@ test.describe("signing out", () => {
     await expect(page.locator(".signout-button")).toHaveCount(0);
     await expect(page.locator(".liff-message-card")).toBeVisible();
 
-    // And with LINE reachable, the API is what refuses — there is no session to
-    // render, so `_authenticated`'s `beforeLoad` redirects to the sign-in page.
-    // This is the half that says the revocation held rather than the gate
-    // merely hiding the product.
-    await page.unroute("**://*.line.me/**");
-    await page.unroute("**://*.line-s.me/**");
-    await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/login$/);
-    await expect(page.locator(".app-topbar")).toHaveCount(0);
+    // And the browser ASKS, and is REFUSED. This is the half that says the
+    // revocation held rather than the gate merely hiding the product: the
+    // product is absent because `/api/me` answered 401, not because a card is
+    // covering it.
+    //
+    // It is asserted on the STATUSES THE STUB SERVED, not on the URL, and the
+    // distinction is the whole point. An earlier version of this spec unblocked
+    // LINE, reloaded, and asserted `toHaveURL(/\/login$/)` — reasoning that
+    // "with LINE reachable, the API is what refuses". `unroute` does not make
+    // LINE reachable: it stops aborting the request and sends it to the real
+    // internet, where a placeholder LIFF ID still cannot initialise, so the gate
+    // stayed in its `init`-error card and no `_authenticated` redirect ever ran.
+    // Measured, not assumed: with the card still mounted and the URL still
+    // `/dashboard`, that spec failed on `main` from `efc2857` onward — five
+    // consecutive red CI runs, none of them touching this file. The assertion
+    // could only ever have passed against a real LINE client.
+    //
+    // Asserting the served statuses asks the question that is actually
+    // answerable here, and it cannot be satisfied by a card that happens to be
+    // painted over a browser still holding a session — which is precisely the
+    // failure the "browser is merely misrouted" comment above warns about.
+    expect(meStatuses.length).toBeGreaterThan(0);
+    expect(meStatuses.at(-1)).toBe(401);
   });
 });
