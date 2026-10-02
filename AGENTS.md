@@ -229,7 +229,10 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
-**As of 2026-10-02 production runs `deploy-504a244-20261002`**, which supersedes
+**As of 2026-10-02 production runs `deploy-efc2857-20261002`** (the sign-out fix),
+which supersedes `deploy-504a244-20261002` — retained as its rollback target,
+with the caveat that rolling back it **restores the sign-out defect**. That
+deploy in turn
 the merged `deploy-97c45ac-20261001` (retained as its rollback target) and
 carries the closed-branch mechanism. The merged `deploy-97c45ac-20261001` ran as the
 single `app` container on `:8787`**, replacing `deploy-0ffb7ff-20261001` (API) and
@@ -449,10 +452,21 @@ afterwards), not that the URL moved. Evidence: 2 unit tests in
 code (dropping the header fails 1, dropping `credentials` fails 1), plus 2
 Playwright specs in `stale-liff-session.pw.ts` against the built bundle, both
 verified to fail against the pre-fix shell — the first on the missing header,
-the second reproducing the trap by never reaching `/login` at all. **Not
-verified against a live session:** revoking a real production cookie needs the
-owner's credentials, which were not requested or handled. What production
-establishes is the 415 and the 200.
+the second reproducing the trap by never reaching `/login` at all.
+**Deployed as `deploy-efc2857-20261002`** (2026-10-02): Caddy untouched, SQLite
+backed up via `db.backup()` and verified (208,896 bytes against a 4 KB main file
+and a 2.43 MB WAL), every status matched the pre-deploy baseline on both
+hostnames, `0 restarts`, and the fix confirmed in the **publicly served** bytes
+— `headers:{"content-type":"application/json"},body:"{}"` and
+`replace("/login")` in `assets/_authenticated-BLnwVbab.js`. Note the sign-out
+lives in a lazily-imported chunk, so grepping `index.html`'s script tags finds
+nothing; the chunk has to be followed through the router manifest. The endpoint
+still answers 415 to a headerless POST and 200 to what the app now sends, which
+is the correct outcome — the header is the fix and it lives in the client.
+**Not verified against a live session:** revoking a real production cookie needs
+the owner's credentials, which were not requested or handled, so one
+sign-in/sign-out cycle in a browser is what would close it. **Rolling back to
+`deploy-504a244-20261002` restores the defect.**
 
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and

@@ -1859,51 +1859,127 @@ correctly and the SPA renders, so nothing here blocks authentication.
 `docker compose up -d app`. **Caddy needs no rollback** — it was not part of this
 change.
 
-## NOT DEPLOYED — `efc2857`, a sign-out that did not sign out
+## `deploy-efc2857-20261002` — a sign-out that did not sign out
 
-**Production still runs `deploy-504a244-20261002`. This commit is local only.**
-It carries no image tag because no deploy was requested; building one would be
-`laundrytwin:deploy-efc2857-20261002`.
+**Status: deployed.** Commit `efc2857` (docs follow-up `046f3cb`), image
+`laundrytwin:deploy-efc2857-20261002`, 71.5 MB, `linux/amd64`, built with
+`--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`. Rollback target
+`deploy-504a244-20261002`, retained on the VM.
 
-### Why it is urgent rather than routine
+The image was built locally for `linux/amd64` and transferred with
+`docker save | ssh docker load`, because the VM has no source tree — the
+earlier builds ran there and were cleaned up afterwards. Worth recording: the
+runbook said these images were "built on VM 117", which is no longer true of
+the process, only of the architecture.
 
-A visitor who presses `ออกจากระบบ` on production today is **not signed out**. The
-button navigates to `/login`, the session cookie is never revoked, and the LINE
-gate's post-sign-in redirect returns them to `/dashboard`. On a shared or public
-machine that is a real exposure, and the UI asserts the opposite of what
+### What was broken
+
+A visitor who pressed `ออกจากระบบ` was **not signed out**. The button navigated
+to `/login`, the session cookie was never revoked, and the LINE gate's
+post-sign-in redirect returned them to `/dashboard`. On a shared or public
+machine that is a real exposure, and the UI asserted the opposite of what
 happened.
 
-### Two faults, both measured
+Two faults, both measured on production before the fix:
 
-| check | before | after |
-|---|---|---|
-| `curl -X POST /api/auth/sign-out` | **415** | — |
-| same, `content-type: application/json` | 200 `{"success":true}` | — |
+| check | result |
+|---|---|
+| `curl -X POST /api/auth/sign-out` | **415** — refused before Better Auth's handler ran |
+| same, `content-type: application/json` | 200 `{"success":true}` |
 
-Better Auth's sign-out handler parses a JSON body, so the headerless POST was
-refused before the handler ran. The second fault is in `LiffGate`: it sits above
-`RouterProvider` and probes the session once on mount with `[]` deps, so a
-client-side navigation to `/login` left `sessionUsable` describing the session
-as it was *before* the sign-out — and `decideAfterSignIn` redirected on exactly
-that stale value.
+The second fault was in `LiffGate`: it sits above `RouterProvider` and probes
+the session once on mount with `[]` deps, so the client-side navigation to
+`/login` left `sessionUsable` describing the session as it was *before* the
+sign-out — and `decideAfterSignIn` redirected on exactly that stale value.
 
-### The change
+### Caddy was not touched
 
-`apps/web/src/lib/components/app-shell.tsx` only. `signOutRequest()` declares
-the JSON body, and the sign-out ends in `window.location.replace("/login")` so
-the gate remounts and re-probes. No API, schema, port or Caddy change, so the
-deploy would again be a single `docker compose up -d app` — but note the
-pre-existing baseline-first rule: capture the pre-deploy statuses and the entry
-bundle name, and back up SQLite through `await db.backup(...)`, never `cp`.
+The port does not change, so this was a single `docker compose up -d app` and
+the Caddy container was left alone. Had the Caddyfile changed, app and Caddy
+would still be one rollback unit, not two.
 
-### What is verified, and what is not
+### Pre-deploy state captured before the swap
 
-Verified locally: 794 unit tests (API 471, web 236, ETL 87), 54 Playwright with
-0 skipped, `pnpm check` and `pnpm build` clean. The two new Playwright specs were
-each verified to fail against the pre-fix shell, and the two new unit guards each
-verified to fail against deliberately broken code.
+Taken over public TLS on both hostnames, so the comparison is against a
+measurement rather than a recollection:
 
-**Not verified: a live revocation.** Signing out of production needs the owner's
-credentials, which were not requested or handled. A deploy would establish that
-the shipped bundle carries the fix; only signing in and out in the browser
-establishes that the cookie is actually revoked.
+| Check | Baseline |
+| :--- | :--- |
+| `/health` | 200 `application/json`, `{"ok":true,"reportingConfigured":false,"demoMode":false}` |
+| `/`, `/login`, `/terms`, `/playground` | 200 `text/html; charset=utf-8` |
+| `/api/me` unauth | 401 |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 |
+| `POST /api/admin/grants` unauth | 401 |
+| `POST` to an unknown `/api/*` path | 404 |
+| `/api/__smoke__` | 404 `text/plain; charset=UTF-8` |
+| `%2e%2e%2f…/etc/passwd` | 404 |
+| entry bundle | `index-D4SKJgA-.js` |
+
+### SQLite backup — the WAL trap, avoided and verified
+
+The main file is **4,096 bytes** and the WAL **2.43 MB**, so `cp` would have
+produced a plausible stub with zero rows. Backed up through the online API
+(`await db.backup(...)`) to `/data/backup-pre-signout-20261002T065419Z.sqlite`,
+then verified rather than assumed: **208,896 bytes, `integrity_check: ok`, 15
+tables, 3 users, 3 access grants.** A copy-sized backup is a failed backup, not
+a small one. `.env` also copied to `.env.bak-pre-signout-<stamp>`.
+
+One procedural note: `better-sqlite3` only resolves from a script inside `/app`,
+because Node walks up from the script's directory looking for `node_modules`.
+A script in `/tmp` inside the container fails with `ERR_MODULE_NOT_FOUND` —
+which reads like a missing dependency rather than a misplaced file.
+
+### Smoke after the swap
+
+Every status matches the baseline exactly, on both hostnames, content types
+included. `/health` returned a byte-identical body. The only intended change is
+the entry bundle: `index-D4SKJgA-.js` → `index-DLbhDe39.js`.
+
+`laundrytwin-app-1` **0 restarts**, started `2026-10-02T06:56:42Z`, log a
+single clean line (`LaundryTwin API listening on http://localhost:8787`).
+
+### The shipped bundle carries the fix
+
+Checked twice — in the image before transfer, and in the **publicly served**
+bytes afterwards, which is the one that matters:
+
+```js
+function N(){return fetch(d("/api/auth/sign-out"),{method:"POST",
+  headers:{"content-type":"application/json"},body:"{}",credentials:"include"})}
+```
+
+and `replace("/login")` exactly once in the same chunk
+(`assets/_authenticated-BLnwVbab.js`). The sign-out lives in a lazily-imported
+chunk rather than the entry bundle, so a grep of `index.html`'s script tags
+finds nothing — the chunk has to be followed through the router manifest.
+
+The endpoint itself still answers **415** to a headerless POST and **200
+`{"success":true}`** to the shape the app now sends. That is the correct
+outcome, not a regression: the header is the fix, and it lives in the client.
+
+### In a real browser, against the public route
+
+Chromium at 390px and 1440px over TLS, no fixtures: `/login` renders the real
+email form (`lang="th"`, form present), **zero** `.liff-message-card` (which
+would mean the gate had replaced it again), no horizontal overflow, and **zero
+page and console errors** at both widths.
+
+### What this deploy does not prove
+
+**A live revocation was not performed.** Signing out of production needs the
+owner's credentials, which were not requested or handled. What production
+establishes is that the served bundle carries both halves of the fix and that
+the endpoint accepts the request shape it now sends. Confirming that the cookie
+is genuinely revoked needs one sign-in/sign-out cycle in a browser — the same
+kind of check the LINE sign-in fix is still waiting on.
+
+The **authenticated** dashboard is also not re-established against this image,
+for the same reason. Unauthenticated, `/api/me` and every report route deny
+correctly and the SPA renders, so nothing in this change blocks authentication.
+
+### Rollback
+
+`APP_IMAGE=laundrytwin:deploy-504a244-20261002` in `/opt/laundrytwin/.env`, then
+`docker compose up -d app`. **Caddy needs no rollback** — it was not part of this
+change. Note that rolling back restores the defect: `deploy-504a244-20261002`
+does not sign anyone out.
