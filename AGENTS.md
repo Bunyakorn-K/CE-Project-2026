@@ -240,12 +240,12 @@ single `app` container on `:8787`**, replacing `deploy-0ffb7ff-20261001` (API) a
 still pinned in `.env` (record and rollback refs in
 `docs/02_architecture/deploy-runbook.md`). Every status matched its pre-deploy
 baseline across all three public hostnames, and the browser check was run
-against the public route rather than a fixture. **The authenticated dashboard is
-carried over from the `84da0f1` check, not re-established against this image** —
-signing in needs the owner's production password, which was not requested or
-handled; `/api/me` and every report route deny correctly unauthenticated, so
-nothing in the merge blocks authentication, but read the browser-verified
-dashboard claim below as belonging to the previous pair. The earlier API deploy
+against the public route rather than a fixture. At the time of that deploy the
+authenticated dashboard was **carried over from the `84da0f1` check, not
+re-established against that image** — signing in needed the owner's production
+password. It has since been signed in and rendered in a real browser, against
+the current image `deploy-ffa4e15-20261002`; see the chart paragraph below for
+what that check measured. The earlier API deploy
 removed the twin's machine illustration and made a caller's malformed `cursor` a
 400 instead of a 502 source outage; the earlier web deploy is the LIFF-gate
 session-probe fix below. Every status matched its pre-deploy baseline exactly and the shipped bundles
@@ -269,15 +269,6 @@ validate` must pass before the recreate, and it hangs unless stdin is closed.
 Two non-defects worth not re-investigating: `/api/real` is **404** because that
 path exists only in a test fixture, and `/api/ai/*` returns **403** rather than
 401 because `requireOwner` runs in middleware ahead of authentication.
-machine illustration and made a caller's malformed `cursor` a 400 instead of a
-502 source outage; the web deploy is the LIFF-gate session-probe fix below.
-Every status matched its pre-deploy baseline exactly and the shipped bundles
-were grepped for the changes themselves. **Authenticated report rendering in a
-browser is now verified** — the dashboard renders in production with a real
-owner session, which closes the longest-standing local-only caveat — while the
-new Thai error copy is verified as shipped bytes and as rendered output on the
-sign-in page, and the 400 for a bad cursor still has no live request behind it,
-because `fact_machine_event` holds 0 rows.
 
 **A shut branch is not a room full of broken machines — the mechanism ships,
 the hours do not.** Measured on production 2026-10-01 at roughly 22:15 local:
@@ -554,6 +545,43 @@ it reads unavailable. Revenue ticks are chosen in **baht**, so the axis reads �
 **The axis labels are HTML, not SVG**, because the plot is fluid in width and
 fixed in height, so `preserveAspectRatio="none"` stretches x and leaves y —
 correct for geometry, unreadable for Thai glyphs.
+
+**The chart has now been signed in and rendered against production** (2026-10-02,
+`deploy-ffa4e15-20261002`, `?from=2026-09-22&to=2026-10-02`). **The owner's
+password was never typed, requested or handled** — the operator signed in
+themselves in the visible browser, and every number below was measured from
+that session. So the longest-standing local-only caveat is closed for the
+chart, not just carried: the API's `totals.cycles` **1340**, the KPI tile
+**"1,340"** and the sum of the 11 daily points **1340** all agree, which is the
+`sum(daily) == totals` invariant measured rather than asserted; **11** days on
+the axis with **1** `.trend-line` and **0** `.trend-gap`; the first and last
+marks land **exactly** on the plot edges at 1440px (185/1311) *and* at 390px
+(97/349), so the `viewBox` defect this repository caught by measurement is
+demonstrably absent in the shipped image; switching to `รายได้` gives ticks
+`฿10,000 … ฿0` and a caption whose `รวม ฿73,790` is the KPI's own total; **zero**
+horizontal overflow at 390px; **zero** console errors or warnings across the
+authenticated load. The `฿` looks absent from `dashboard-BUOLYy9U.js` and is
+not a defect — the literal is minified out and the symbol arrives at runtime
+from `Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" })`, so
+grepping the bundle for `฿` proves nothing either way. **What this window does
+not establish:** the narrow-grant path (branch scoping, zero-grant denial,
+revenue redaction) is still unit-only, because production still holds no
+single-branch account; and the **gap rule**, since 2026-09-22 → 2026-10-02
+contains no gap — the next paragraph is that check.
+
+**That gap window was then opened, and the break is real** —
+`?from=2026-07-24&to=2026-07-30`, the same signed-in production session. Seven
+days on the axis, **two** `.trend-line` segments, **one** `.trend-gap` tick, and
+`2026-07-27` is the day carrying it. The note reads
+`เส้นที่ขาดหายไปคือวันที่ไม่มีแถว usage ที่รายงาน ไม่ใช่วันที่ไม่มีการใช้งาน` —
+*"the line breaks because no usage row was reported, not because there was no
+usage"* — and the caption excludes it from both the total and the mean
+(`รวม 70 จาก 6 วันที่มีข้อมูล · เฉลี่ย 12 ต่อวันที่มีข้อมูล · ไม่รวม 1 วันที่ไม่มีแถว
+usage`). **That `70` is also the KPI tile's `70 รอบซัก`**, so
+`sum(daily) == totals` holds across a window containing a gap as well as across
+one that does not. This is the rule that would otherwise draw the worst day of
+the month from a day the warehouse cannot speak about, and it is now
+demonstrated in production rather than only in `trend-honesty.pw.ts`.
 
 **A bounding-box assertion caught the one defect every count-based spec passed
 through.** The marks SVG set its `viewBox` to start at the plot's left padding

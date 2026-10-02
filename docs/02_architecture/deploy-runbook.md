@@ -1986,11 +1986,11 @@ does not sign anyone out.
 
 ## `deploy-ffa4e15-20261002` — the daily trend chart (APPLIED 2026-10-02)
 
-**Status: NOT deployed. The image is built and verified; the swap was never
-attempted, because VM 117 was unreachable from the operator's machine.** Nothing
-on production changed. Production still runs `deploy-efc2857-20261002`.
+**Status: APPLIED 2026-10-02 and verified in a signed-in production browser.**
+See *APPLIED* and *Browser verification* below. Production runs
+`deploy-ffa4e15-20261002`; `deploy-efc2857-20261002` is the rollback target.
 
-Prepared state, so the deploy is a short step once connectivity exists:
+Prepared state, recorded before the swap:
 
 | | |
 | :--- | :--- |
@@ -2087,11 +2087,55 @@ Rollback: restore the `APP_IMAGE` line to
 rollback image is still on the VM and the previous `.env` is recoverable from
 the recorded value above.
 
-**Still not verified: the authenticated dashboard.** Signing in needs the
-owner's production password, which was not requested or handled. What this
-deploy establishes is that the route, the SQL, the shipped bundle and the
-underlying data are all in place; what it does not establish is the chart
-rendering with real numbers in a signed-in browser.
+### Browser verification — the chart, signed in, with production numbers
+
+This is the check the earlier deploy records kept deferring, and it is now
+closed **for the chart specifically** — against `deploy-ffa4e15-20261002`, with
+real ClickHouse data, in the operator's own Chrome over public TLS.
+
+**The owner's password was never typed, requested or handled by the agent.** The
+operator signed in themselves in the visible browser window; every measurement
+below was taken from the resulting authenticated session. That is why the
+credential constraint was respected and the check still happened.
+
+Window checked: `/dashboard?from=2026-09-22&to=2026-10-02`.
+
+| Check | Measured in production |
+| :--- | :--- |
+| Chart renders | `.trend-card` present with a real polyline |
+| **`sum(daily) == totals`** | API `totals.cycles` **1340**, KPI tile **"1,340"**, sum of the 11 daily points **1340** — all three agree |
+| Axis and segments | 11 days on the axis, **1** `.trend-line`, **0** `.trend-gap` (no source gap inside this window, so no break is claimed) |
+| **Geometry at 1440px** | plot left **185** / first mark **185**; plot right **1311** / last mark **1311** — both marks sit exactly on the plot edges, so the double-offset `viewBox` defect (first point ~97px outside the frame) is **absent** |
+| Geometry at 390px | plot **97 → 349**, first mark **97**, last mark **349** — inside at both ends |
+| Revenue axis | switching to `รายได้` gives ticks `฿10,000 … ฿0` — **baht, not satang** — and caption `สูงสุด ฿9,350 ในวันที่ 2026-09-23 · รวม ฿73,790 จาก 11 วันที่มีข้อมูล · เฉลี่ย ฿6,708 ต่อวันที่มีข้อมูล`. The caption's `฿73,790` is the same total the KPI tile shows. |
+| Mobile layout | `scrollWidth - innerWidth` = **0** at 390px; the metric switch wraps under the heading rather than squeezing it |
+| Console | **Zero** errors and **zero** warnings across the whole authenticated load |
+
+The `฿` is worth one line because it looks like a defect and is not: the literal
+is minified out of `dashboard-BUOLYy9U.js`, and the symbol arrives at runtime
+from `Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" })`. A
+grep for `฿` in the bundle therefore proves nothing either way — the rendered
+axis is the evidence, and it reads ฿.
+
+**The gap rule, in the same session.** The window above contains no gap, so the
+one behaviour that matters most was checked separately, on
+`?from=2026-07-24&to=2026-07-30` — which contains the known `2026-07-27` source
+gap:
+
+| Check | Measured in production |
+| :--- | :--- |
+| Axis vs segments | **7** days on the axis, **2** `.trend-line` segments, **1** `.trend-gap` tick |
+| The gap day | `2026-07-27`, and its `aria-label` reads `ไม่มีแถว usage ที่รายงาน` |
+| The break is explained | `เส้นที่ขาดหายไปคือวันที่ไม่มีแถว usage ที่รายงาน ไม่ใช่วันที่ไม่มีการใช้งาน` — *the line breaks because no row was reported, not because there was no usage* |
+| Gap excluded from the maths | `รวม 70 จาก 6 วันที่มีข้อมูล · เฉลี่ย 12 ต่อวันที่มีข้อมูล · ไม่รวม 1 วันที่ไม่มีแถว usage`, and `70` is the KPI tile's own figure — so `sum(daily) == totals` holds across a holed window, not only a clean one |
+
+The line **breaks**. It does not dip to zero, which would have drawn the worst
+day of the month from a day the warehouse cannot speak about.
+
+**What this does not establish.** The narrow-grant path is still unverified:
+branch scoping, zero-grant denial and revenue redaction remain unit-test-only,
+because production still holds no single-branch `manager` or `technician`
+account.
 
 ### Steps as originally planned
 
@@ -2107,7 +2151,7 @@ rendering with real numbers in a signed-in browser.
    match; the only intended change is `index-DLbhDe39.js` → `index-BGIBi0Rb.js`.
 5. Confirm `0 restarts` on `laundrytwin-app-1` and that the served bundle is the
    one carrying `dashboard-BUOLYy9U.js`.
-6. **Still needs the owner's credentials, which were not requested or handled:**
-   the authenticated dashboard — the chart's actual payload — has not been
-   rendered in a browser against production. Unauthenticated, the API denial
-   checks above prove nothing in this change blocks authentication.
+6. ~~Still needs the owner's credentials.~~ **Done** — the owner signed in
+   themselves in the visible browser, and the authenticated dashboard with the
+   chart's real payload was measured at 1440px and 390px. See *Browser
+   verification* above.
