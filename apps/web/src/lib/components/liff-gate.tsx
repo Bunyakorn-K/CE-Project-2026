@@ -146,9 +146,18 @@ async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Pr
  */
 const UNGATED_PATHS = new Set(["/login", "/privacy", "/terms"]);
 
+/**
+ * The router can hand back a trailing slash, and two spellings of one path are
+ * two facts about the path — which is how a `/login` check comes to pass on one
+ * navigation and fail on the next. Every path test in this file goes through
+ * here for that reason.
+ */
+export function normalizePath(pathname: string): string {
+  return pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+}
+
 export function isUngatedPath(pathname: string): boolean {
-  const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-  return UNGATED_PATHS.has(normalized);
+  return UNGATED_PATHS.has(normalizePath(pathname));
 }
 
 /**
@@ -236,6 +245,48 @@ async function probeSession(signal: AbortSignal): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Where a browser that just acquired a session should land, or null to leave it
+ * where it is.
+ *
+ * Reported in production on 2026-10-02: pressing "เข้าสู่ระบบด้วย LINE" signed
+ * the user in and left them staring at the sign-in form, and a second press was
+ * required to reach the dashboard. The cause is a fact about the LINE redirect
+ * and not about the exchange.
+ *
+ * When the SDK has no session yet, the press fires `liff.login()` and the page
+ * navigates away. Its `redirectUri` is `window.location.href` — which, on the
+ * sign-in page, is `/login`. So LINE returns the user to `/login`, where the gate
+ * runs a *fresh* exchange, succeeds, and holds a working session cookie. The
+ * only code that navigates to the dashboard after a LINE sign-in lives in the
+ * click handler of the page we just navigated away from (`login.tsx`), so it
+ * does not run on this page load. The second press works because it is an
+ * ordinary click that stays on the page, and its own handler finishes the job.
+ *
+ * So the exchange was never the thing that failed — the navigation was, and it
+ * was dropped on exactly one leg: the leg where LINE redirects. The `exchange`
+ * plan had been verified end to end in the real LINE client on 2026-10-01, but
+ * that check started from a browser already signed into LINE, where no redirect
+ * happens and this code path is never entered. The unreachable leg is the one
+ * that was broken.
+ *
+ * `sessionUsable` is the condition rather than "the exchange just succeeded",
+ * so the redirect also covers the reload that follows a successful sign-in
+ * (`login.tsx` sends the browser to `/dashboard`, the gate's own effect runs
+ * again there) and any later navigation back to `/login` within this page load.
+ * Those are the same state — signed in, shown a sign-in form — so they get the
+ * same answer rather than a second, subtly different one.
+ *
+ * Deliberately NOT a redirect for `/privacy` and `/terms`: a signed-in visitor
+ * following a link to the privacy policy must stay on the document. Only the
+ * sign-in surface sends you away, because only there is the page asking a
+ * question the session has already answered.
+ */
+export function decideAfterSignIn(pathname: string, sessionUsable: boolean): string | null {
+  if (!sessionUsable) return null;
+  return normalizePath(pathname) === "/login" ? "/dashboard" : null;
 }
 
 export function LiffGate({ children }: PropsWithChildren) {
@@ -329,6 +380,18 @@ export function LiffGate({ children }: PropsWithChildren) {
       controller.abort();
     };
   }, []);
+
+  // The redirect for a session the LINE redirect just created. It is a full
+  // page load rather than a router navigation on purpose: the cookie was set by
+  // the exchange response a moment ago, and `_authenticated` resolves the
+  // session in `beforeLoad`, so reloading is what makes the new session the one
+  // the dashboard is rendered from. It is also the same mechanism the sign-in
+  // page already uses, so both sign-in routes end in one place.
+  const afterSignIn = decideAfterSignIn(pathname, sessionUsable);
+  useEffect(() => {
+    if (!afterSignIn) return;
+    window.location.replace(afterSignIn);
+  }, [afterSignIn]);
 
   switch (decideGate({ bypass, state, pendingAccess, sessionUsable })) {
     case "render":

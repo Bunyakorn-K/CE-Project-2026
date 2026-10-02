@@ -107,19 +107,95 @@ test.describe("a LINE gate that cannot reach LINE", () => {
     await expect(body).not.toContainText(/[A-Za-z]{4,}\s+[A-Za-z]{4,}/);
   });
 
-  test("leaves the sign-in page itself reachable, session or not", async ({ page }) => {
-    await installStubbedSession(page);
+  test("leaves a sessionless visitor a real sign-in page", async ({ page }) => {
+    await installStubbedSession(page, { statuses: { "/api/me": 401 } });
     await blockLineEndpoint(page);
 
     await page.goto("/login");
 
     // The production page rendered the gate's card INSTEAD of this form. Every
     // affordance below was unreachable from a desktop browser.
+    //
+    // No session: with one, the gate sends the browser to /dashboard instead —
+    // see the "signed in but sitting on the sign-in form" spec below, which is
+    // the other half of the same rule. Both are correct, and conflating them is
+    // what let the original defect through: a visitor who HAS signed in was
+    // being asserted to have no way forward, which read as a pass.
     await expect(page.getByRole("button", { name: "เข้าสู่ระบบด้วย LINE" })).toBeVisible();
     await expect(page.locator('input[name="email"]')).toBeVisible();
     await expect(page.locator('input[name="password"]')).toBeVisible();
     await expect(page.getByRole("link", { name: "นโยบายความเป็นส่วนตัว" })).toBeVisible();
     await expect(page.getByRole("link", { name: "ข้อกำหนดการใช้งาน" })).toBeVisible();
     await expect(page.locator(".liff-message-card")).toHaveCount(0);
+  });
+});
+
+/**
+ * A browser that is signed in and shown a sign-in form.
+ *
+ * Reported in production on 2026-10-02: pressing "เข้าสู่ระบบด้วย LINE" signed
+ * the user in and left them on the form, and a second press was required to
+ * reach the dashboard. The cause is a fact about the LINE redirect. When the
+ * SDK has no session, the press fires `liff.login()` with a `redirectUri` of
+ * `window.location.href` — on /login, that is /login — so LINE returns the user
+ * to the sign-in page, where the gate runs a fresh exchange, succeeds, and
+ * holds a session cookie. The only code that navigates after a LINE sign-in
+ * lives in the click handler of the page LINE just navigated away from, so it
+ * does not run on this load. The exchange was never broken; the navigation was,
+ * and only on that one leg.
+ *
+ * The `exchange` plan was verified end to end in the real LINE client on
+ * 2026-10-01, but from a browser already signed into LINE — where no redirect
+ * happens and this leg is never entered. The unreachable leg was the broken one.
+ *
+ * Reproduced here without a LINE client: LINE unreachable plus a working
+ * session is the same state the gate is in after the redirect — sessionUsable,
+ * on /login — and the redirect decision is the same pure function either way.
+ */
+test.describe("a browser signed in and left on the sign-in page", () => {
+  test.skip(
+    !process.env.VITE_LIFF_ID,
+    "needs a build with VITE_LIFF_ID baked in; the gate compiles every LIFF branch out otherwise"
+  );
+
+  test("goes to the dashboard on one press, not two", async ({ page }) => {
+    await installStubbedSession(page);
+    await blockLineEndpoint(page);
+
+    await page.goto("/login");
+
+    // No click. The session already exists, exactly as it does after the LINE
+    // redirect returns — so the gate must carry the browser to the product by
+    // itself. Before this, /login rendered and stayed.
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.locator(".app-topbar")).toBeVisible();
+  });
+
+  test("never leaves the legal documents, session or not", async ({ page }) => {
+    await installStubbedSession(page);
+    await blockLineEndpoint(page);
+
+    await page.goto("/privacy");
+
+    // The gate is ungated here so the policy stays readable, and the
+    // post-sign-in redirect must respect that: a signed-in visitor who
+    // followed a link to the privacy policy has to stay on the document.
+    await expect(page).toHaveURL(/\/privacy$/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  });
+
+  test("does not reload-loop once it is already on the dashboard", async ({ page }) => {
+    await installStubbedSession(page);
+    await blockLineEndpoint(page);
+
+    await page.goto("/dashboard");
+
+    // The redirect fires on the condition "session and on /login". A gate that
+    // fired it on any path would reload /dashboard into itself forever, and the
+    // pure-function spec is what keeps that honest — this asserts the shipped
+    // bundle settles instead.
+    await expect(page.locator(".app-topbar")).toBeVisible();
+    await page.waitForTimeout(1500);
+    await expect(page.locator(".app-topbar")).toBeVisible();
   });
 });

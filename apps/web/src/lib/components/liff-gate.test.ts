@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRouterPathSource, decideGate, isUngatedPath } from "./liff-gate";
+import { createRouterPathSource, decideAfterSignIn, decideGate, isUngatedPath, normalizePath } from "./liff-gate";
 
 describe("isUngatedPath", () => {
   it("keeps the legal documents readable", () => {
@@ -99,6 +99,74 @@ describe("decideGate", () => {
     for (const state of ["loading", "stale", "error", "ready"] as const) {
       expect(decideGate({ bypass: true, state, pendingAccess: true, sessionUsable: false })).toBe("render");
     }
+  });
+});
+
+/**
+ * Where a browser that just signed in is sent, decided without a LINE client.
+ *
+ * The production case, reported 2026-10-02: pressing "เข้าสู่ระบบด้วย LINE"
+ * signed the user in and left them on the sign-in form, and a second press was
+ * needed to reach the dashboard. Nothing about the exchange failed — it is the
+ * navigation that was dropped, and only on the leg where LINE redirects.
+ */
+describe("decideAfterSignIn", () => {
+  it("sends a signed-in browser off the sign-in page", () => {
+    // The production case. The gate returned from the LINE redirect holding a
+    // working session, on /login, and rendered — because /login is ungated, so
+    // `decideGate` answers "render" — which left the user looking at a form
+    // asking them to sign in when they already had.
+    expect(decideAfterSignIn("/login", true)).toBe("/dashboard");
+  });
+
+  it("tolerates the trailing slash the router can hand back", () => {
+    // A `/login` check that passes on one navigation and fails on the next is
+    // the same bug wearing a different hat, so both spellings must redirect.
+    expect(decideAfterSignIn("/login/", true)).toBe("/dashboard");
+  });
+
+  it("leaves a browser with no session exactly where it is", () => {
+    // The ordinary first visit: no session, so the form is the correct thing
+    // to show and there is nowhere to send the visitor. Bouncing them to
+    // /dashboard would land them on `_authenticated`'s 401 redirect anyway,
+    // with a wasted round trip instead of a sign-in form.
+    expect(decideAfterSignIn("/login", false)).toBeNull();
+  });
+
+  it("does not touch the legal documents", () => {
+    // These are ungated for a reason that the redirect must not undo: a
+    // signed-in visitor who followed a link to the privacy policy has to stay
+    // on the document. Only /login asks a question the session already answered.
+    expect(decideAfterSignIn("/privacy", true)).toBeNull();
+    expect(decideAfterSignIn("/terms", true)).toBeNull();
+    expect(decideAfterSignIn("/privacy/", true)).toBeNull();
+  });
+
+  it("leaves every product route alone", () => {
+    // `/dashboard` in particular: after `login.tsx` redirects there, the gate's
+    // effect runs again with a session on a product route. A redirect fired
+    // from /dashboard to /dashboard would be a reload loop on a working app.
+    expect(decideAfterSignIn("/dashboard", true)).toBeNull();
+    expect(decideAfterSignIn("/", true)).toBeNull();
+    expect(decideAfterSignIn("/machines", true)).toBeNull();
+  });
+
+  it("is not fooled by a path that merely starts with /login", () => {
+    // The easy mistake, and the same class as the prefix bug in
+    // `isUngatedPath`: "/logins" is not the sign-in page, and redirecting it
+    // would either 404 or silently drop the visitor somewhere else.
+    expect(decideAfterSignIn("/logins", true)).toBeNull();
+    expect(decideAfterSignIn("/login-history", true)).toBeNull();
+  });
+});
+
+describe("normalizePath", () => {
+  it("strips one trailing slash but leaves the root alone", () => {
+    // "/" must not become "", which would match nothing and so silently
+    // re-gate the root.
+    expect(normalizePath("/")).toBe("/");
+    expect(normalizePath("/login")).toBe("/login");
+    expect(normalizePath("/login/")).toBe("/login");
   });
 });
 
