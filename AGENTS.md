@@ -361,6 +361,48 @@ reproduced the exact production markup
 authenticated dashboard is also not re-established against this image — it needs
 the owner's production password, which was not requested or handled.
 
+**A sign-in that succeeds is not a sign-in that navigates — and the LINE
+redirect is the one leg that proves it.** Reported in production on 2026-10-02:
+pressing "เข้าสู่ระบบด้วย LINE" signed the user in and left them on the sign-in
+form, and a **second** press was required to reach the dashboard. The exchange
+was never broken. When the SDK has no session yet, the press fires
+`liff.login()` with a `redirectUri` of `window.location.href`, which **on the
+sign-in page is `/login`** — so LINE returns the user to `/login`, where the gate
+runs a *fresh* exchange, succeeds, and holds a working session cookie. The only
+code that navigates after a LINE sign-in lived in the click handler of the page
+LINE had just navigated away from (`login.tsx`), so it did not run on that load.
+The second press worked because it stays on the page and its own handler
+finishes the job. The rule now encoded in `decideAfterSignIn`: **keyed on the
+session, not on "the exchange just succeeded"**, so the reload after a successful
+sign-in and any later navigation back to `/login` within the page load get the
+same answer; it fires only for `/login` and never for `/privacy` or `/terms`,
+because a signed-in visitor who followed a link to the privacy policy has to
+stay on the document. `normalizePath` is extracted so the trailing-slash
+tolerance is not restated, and so the prefix bug `isUngatedPath` already guards
+against (`/logins` is not `/login`) is not reintroduced here.
+
+**The 2026-10-01 end-to-end LINE check verified the one leg this defect was not
+on.** That check signed in from a browser **already logged into LINE**, where no
+redirect happens and the broken leg is never entered. A path can be verified end
+to end and still have an unreachable branch, and "verified in the real LINE
+client" says nothing about which branch was walked — the same class as the
+Playwright specs that skipped behind a green tick. Evidence: 7 unit tests on
+`decideAfterSignIn`, each guard verified to fail against four mutations (drop the
+redirect, drop the trailing-slash tolerance, widen to every path, match by
+prefix), plus 3 Playwright specs against the built bundle, each verified to fail
+against the same mutations. The reload-loop spec fails on the **pre-existing**
+dashboard spec too, because a redirect fired from any path reloads `/dashboard`
+into itself forever — so that mutation is not a hypothetical.
+
+**A spec that stubs a working session can assert a bug and read as a pass.** The
+existing "leaves the sign-in page itself reachable, session or not" spec stubbed
+a **working** session and asserted `/login` renders — which is exactly the
+defective behaviour, encoded as an expectation and therefore green. It is now
+split into the two real cases: a sessionless visitor keeps the form, a signed-in
+one is sent to the dashboard. Both are correct; conflating them is what let the
+defect through. When a spec's fixture is stubbed, ask which of the two states it
+is actually in before treating its pass as evidence.
+
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
 decided from the SDK's own state whether to render, so it could replace the
@@ -653,9 +695,11 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-01: 785 tests green** — API 471, web 227,
+Local automated evidence on **2026-10-02: 792 tests green** — API 471, web 234,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** API rose from 420 to 471 with the closed-branch
+rather than repeating it.** Web rose from 227 to 234 with the post-sign-in
+redirect (7 tests; see the LINE double-press paragraph above for what the defect
+was). API rose from 420 to 471 with the closed-branch
 mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
 including that a warehouse without `dim_branch_hours` resolves every machine to
 `unknown` rather than failing the report. The API figure rose from 320 to 351 on 2026-10-01
@@ -699,7 +743,7 @@ after the dead-code deletion removed `dashboard-metrics.test.ts`. Web rose from
 212 to 227 with the closed-branch view — including the guard that an
 **unrecognised** branch state renders as unknown rather than closed, since both
 are neutral and only the label separates them. The separate
-Playwright suite is **49 tests**
+Playwright suite is **52 tests**
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
 `twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert
@@ -708,7 +752,10 @@ weather window never reads "ข้อมูลจริง", that a missing temp
 that the executive summary is hidden over an empty window and states when
 its source is unavailable, and that a twin card draws no machine state its own
 pills disclaim. `stale-liff-session.pw.ts` asserts that a blocking LINE gate
-neither hides a route the visitor may use nor replaces the sign-in page, and
+neither hides a route the visitor may use nor replaces the sign-in page, that a
+signed-in browser reaches the dashboard from the sign-in page in one load, that
+the legal documents are never redirected away from, and that the redirect does
+not reload `/dashboard` into itself — and
 `closed-branch-honesty.pw.ts` asserts that a shut branch paints no card red
 while an *open* branch with identical evidence still does.
 
