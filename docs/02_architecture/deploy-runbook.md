@@ -1867,7 +1867,7 @@ It carries no image tag because no deploy was requested; building one would be
 
 ### Why it is urgent rather than routine
 
-A visitor who presses `ออกจา�บระบบ` on production today is **not signed out**. The
+A visitor who presses `ออกจากระบบ` on production today is **not signed out**. The
 button navigates to `/login`, the session cookie is never revoked, and the LINE
 gate's post-sign-in redirect returns them to `/dashboard`. On a shared or public
 machine that is a real exposure, and the UI asserts the opposite of what
