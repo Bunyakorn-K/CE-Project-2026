@@ -102,11 +102,20 @@ comparing part names is not comparing lineage. **Before any future restore,
 backup, volume swap, or host migration, read that record §1 — in particular the
 two still-missing restore-time guards: a restore-source freshness assertion and
 a post-restore `max(extracted_at)` continuity check before the compose switch.**
-The *detection* half is closed: `check_usage_continuity` in
-`deploy/analytics/dags/laundrytwin_warehouse_freshness.py` now runs first in the
+The *detection* half is closed — **as of the 2026-10-03 deploy, in
+production**: `check_usage_continuity` in
+`deploy/analytics/dags/laundrytwin_warehouse_freshness.py` runs first in the
 freshness DAG and reports day-shaped holes in `toDate(started_at)`, the business
 day, so a fresh-but-holey warehouse can no longer read as healthy. It warns
 rather than fails, and exempts only the evidence-backed `2026-07-27` source gap.
+**Until 2026-10-03 that was code-verified only.** The DAG on the box was older
+than the file in this repository and had no such check at all, so the 17-day
+rollback would still have gone unnoticed by anything watching. Measured after
+the deploy: `check_usage_continuity: success` at 19:30:00.909, ahead of
+`check_usage_freshness` at 19:30:02.128. **A monitoring check that exists in a
+repository is not a monitoring check that runs** — the diff against the deployed
+file is what found this, because the deploy plan had assumed the DAG edit was
+comment-only.
 
 **This warehouse has no automated backup** — no cron, timer, or
 `system.backup_schedule`; every backup was taken by hand before a specific
@@ -228,6 +237,19 @@ a reason rather than an empty event list — an empty array would read as "no
 events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
+
+**As of 2026-10-03 the ETL image and the Airflow freshness DAG are the newest
+thing deployed; the app image is still `deploy-ffa4e15-20261002`.** The
+2026-10-03 deploy changed no `apps/api` and no `apps/web` source, so the app
+image was not rebuilt, not reloaded, and not restarted — `laundrytwin-app-1` ran
+7h with 0 restarts throughout, and every public status matched its baseline
+exactly. What shipped: the rebuilt ETL image (so `pnpm coverage` runs on the
+box) and the freshness DAG, which had been **older than the file in this
+repository** and carried no `check_usage_continuity` at all. Rollback targets are
+`laundrytwin-etl:rollback-53659d35-20260929` and
+`/opt/laundrytwin-rollback/laundrytwin_warehouse_freshness.py.bak-20261003`;
+rolling back the DAG **removes the continuity check from production**. Full
+record in `docs/02_architecture/deploy-runbook.md`.
 
 **As of 2026-10-02 production runs `deploy-efc2857-20261002`** (the sign-out fix),
 which supersedes `deploy-504a244-20261002` — retained as its rollback target,

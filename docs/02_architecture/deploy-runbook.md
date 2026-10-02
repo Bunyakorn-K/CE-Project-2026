@@ -2155,3 +2155,81 @@ account.
    themselves in the visible browser, and the authenticated dashboard with the
    chart's real payload was measured at 1440px and 390px. See *Browser
    verification* above.
+
+## Deploy record — 2026-10-03, ETL + Airflow DAG only (`102197b`)
+
+The first deploy since `deploy-ffa4e15-20261002`, and deliberately the
+**smallest one this repository has made**: no `apps/api` and no `apps/web`
+source file changed, so the app image is behaviourally identical to the one
+already running and was not rebuilt.
+
+### What actually changed, and what that means for rollback
+
+| Component | Action | Rollback |
+|---|---|---|
+| `laundrytwin-etl` image | rebuilt for `linux/amd64` from `102197b`, loaded over `docker save \| ssh` | `laundrytwin-etl:rollback-53659d35-20260929` = `a460ec72336b` |
+| `laundrytwin_warehouse_freshness.py` | replaced in `/opt/analytics/dags` (bind mount; no container recreate) | `/opt/laundrytwin-rollback/laundrytwin_warehouse_freshness.py.bak-20261003` |
+| `laundrytwin-app-1` | **untouched** — 7h uptime, 0 restarts, same image | n/a |
+| Caddy | **untouched** — the port did not change, so no container recreate | n/a |
+
+The registry credentials the ETL README documents
+(`~/.creds/laundrytwin-registry.txt`) **do not exist on this workstation**, so
+the documented push path was unavailable and the README's own alternative was
+used: `docker save | gzip | ssh`, then `docker load` and re-tag on the VM. This
+needs no registry auth and no NAT loopback, and it is the better path for a
+single amd64 host anyway — the image is verified by running it before it is
+ever loaded.
+
+### The DAG deploy was NOT comment-only, which the plan had assumed
+
+The diff against the deployed file was far larger than one comment. **The DAG
+on the box had no `check_usage_continuity` at all** — it predated the
+2026-09-30 contiguity work — so installing the current file was the *first*
+deployment of that check, not a comment refresh. The plan had said "comment-only
+DAG edit" and that was wrong; the diff is what revealed it.
+
+Verified before installing rather than after:
+
+- All four imports in the new file resolve **inside the running container**
+  (`airflow.sdk.bases.operator`, `airflow.sdk.exceptions`,
+  `airflow.providers.standard.operators.python`) — Airflow is 3.3.1 and the
+  deployed file still used the Airflow-2 paths, which also resolve. Import
+  errors were **empty before and after**.
+- Parsed with `ast.parse` locally and on the VM before the copy, so a syntax
+  error could not reach the bind-mounted `dags/` directory.
+
+### Post-deploy smoke, as measured
+
+- ETL: `laundrytwin-etl-1` recreated, **0 restarts**, one clean cycle
+  (`ETL complete: 2 branches, 23 machines, 1 usages, 0 temperature samples
+  elapsed_ms=250`) with no `status=failed` anywhere in the container log.
+- **The point of the deploy**: `pnpm coverage` now runs on the box, so the
+  source-coverage answer no longer needs a hand-built scratch copy.
+  `node --import tsx src/coverage-audit.ts` in the container printed
+  `72/73 days present · 0 recoverable · 1 without a business timestamp ·
+  0 absent from source`, exit 0 — reproducing the 2026-10-02 audit result
+  independently.
+  It still needs the **`reader`** credential, not `etl_writer`: run straight
+  from the ETL container it fails `Code: 497 … grant SELECT(started_at)`, which
+  is the documented grant design (`etl_writer` deliberately gets no SELECT on
+  fact tables), not a fault. Pass the app container's `CLICKHOUSE_*` through
+  `docker exec -e`; nothing is written to disk.
+- Airflow: `check_usage_continuity: success`, and it ran **first** in the chain
+  (`check_usage_continuity` 19:30:00.909 → `check_usage_freshness` 19:30:02.128
+  → …), which is the ordering the `chain()` exists to guarantee. All four tasks
+  `success`; run `scheduled__2026-10-02T19:30:00+00:00`, `state=success`.
+- Public TLS, both hostnames, **identical to the pre-deploy baseline**:
+  `/health` 200 `application/json`, `/` 200 `text/html; charset=utf-8`,
+  `/privacy` 200 `text/html; charset=utf-8`, `/api/me` 401,
+  `/api/__smoke__` 404.
+
+**This deploy does not establish an authenticated browser render.** No `apps/api`
+or `apps/web` file changed and the app image was not rebuilt or restarted, so
+there is nothing here that a browser check would newly prove; the owner-session
+caveats on the chart and the twin stand exactly as `ffa4e15` left them.
+
+**Rolling back**: retag the ETL image to `laundrytwin-etl:rollback-53659d35-20260929`
+and `docker compose up -d etl`; restore the DAG from
+`/opt/laundrytwin-rollback/`. Rolling back the DAG **removes
+`check_usage_continuity` from production**, which is a real loss of detection —
+it is the check that makes a fresh-but-holey warehouse visible.

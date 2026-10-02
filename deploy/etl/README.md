@@ -17,6 +17,33 @@ Logs: `sudo docker compose -f /opt/laundrytwin/compose.yaml logs -f etl`
 
 Update code: sync `apps/etl`, `apps/etl/Dockerfile`, `compose.yaml`, and lockfile to `/opt/laundrytwin`, then build+push the image from the Mac (`docker buildx build --platform linux/amd64 -f apps/etl/Dockerfile -t registry.laundrytwin.duckdns.org/laundrytwin-etl:latest --push .` with `~/.creds/laundrytwin-registry.txt` creds; the Mac cannot push via the internal `10.10.0.117:5000` IP) and `sudo docker compose pull etl && sudo docker compose up -d etl` on the VM (the VM pulls via `127.0.0.1:5000`, the same registry — the public duckdns IP fails from the VM, no NAT loopback).
 
+**If those creds are absent, do not improvise a login — transfer the image.**
+`~/.creds/laundrytwin-registry.txt` did not exist on 2026-10-03, so the push
+path above was unavailable. What was used instead, and what to reach for when
+the creds are missing:
+
+```sh
+# on the Mac: build for the DEPLOY arch, then stream it over ssh
+docker buildx build --platform linux/amd64 --target etl \
+  -f apps/etl/Dockerfile -t laundrytwin-etl:deploy-<sha>-<date> --load .
+# verify it runs BEFORE it goes near the VM
+docker run --rm --platform linux/amd64 --entrypoint sh laundrytwin-etl:deploy-<sha>-<date> \
+  -c 'uname -m; node -v; ls src/'
+docker save laundrytwin-etl:deploy-<sha>-<date> | gzip -1 | ssh <vm> 'cat > /tmp/etl-new.tar.gz'
+# on the VM: tag the CURRENT image as the rollback target BEFORE retagging latest
+sudo docker tag 10.10.0.117:5000/laundrytwin-etl:latest laundrytwin-etl:rollback-<digest>-<date>
+gzip -d < /tmp/etl-new.tar.gz | sudo docker load
+sudo docker tag laundrytwin-etl:deploy-<sha>-<date> 10.10.0.117:5000/laundrytwin-etl:latest
+sudo docker compose up -d etl
+```
+
+Two things this buys over the registry. It needs no credential at all, so it
+works when `~/.creds` is missing — which is the situation it was written for.
+And `--platform linux/amd64` is not optional: the deploy host is amd64 with **no
+binfmt emulation**, so an arm64 image dies with `exec format error` and, under
+`restart: unless-stopped`, becomes a silent restart loop rather than a failed
+deploy.
+
 ## Holding the ETL still for a warehouse migration
 
 `hold-etl-for-warehouse-migration.sh` stops the ETL for a column-rebuild
