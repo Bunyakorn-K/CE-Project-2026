@@ -56,9 +56,14 @@ FRESHNESS_LIMIT_MIN = 30
 CONTINUITY_LOOKBACK_DAYS = 30
 
 # Day-shaped gaps known to be genuine upstream/source gaps, not warehouse
-# faults. Measured 2026-09-30: 2026-07-27 has no usage rows in IRIS either.
+# faults. Measured 2026-10-02 against IRIS directly: 2026-07-27 holds 5 usage
+# rows, all `cancelled`, and NOT ONE of them carries `started_at` — so no reload
+# can put a row on that business day. (An earlier comment here said the day had
+# "no usage rows in IRIS either", which is false; the conclusion held but the
+# evidence did not, and an exemption justified by a fact that is false is one
+# nobody re-measures when it stops being load-bearing.)
 # Keep this list short and evidence-backed — a growing list here is how a real
-# regression gets silenced.
+# regression gets silenced. `apps/etl` `pnpm coverage` re-derives this answer.
 KNOWN_SOURCE_GAP_DAYS = frozenset({'2026-07-27'})
 
 

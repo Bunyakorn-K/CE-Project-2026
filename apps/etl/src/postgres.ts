@@ -110,6 +110,29 @@ export type MachineUsageSource = {
   resolveTemperatureCursorFromIngested(
     legacy: IngestedTemperatureCursor
   ): Promise<TemperatureCursor | null>;
+  /**
+   * Per-day row counts for the coverage audit, keyed on `created_at`.
+   *
+   * Read-only and deliberately separate from `listUsageSince`: that walks the
+   * ETL's incremental cursor, whereas the audit needs a whole window at once.
+   */
+  auditUsageDaysByCreatedAt(from: string, to: string): Promise<Record<string, number>>;
+  /**
+   * The source's own earliest `created_at` day, or null when it holds no usage
+   * rows at all.
+   *
+   * The coverage audit needs it to bound the window it compares. Without it the
+   * window is anchored on the warehouse alone, which asks the source about days
+   * that predate its oldest row and gets "nothing" back for every one of them —
+   * a gap the data does not contain, manufactured by the question.
+   */
+  firstUsageDay(): Promise<string | null>;
+  /**
+   * Per-day row counts for the coverage audit, keyed on `started_at` — the
+   * business day. Rows with a null `started_at` contribute to no day at all,
+   * which is the whole distinction the audit exists to measure.
+   */
+  auditUsageDaysByStartedAt(from: string, to: string): Promise<Record<string, number>>;
   close(): Promise<void>;
 };
 
@@ -183,6 +206,35 @@ export function postgresPoolOptions(config: PostgresConfig) {
 export function createPostgresSource(config: PostgresConfig): MachineUsageSource {
   const pool: PoolLike = config.pool ?? (new Pool(postgresPoolOptions(config)) as unknown as PoolLike);
   const statementTimeoutMs = config.statementTimeoutMs ?? POSTGRES_TIMEOUT_DEFAULTS.statementTimeoutMs;
+
+  /**
+   * Per-day row counts over an inclusive `from .. to` window, grouped by a day
+   * derived from one timestamp column. Both audit helpers share this shape.
+   *
+   * `to` is widened by a day so the final day is INCLUDED — an off-by-one that
+   * dropped it would report the newest business day as a gap, which is exactly
+   * the day an auditor most needs to trust.
+   *
+   * The column name is interpolated, not bound, because a placeholder cannot
+   * stand for an identifier. It is not caller input: both call sites pass a
+   * literal from the pair below.
+   */
+  const auditUsageDays = async (
+    column: "created_at" | "started_at",
+    from: string,
+    to: string
+  ): Promise<Record<string, number>> => {
+    const rows = await pool.query<{ day: string; rows: number }>(
+      `SELECT to_char((${column})::date, 'YYYY-MM-DD') AS day, count(*)::int AS rows
+         FROM machine_usage
+        WHERE ${column} IS NOT NULL
+          AND ${column} >= $1::date
+          AND ${column} <  ($2::date + INTERVAL '1 day')
+        GROUP BY 1`,
+      [from, to]
+    );
+    return Object.fromEntries(rows.rows.map((r) => [r.day, r.rows]));
+  };
 
   return {
     async listBranches() {
@@ -349,6 +401,18 @@ export function createPostgresSource(config: PostgresConfig): MachineUsageSource
           await client.release();
         }
       }
+    },
+    async firstUsageDay() {
+      const rows = await pool.query<{ day: string | null }>(
+        `SELECT to_char(min(created_at)::date, 'YYYY-MM-DD') AS day FROM machine_usage`
+      );
+      return rows.rows[0]?.day ?? null;
+    },
+    auditUsageDaysByCreatedAt(from, to) {
+      return auditUsageDays("created_at", from, to);
+    },
+    auditUsageDaysByStartedAt(from, to) {
+      return auditUsageDays("started_at", from, to);
     },
     async close() {
       await pool.end();

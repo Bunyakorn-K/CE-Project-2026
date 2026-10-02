@@ -8,6 +8,7 @@
     "start:weather": "node --import tsx src/weather-run.ts",
     "start:gas": "node --import tsx src/gas-run.ts",
     "verify": "tsx src/verify-source.ts",
+    "coverage": "tsx src/coverage-audit.ts",
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "test": "vitest run"

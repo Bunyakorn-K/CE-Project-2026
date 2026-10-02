@@ -170,3 +170,75 @@ describe("resolveTemperatureCursorFromIngested", () => {
     expect(released).toBe(1);
   });
 });
+
+describe("coverage audit helpers", () => {
+  // The window the audit compares must be a range BOTH sides can speak about.
+  // Without the source's own first day, the window is anchored on the
+  // warehouse alone and every day before the source's oldest row comes back
+  // "absent from source" — a gap manufactured by the question, not the data.
+  it("reports the source's own first usage day", async () => {
+    const captured: Captured[] = [];
+    const source = createPostgresSource({
+      connectionString: "postgresql://x/y",
+      pool: fakePool(captured, [{ day: "2026-04-28" }]),
+    });
+
+    expect(await source.firstUsageDay()).toBe("2026-04-28");
+  });
+
+  // An empty table yields min() = NULL, which must not become the string "null"
+  // and then a day every window is clamped against.
+  it("reports null rather than a fake day when the source is empty", async () => {
+    const source = createPostgresSource({
+      connectionString: "postgresql://x/y",
+      pool: fakePool([], [{ day: null }]),
+    });
+
+    expect(await source.firstUsageDay()).toBeNull();
+  });
+
+  it("keys the created_at view on created_at, the ETL's own cursor column", async () => {
+    const captured: Captured[] = [];
+    const source = createPostgresSource({
+      connectionString: "postgresql://x/y",
+      pool: fakePool(captured, [{ day: "2026-07-21", rows: 4 }]),
+    });
+
+    expect(await source.auditUsageDaysByCreatedAt("2026-07-20", "2026-07-21")).toEqual({
+      "2026-07-21": 4,
+    });
+    const sql = captured.at(-1)!.sql;
+    expect(sql).toContain("(created_at)::date");
+    // Null created_at contributes to no day, so it must not be counted into one.
+    expect(sql).toContain("created_at IS NOT NULL");
+  });
+
+  it("keys the started_at view on started_at and drops the rows that lack it", async () => {
+    const captured: Captured[] = [];
+    const source = createPostgresSource({
+      connectionString: "postgresql://x/y",
+      pool: fakePool(captured, [{ day: "2026-07-21", rows: 1 }]),
+    });
+
+    expect(await source.auditUsageDaysByStartedAt("2026-07-20", "2026-07-21")).toEqual({
+      "2026-07-21": 1,
+    });
+    const sql = captured.at(-1)!.sql;
+    expect(sql).toContain("(started_at)::date");
+    expect(sql).toContain("started_at IS NOT NULL");
+  });
+
+  // An inclusive range has to include its final day, or the newest business day
+  // is reported as a gap — the one day an operator most needs to trust.
+  it("widens the upper bound by a day so the final day is included", () => {
+    const captured: Captured[] = [];
+    const source = createPostgresSource({
+      connectionString: "postgresql://x/y",
+      pool: fakePool(captured, []),
+    });
+
+    void source.auditUsageDaysByStartedAt("2026-07-20", "2026-07-21");
+    expect(captured[0].values).toEqual(["2026-07-20", "2026-07-21"]);
+    expect(captured[0].sql).toContain("INTERVAL '1 day'");
+  });
+});
