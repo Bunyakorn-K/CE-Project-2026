@@ -412,6 +412,48 @@ one is sent to the dashboard. Both are correct; conflating them is what let the
 defect through. When a spec's fixture is stubbed, ask which of the two states it
 is actually in before treating its pass as evidence.
 
+**A sign-out that does not hold is worse than no sign-out button: the UI says
+the session ended, so someone on a shared machine believes it did.** Measured
+in production on 2026-10-02, minutes after `deploy-504a244-20261002` shipped
+the LINE sign-in fix — pressing `ออกจากระบบ` navigated to `/login` and the
+browser went straight back to `/dashboard`, still signed in. Two faults
+stacked, and the second was only visible because of the first.
+
+The sign-out POST carried no `content-type`. Better Auth's sign-out handler
+parses a JSON body, so the request was refused **415** before the handler ran
+and the session cookie was never revoked. Measured on production the same day:
+`curl -X POST /api/auth/sign-out` → 415, and the identical request with
+`content-type: application/json` → 200 `{"success":true}`. That left the
+browser on the sign-in page holding a live session, and the post-sign-in
+redirect could not tell that session had just been cancelled — `LiffGate`
+sits above `RouterProvider` and probes **once, on mount, with `[]` deps**, so
+the client-side navigation left `sessionUsable` describing the session as it
+was *before* the sign-out. It fired `/dashboard`, `/api/me` answered 200
+because the cookie was never cleared, and the user was returned to the product
+they had just left.
+
+Both halves are fixed: `signOutRequest` declares its JSON body, and the
+sign-out ends in `window.location.replace("/login")` rather than
+`navigate({ to: "/login" })`. The full page load is the point — it remounts the
+gate, so the gate re-probes and finds the revoked session instead of acting on
+a value captured before the sign-out. **The general lesson is the one the 415
+exposes: a test asking "did the app reach `/login`?" asks the wrong question.**
+The button was already asserted present, in-viewport and hit-testable at every
+width, and `layout.pw.ts` already asserted end to end that clicking it lands
+on `/login`. Both were true the whole time the session was never revoked — a
+browser can be on the sign-in page and still hold a valid session, which is
+exactly what the second fault exploited. So the new specs assert the session
+is **revoked** (the content-type on the request, and `/api/me` turning 401
+afterwards), not that the URL moved. Evidence: 2 unit tests in
+`app-shell.test.ts`, each guard verified to fail against deliberately broken
+code (dropping the header fails 1, dropping `credentials` fails 1), plus 2
+Playwright specs in `stale-liff-session.pw.ts` against the built bundle, both
+verified to fail against the pre-fix shell — the first on the missing header,
+the second reproducing the trap by never reaching `/login` at all. **Not
+verified against a live session:** revoking a real production cookie needs the
+owner's credentials, which were not requested or handled. What production
+establishes is the 415 and the 200.
+
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
 decided from the SDK's own state whether to render, so it could replace the
@@ -704,11 +746,12 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-02: 792 tests green** — API 471, web 234,
+Local automated evidence on **2026-10-02: 794 tests green** — API 471, web 236,
 ETL 87. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** Web rose from 227 to 234 with the post-sign-in
 redirect (7 tests; see the LINE double-press paragraph above for what the defect
-was). API rose from 420 to 471 with the closed-branch
+was), then to 236 with the sign-out that did not sign out (2 tests; see the
+sign-out paragraph above). API rose from 420 to 471 with the closed-branch
 mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
 including that a warehouse without `dim_branch_hours` resolves every machine to
 `unknown` rather than failing the report. The API figure rose from 320 to 351 on 2026-10-01
@@ -752,7 +795,7 @@ after the dead-code deletion removed `dashboard-metrics.test.ts`. Web rose from
 212 to 227 with the closed-branch view — including the guard that an
 **unrecognised** branch state renders as unknown rather than closed, since both
 are neutral and only the label separates them. The separate
-Playwright suite is **52 tests**
+Playwright suite is **54 tests**
 and is **not** part of `pnpm test`; `layout.pw.ts` measures the shell, while
 `analytics.pw.ts`, `dashboard.pw.ts`, `dashboard-context.pw.ts`,
 `twin-honesty.pw.ts` and `live-machine-honesty.pw.ts` assert

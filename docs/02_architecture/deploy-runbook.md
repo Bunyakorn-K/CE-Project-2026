@@ -1858,3 +1858,52 @@ correctly and the SPA renders, so nothing here blocks authentication.
 `APP_IMAGE=laundrytwin:deploy-9925087-20261002` in `/opt/laundrytwin/.env`, then
 `docker compose up -d app`. **Caddy needs no rollback** — it was not part of this
 change.
+
+## NOT DEPLOYED — `efc2857`, a sign-out that did not sign out
+
+**Production still runs `deploy-504a244-20261002`. This commit is local only.**
+It carries no image tag because no deploy was requested; building one would be
+`laundrytwin:deploy-efc2857-20261002`.
+
+### Why it is urgent rather than routine
+
+A visitor who presses `ออกจา�บระบบ` on production today is **not signed out**. The
+button navigates to `/login`, the session cookie is never revoked, and the LINE
+gate's post-sign-in redirect returns them to `/dashboard`. On a shared or public
+machine that is a real exposure, and the UI asserts the opposite of what
+happened.
+
+### Two faults, both measured
+
+| check | before | after |
+|---|---|---|
+| `curl -X POST /api/auth/sign-out` | **415** | — |
+| same, `content-type: application/json` | 200 `{"success":true}` | — |
+
+Better Auth's sign-out handler parses a JSON body, so the headerless POST was
+refused before the handler ran. The second fault is in `LiffGate`: it sits above
+`RouterProvider` and probes the session once on mount with `[]` deps, so a
+client-side navigation to `/login` left `sessionUsable` describing the session
+as it was *before* the sign-out — and `decideAfterSignIn` redirected on exactly
+that stale value.
+
+### The change
+
+`apps/web/src/lib/components/app-shell.tsx` only. `signOutRequest()` declares
+the JSON body, and the sign-out ends in `window.location.replace("/login")` so
+the gate remounts and re-probes. No API, schema, port or Caddy change, so the
+deploy would again be a single `docker compose up -d app` — but note the
+pre-existing baseline-first rule: capture the pre-deploy statuses and the entry
+bundle name, and back up SQLite through `await db.backup(...)`, never `cp`.
+
+### What is verified, and what is not
+
+Verified locally: 794 unit tests (API 471, web 236, ETL 87), 54 Playwright with
+0 skipped, `pnpm check` and `pnpm build` clean. The two new Playwright specs were
+each verified to fail against the pre-fix shell, and the two new unit guards each
+verified to fail against deliberately broken code.
+
+**Not verified: a live revocation.** Signing out of production needs the owner's
+credentials, which were not requested or handled. A deploy would establish that
+the shipped bundle carries the fix; only signing in and out in the browser
+establishes that the cookie is actually revoked.
