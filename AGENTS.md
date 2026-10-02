@@ -229,7 +229,9 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
-**As of 2026-10-01 production runs the merged `deploy-97c45ac-20261001` as the
+**As of 2026-10-02 production runs `deploy-9925087-20261002`**, which supersedes
+the merged `deploy-97c45ac-20261001` (retained as its rollback target) and
+carries the closed-branch mechanism. The merged `deploy-97c45ac-20261001` ran as the
 single `app` container on `:8787`**, replacing `deploy-0ffb7ff-20261001` (API) and
 `deploy-84da0f1-20261001` (web), which are retained as the rollback target and
 still pinned in `.env` (record and rollback refs in
@@ -332,16 +334,32 @@ evidence-backed `open`, so a future branch that genuinely closes will be
 represented rather than guessed at. **Do not read "no machine changed" as a
 broken deployment.**
 
-**The code is still not deployed.** The running app is
-`laundrytwin:deploy-97c45ac-20261001`, the commit *before* `38c338b`, so nothing
-reads the new table yet and provisioning changed no user-visible behaviour. The
-data change and the reader are independently shippable in that order: the row
-sits inert until an image carrying `branchOpenState` is deployed. Evidence:
-38 API tests on the pure decision and 13 on the ClickHouse wiring, 15 web tests,
-and `e2e/closed-branch-honesty.pw.ts` against the built bundle; every guard
-verified to fail against deliberately broken code, including dropping the web
-wire, which reproduced the exact production markup
-(`<span class="status-pill status-pill--danger">ไม่พร้อมใช้งาน</span>`).
+**Deployed as `deploy-9925087-20261002` (2026-10-02).** Commit `9925087`, image
+`sha256:a9561a33…`, replacing `deploy-97c45ac-20261001` (retained as the rollback
+target). Unlike the merge deploy, **Caddy was not touched** — the port did not
+change, so this was one `docker compose up -d app` and no container recreate
+across the other hostnames Caddy serves. Every status matched the pre-deploy
+baseline on both hostnames (bundle `index-10WERJ5R.js` → `index-RH0VqymO.js`),
+`laundrytwin-app-1` came up with **0 restarts**, and Chromium at 390/1440px over
+TLS showed **zero page and console errors**. The shipped bundle contains
+`branch-availability-view-hAU55Gx0.js`, and the app's own `buildBranchHoursSQL`
+was run with the app's own `reader` credential against production ClickHouse and
+returned the provisioned row on both the scoped and tenant-wide paths — so the
+reader reaching the table is proven, not assumed. SQLite was backed up via
+`db.backup()` and verified (196,608 bytes, `integrity_check: ok`, 15 tables, 3
+users, 3 grants); the main file is 4 KB against a 2.18 MB WAL, so a `cp` would
+have captured zero rows.
+
+**Still not verified in production: the `closed` rendering.** It is unreachable
+for this branch by construction, because the schedule is 24/7 and `closed`
+requires a schedule that positively says the branch is shut. Evidence remains 38
+API tests on the pure decision, 13 on the ClickHouse wiring, 15 web tests, and
+`e2e/closed-branch-honesty.pw.ts` against the built bundle; every guard verified
+to fail against deliberately broken code, including dropping the web wire, which
+reproduced the exact production markup
+(`<span class="status-pill status-pill--danger">ไม่พร้อมใช้งาน</span>`). The
+authenticated dashboard is also not re-established against this image — it needs
+the owner's production password, which was not requested or handled.
 
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and

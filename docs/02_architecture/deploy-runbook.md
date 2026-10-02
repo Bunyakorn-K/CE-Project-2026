@@ -1658,3 +1658,110 @@ route (`56e9e33`) ride along in the same image. `POST /api/admin/grants` is
 registered and returns 401 unauthenticated; granting an account that already
 exists still needs a single-branch production account to be created before
 branch scoping can be verified against anything but unit tests.
+
+## `deploy-9925087-20261002` — the closed-branch mechanism reaches production
+
+**Status: deployed.** Commit `9925087`, image `laundrytwin:deploy-9925087-20261002`
+(`sha256:a9561a33…`, 208 MB, `linux/amd64`, built on VM 117 from
+`apps/api/Dockerfile` with `--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`).
+Rollback target `deploy-97c45ac-20261001`, retained on the VM.
+
+This ships the **reader** for the hours provisioned the day before. It changes
+no machine pill — see "What this deploy does not prove" below, which is the
+honest framing.
+
+### Caddy was not touched, and that is the difference from the last deploy
+
+`deploy-97c45ac` had to repoint two `reverse_proxy` lines from `:8080` to
+`:8787` and therefore had to **recreate** the Caddy container, blipping every
+hostname it serves. Nothing here changes the port or the Caddyfile, so the
+deploy is a single `docker compose up -d app` and Caddy was left alone. Had
+this deploy also needed a Caddy change, the two would still be one rollback
+unit, not two.
+
+### Pre-deploy state captured before the swap
+
+Taken over public TLS on both hostnames, so the post-deploy comparison is
+against a measurement rather than a recollection:
+
+| Check | Baseline |
+| :--- | :--- |
+| `/health` | 200 `application/json`, `{"ok":true,"reportingConfigured":false,"demoMode":false}` |
+| `/`, `/login` | 200 `text/html; charset=utf-8` |
+| `/api/me` | 401 |
+| entry bundle | `index-10WERJ5R.js` |
+
+### SQLite backup — the WAL trap, avoided and verified
+
+The main file is **4,096 bytes** and the WAL **2.18 MB**, so `cp` would have
+produced a plausible stub with zero rows. Backed up through the online API
+(`await db.backup(...)`) to `/data/backup-pre-closedbranch-20261002T050514Z.sqlite`,
+then verified rather than assumed: **196,608 bytes, `integrity_check: ok`, 15
+tables, 3 users, 3 access grants.** A copy-sized backup is a failed backup, not
+a small one. `.env` also copied to `.env.bak-pre-closedbranch-20261002`.
+
+### Smoke after the swap
+
+Every status matches the baseline exactly, on both hostnames.
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/health` | 200 `application/json` | **200, byte-identical body** |
+| `/`, `/login`, `/terms` | 200 `text/html; charset=utf-8` | **200, same type** |
+| `/playground` | 200 | **200 `text/html`** |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `POST /api/admin/grants` unauth | 401 | **401** |
+| `POST` to an unknown `/api/*` path | 404 | **404** |
+| `/api/__smoke__` | 404 `text/plain` | **404 `text/plain`** |
+| `%2e%2e%2f…/etc/passwd` | 404 | **404** |
+| entry bundle | `index-10WERJ5R.js` | **`index-RH0VqymO.js`** |
+
+`laundrytwin-app-1` **0 restarts**, started `2026-10-02T05:08:47Z`, log is a
+single clean line (`LaundryTwin API listening on http://localhost:8787`).
+
+### The shipped bundle carries the feature
+
+The new build emits `dist/assets/branch-availability-view-hAU55Gx0.js`, so the
+closed-branch view code-split into a real chunk rather than being tree-shaken
+away. The image was also checked from **inside** the running container, and the
+app's own `buildBranchHoursSQL` was executed with the app's own `reader`
+credential against production ClickHouse (`26.3.26.3`, 8,158 usage rows) —
+returning the provisioned row `0 / 1440 / []` for the real branch on **both** the
+scoped and the tenant-wide (`branchId: ""`) paths. The reader is therefore
+proven to reach the table, not merely assumed to.
+
+### In a real browser, against the public route
+
+Chromium at 390px and 1440px over TLS, no fixtures:
+
+- `/login` renders the real page — password input present, **no**
+  `.liff-message-card` (which would mean the LIFF gate had replaced it again).
+- Hard navigation to `/privacy` boots the app: `lang="th"`, `#root` populated,
+  `document.fonts.check` true for the vendored Noto Sans Thai.
+- No horizontal overflow at 390px (`scrollWidth - clientWidth === 0`).
+- **Zero page errors and zero console errors** at both widths.
+
+### What this deploy does not prove
+
+**No machine pill changed appearance, and none could have.** The provisioned
+hours are 24/7, so `branchOpenState` resolves `open` at every minute and
+`effectiveAvailability("unavailable", "open")` stays `unavailable`. The red
+`ไม่พร้อมใช้งาน` cards remain, which is correct: the measurements showed the
+branch really was trading. **The `closed` rendering was not observed in
+production and cannot be** for this branch — that path is reachable only where a
+schedule positively says the branch is shut. It stays covered by the 38 API
+tests, the 15 web tests, and `e2e/closed-branch-honesty.pw.ts` against the built
+bundle. Read this deploy as "the reader ships and works", not as "the closed
+state was seen working".
+
+The **authenticated** dashboard is also not re-established against this image:
+signing in needs the owner's production password, which was not requested or
+handled. Unauthenticated, `/api/me` and every report route deny correctly and
+the SPA renders, so nothing in this change blocks authentication.
+
+### Rollback
+
+`APP_IMAGE=laundrytwin:deploy-97c45ac-20261001` in `/opt/laundrytwin/.env`, then
+`docker compose up -d app`. **Caddy needs no rollback** — it was not part of
+this change, unlike `deploy-97c45ac`, where app and Caddy were one unit.
