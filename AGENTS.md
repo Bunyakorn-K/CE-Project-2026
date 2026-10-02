@@ -229,7 +229,7 @@ events in this window", which is a claim the warehouse cannot support. Absent
 (no such table, as with the alert source), present-but-unwritten, and
 present-with-data are three states and must never render the same.
 
-**As of 2026-10-02 production runs `deploy-9925087-20261002`**, which supersedes
+**As of 2026-10-02 production runs `deploy-504a244-20261002`**, which supersedes
 the merged `deploy-97c45ac-20261001` (retained as its rollback target) and
 carries the closed-branch mechanism. The merged `deploy-97c45ac-20261001` ran as the
 single `app` container on `:8787`**, replacing `deploy-0ffb7ff-20261001` (API) and
@@ -379,7 +379,16 @@ same answer; it fires only for `/login` and never for `/privacy` or `/terms`,
 because a signed-in visitor who followed a link to the privacy policy has to
 stay on the document. `normalizePath` is extracted so the trailing-slash
 tolerance is not restated, and so the prefix bug `isUngatedPath` already guards
-against (`/logins` is not `/login`) is not reintroduced here.
+against (`/logins` is not `/login`) is not reintroduced here. **Deployed as
+`deploy-504a244-20261002`** — Caddy untouched, SQLite backed up via
+`db.backup()` and verified (208,896 bytes against a 4 KB main file and a 2.27 MB
+WAL), every status matched to the pre-deploy baseline on both hostnames, and
+`sha256:a6f96d50…`. **The defect is not claimed as reproduced**: it needs the
+LINE client and a `liff.login()` redirect, which a desktop browser cannot
+perform, so what the deploy establishes is that the served bundle carries the
+redirect (`useEffect(()=>{_&&window.location.replace(_)},[_])` in
+`index-D4SKJgA-.js`) and that nothing around it regressed. **Confirming it needs
+one press in the real LINE client** — the one check that would close it.
 
 **The 2026-10-01 end-to-end LINE check verified the one leg this defect was not
 on.** That check signed in from a browser **already logged into LINE**, where no
