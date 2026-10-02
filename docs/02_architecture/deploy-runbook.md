@@ -1983,3 +1983,82 @@ correctly and the SPA renders, so nothing in this change blocks authentication.
 `docker compose up -d app`. **Caddy needs no rollback** — it was not part of this
 change. Note that rolling back restores the defect: `deploy-504a244-20261002`
 does not sign anyone out.
+
+## `deploy-ffa4e15-20261002` — the daily trend chart (PREPARED, NOT APPLIED)
+
+**Status: NOT deployed. The image is built and verified; the swap was never
+attempted, because VM 117 was unreachable from the operator's machine.** Nothing
+on production changed. Production still runs `deploy-efc2857-20261002`.
+
+Prepared state, so the deploy is a short step once connectivity exists:
+
+| | |
+| :--- | :--- |
+| Commit | `ffa4e15` (rebased onto `a0ed78d`) |
+| Image | `laundrytwin:deploy-ffa4e15-20261002`, `linux/amd64` |
+| Digest | `sha256:ed96469d09230ad9022c4b82f812350e74fd224d0cc07e334762d6c78247c28c` |
+| Build arg | `VITE_LIFF_ID=2011592166-uToRdTwS` |
+| Entry bundle | `index-BGIBi0Rb.js` (baseline `index-DLbhDe39.js`) |
+| Chart chunk | `dashboard-BUOLYy9U.js`, carrying both Thai trend strings |
+| Rollback target | `deploy-efc2857-20261002`, unmodified |
+
+The image was verified by **grepping the shipped bundle**, not the source: both
+`แนวโน้มรายวัน` and the gap note
+(`เส้นที่ขาดหายไปคือวันที่ไม่มีแถว usage`) are present in
+`dashboard-BUOLYy9U.js`. The chart is code-split out of the entry bundle, so
+grepping `index.html`'s script tags for it finds nothing — the same lesson as the
+sign-out chunk in `deploy-efc2857-20261002`.
+
+### Pre-deploy baseline, captured over public TLS
+
+Taken 2026-10-02 before anything was built or transferred, so the comparison
+below is against a measurement:
+
+| Check | Baseline |
+| :--- | :--- |
+| `/health` | 200 `application/json` |
+| `/`, `/login`, `/terms`, `/privacy`, `/playground` | 200 `text/html; charset=utf-8` |
+| `/api/me`, `/api/report/dashboard`, `/api/report/branches` unauth | 401 ×3 |
+| `POST /api/admin/grants` unauth | 401 |
+| `/api/__smoke__` | 404 `text/plain; charset=UTF-8` |
+| `%2e%2e%2f…/etc/passwd` | 404 |
+| entry bundle | `index-DLbhDe39.js` |
+| `web.laundrytwin.duckdns.org/health` | 200 `application/json` |
+
+### Why it could not be applied
+
+**The operator's machine has no ZeroTier installed.** VM 117
+(`172.30.191.48:22`) and the Pi (`172.30.191.47:22`) are both unreachable —
+`nc -z` times out on both. The only overlay present is Tailscale, and its peers
+are unrelated hosts: `isag-xvm` is a different machine entirely (no
+`/opt/laundrytwin`), and `dietpi` is refused at the tailnet policy with *"tailnet
+policy does not permit you to SSH as user `uunw`"*.
+
+**That policy refusal was not worked around.** It is an access control, and
+guessing another username to defeat it would be exactly the wrong move. The
+deploy needs either ZeroTier on the operator's machine or a tailnet grant that
+permits SSH to the host.
+
+Worth recording because it contradicts an implicit assumption: the earlier
+deploys in this section ran when the operator had a route to VM 117. That route
+is not a property of the repository or the VM — it is a property of the machine
+sitting in front of it, and it is gone.
+
+### Remaining steps, once reachable
+
+1. `docker save laundrytwin:deploy-ffa4e15-20261002 | ssh <vm> sudo docker load`
+2. Back up SQLite through `await db.backup(...)` — **never `cp`**; the main file
+   is 4 KB against a multi-MB WAL — and verify `integrity_check` plus a table and
+   row count. Copy `/opt/laundrytwin/.env` to a timestamped `.bak`.
+3. `APP_IMAGE=laundrytwin:deploy-ffa4e15-20261002` in `/opt/laundrytwin/.env`,
+   then `docker compose up -d app`. **Caddy needs no change** — the port does not
+   move, so this is one service and no container recreate across the other
+   hostnames Caddy serves.
+4. Re-run the baseline table above against both hostnames. Every status must
+   match; the only intended change is `index-DLbhDe39.js` → `index-BGIBi0Rb.js`.
+5. Confirm `0 restarts` on `laundrytwin-app-1` and that the served bundle is the
+   one carrying `dashboard-BUOLYy9U.js`.
+6. **Still needs the owner's credentials, which were not requested or handled:**
+   the authenticated dashboard — the chart's actual payload — has not been
+   rendered in a browser against production. Unauthenticated, the API denial
+   checks above prove nothing in this change blocks authentication.
