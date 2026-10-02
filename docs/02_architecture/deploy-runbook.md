@@ -1765,3 +1765,96 @@ the SPA renders, so nothing in this change blocks authentication.
 `APP_IMAGE=laundrytwin:deploy-97c45ac-20261001` in `/opt/laundrytwin/.env`, then
 `docker compose up -d app`. **Caddy needs no rollback** — it was not part of
 this change, unlike `deploy-97c45ac`, where app and Caddy were one unit.
+
+## `deploy-504a244-20261002` — a LINE sign-in that lands on the sign-in page
+
+**Status: deployed.** Commit `504a244`, image `laundrytwin:deploy-504a244-20261002`
+(`sha256:a6f96d50…`, 71.5 MB, `linux/amd64`, built from `apps/api/Dockerfile`
+with `--build-arg VITE_LIFF_ID=2011592166-uToRdTwS`; the docs commit is the
+image commit, and the code change is `28b81d6`). Rollback target
+`deploy-9925087-20261002`, retained on the VM.
+
+This ships the auth fix for the production defect reported the same day:
+pressing "เข้าสู่ระบบด้วย LINE" signed the user in and left them on the sign-in
+form, and a **second** press was required to reach the dashboard.
+
+### Caddy was not touched
+
+Nothing here changes the port or the Caddyfile, so this is a single
+`docker compose up -d app`. No container recreate across the other hostnames
+Caddy serves, and no Caddy rollback — app-only in both directions.
+
+### Pre-deploy state captured before the swap
+
+Taken over public TLS on both hostnames: `/health` 200 JSON, `/` and `/login`
+200 `text/html`, `/api/me` 401, entry bundle **`index-RH0VqymO.js`**.
+
+### SQLite backup — the WAL trap, avoided and verified
+
+The main file is **4,096 bytes** and the WAL **2,266,032 bytes**, so `cp` would
+have produced a plausible stub with zero rows. Backed up through the online API
+(`await db.backup(...)`) to `/data/backup-pre-authfix-20261002T063937Z.sqlite`,
+then verified rather than assumed: **208,896 bytes, `integrity_check: ok`, 15
+tables, 3 users, 3 access grants.** `.env` also copied to
+`.env.bak-pre-authfix-20261002`.
+
+### Smoke after the swap
+
+Every status matches the baseline exactly, on both hostnames, content types
+included:
+
+| Check | Before | After |
+| :--- | :--- | :--- |
+| `/health` | 200 `application/json` | **200, same type** |
+| `/`, `/login`, `/terms`, `/privacy`, `/playground` | 200 `text/html; charset=utf-8` | **200 ×5, same type** |
+| `/api/report/{branches,dashboard,live,alerts,events,summary}` unauth | 401 ×6 | **401 ×6** |
+| `/api/me` unauth | 401 | **401** |
+| `POST /api/admin/grants` unauth | 401 | **401** |
+| `POST` to an unknown `/api/*` path | 404 | **404** |
+| `/api/__smoke__` | 404 `text/plain` | **404 `text/plain`** |
+| `%2e%2e%2f…/etc/passwd` | 404 | **404** |
+| entry bundle | `index-RH0VqymO.js` | **`index-D4SKJgA-.js`** |
+
+`laundrytwin-app-1` **0 restarts**, log a single clean line
+(`LaundryTwin API listening on http://localhost:8787`).
+
+### The served bundle carries the fix
+
+Checked in the image **and** in the bytes the public route actually returns:
+the entry bundle contains `useEffect(()=>{_&&window.location.replace(_)},[_])`
+immediately before the gate's `decideGate` switch — the redirect as written —
+and the real LIFF ID `2011592166-uToRdTwS` is baked in.
+
+### In a real browser, against the public route
+
+Chromium at 390px and 1440px over TLS, no fixtures:
+
+- `/login` renders the real page — the password input is present and there are
+  **0** `.liff-message-card` elements, so the gate did not replace the surface.
+- A hard navigation to `/privacy` boots the app and stays there
+  (`h1 = "นโยบายความเป็นส่วนตัว (Privacy Policy)"`, `lang="th"`), which is the
+  behaviour the redirect's non-`/login` carve-out exists to protect.
+- No horizontal overflow at 390px (`scrollWidth - clientWidth === 0`).
+- **Zero page errors and zero console errors** at both widths.
+
+### What this deploy does not prove
+
+**The defect itself was not reproduced in production.** It needs the LINE
+client and a `liff.login()` redirect, which a desktop browser cannot perform,
+and the fix's own browser specs reach the same gate state by making LINE
+unreachable instead — the cause differs and is deliberately not simulated. So
+what this deploy establishes is that the shipped bundle carries the redirect and
+that nothing around it regressed. **Confirming the fix needs one press in the
+real LINE client**, which is the check to run next and the only thing that would
+close it.
+
+The **authenticated** dashboard is likewise not re-established against this
+image: signing in needs the owner's production password, which was not
+requested or handled. Unauthenticated, `/api/me` and every report route deny
+correctly and the SPA renders, so nothing here blocks authentication.
+
+### Rollback
+
+`APP_IMAGE=laundrytwin:deploy-9925087-20261002` in `/opt/laundrytwin/.env`, then
+`docker compose up -d app`. **Caddy needs no rollback** — it was not part of this
+change.
