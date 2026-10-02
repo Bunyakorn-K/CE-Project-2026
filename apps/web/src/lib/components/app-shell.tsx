@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "../atoms/auth";
 import { apiUrl } from "../api/client";
@@ -35,18 +35,50 @@ function NavigationLink({ item }: { item: NavItem }) {
   return <Link to={item.to} className="nav-link" activeOptions={{ exact: item.to === "/admin" }} activeProps={{ "aria-current": "page", "data-active": "true" }}><NavIcon name={item.icon} /><span>{item.label}</span></Link>;
 }
 
+/**
+ * Revoke the Better Auth session.
+ *
+ * Exported for its own test rather than inlined: the 415 that made sign-out a
+ * no-op is invisible to every other assertion about this component — the button
+ * is present, clickable and hit-testable at every width, and the app still
+ * navigates to `/login`, so both a layout suite and an end-to-end click read
+ * green while the session was never revoked. Only the request itself carries
+ * that difference, so it is a named function with a test that reads its headers.
+ */
+export function signOutRequest(): Promise<Response> {
+  return fetch(apiUrl("/api/auth/sign-out"), {
+    method: "POST",
+    // Better Auth's sign-out handler parses a JSON body. Without this header the
+    // request is refused 415 before the handler runs, so nothing clears the
+    // session cookie and the browser stays signed in.
+    headers: { "content-type": "application/json" },
+    body: "{}",
+    credentials: "include"
+  });
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, signOut, isOwner } = useAuth();
-  const navigate = useNavigate();
   const visibleItems = isOwner ? [...navItems, ...ownerItems] : navItems;
 
   async function handleSignOut() {
     await Promise.allSettled([
-      fetch(apiUrl("/api/auth/sign-out"), { method: "POST", credentials: "include" }),
+      // The content-type is load-bearing, not decoration — see `signOutRequest`.
+      signOutRequest(),
       fetch(apiUrl("/api/auth/liff/logout"), { method: "POST", credentials: "include" })
     ]);
     signOut();
-    void navigate({ to: "/login", replace: true });
+    // A full page load, not a router navigation, and for a reason that is about
+    // the LINE gate rather than this component. `LiffGate` sits ABOVE
+    // RouterProvider and probes the session once, on mount, with `[]` deps — so a
+    // client-side navigation leaves its `sessionUsable` flag describing the
+    // session as it was *before* the sign-out. Arriving at /login with that
+    // stale `true` is exactly the state `decideAfterSignIn` redirects on, so the
+    // gate carried the browser straight back to /dashboard and a visitor who had
+    // just signed out was put straight back into the product. Reloading remounts
+    // the gate, which re-probes and finds the revoked session — so the sign-out
+    // is the last word rather than the first move in a redirect.
+    window.location.replace("/login");
   }
 
   return (

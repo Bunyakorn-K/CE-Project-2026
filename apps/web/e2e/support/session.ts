@@ -26,7 +26,7 @@ import type { Page } from "@playwright/test";
  * longer sensitive to the machine: `styles.css` self-hosts Noto Sans Thai, so
  * re-measuring on a host with a different system font set gives the same number.
  */
-const DEVELOPMENT_OWNER_SESSION = {
+export const DEVELOPMENT_OWNER_SESSION = {
   user: {
     id: "development-owner",
     name: "Development Owner",

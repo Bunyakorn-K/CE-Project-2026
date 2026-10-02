@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { installStubbedSession } from "./support/session";
+import { DEVELOPMENT_OWNER_SESSION, installStubbedSession } from "./support/session";
 
 /**
  * A blocking LINE gate must not hide the product or the sign-in page.
@@ -197,5 +197,145 @@ test.describe("a browser signed in and left on the sign-in page", () => {
     await expect(page.locator(".app-topbar")).toBeVisible();
     await page.waitForTimeout(1500);
     await expect(page.locator(".app-topbar")).toBeVisible();
+  });
+});
+
+/**
+ * A browser that signs out.
+ *
+ * Reported in production on 2026-10-02, immediately after the redirect above
+ * shipped: pressing "ออกจากระบบ" navigated to `/login` and the browser went
+ * straight back to `/dashboard`, still signed in.
+ *
+ * Two faults stacked. The sign-out POST carried no content-type, so Better Auth
+ * refused it **415** and never revoked the session cookie — the browser was on
+ * the sign-in page holding a live session. Then the redirect above, which
+ * correctly sends a *signed-in* browser off `/login`, could not tell that
+ * session had just been cancelled: `LiffGate` sits above `RouterProvider` and
+ * probes once on mount with `[]` deps, so a client-side navigation left its
+ * flag describing the session as it was before the sign-out. It fired
+ * `/dashboard`, `/api/me` answered 200 because the cookie was never cleared,
+ * and the user was returned to the product they had just left.
+ *
+ * The dangerous half is what the pair made possible. A sign-out that does not
+ * hold is worse than no sign-out button at all: the UI says the session ended,
+ * so a user on a shared or public machine believes it did.
+ *
+ * So these specs assert the session is actually **revoked** — the sign-out
+ * request carries the JSON content-type Better Auth requires, and the mock API
+ * drops to 401 afterwards — rather than only that the URL changed. The old
+ * end-to-end click in `layout.pw.ts` asserted `/login` and passed throughout.
+ */
+test.describe("signing out", () => {
+  test.skip(
+    !process.env.VITE_LIFF_ID,
+    "needs a build with VITE_LIFF_ID baked in; the gate compiles every LIFF branch out otherwise"
+  );
+
+  /**
+   * A stubbed API where signing out genuinely ends the session: `/api/me` starts
+   * 200 and becomes 401 once the sign-out request lands, and the sign-out route
+   * is asserted to be the one that was called with the header it needs.
+   */
+  async function installRevocableSession(page: Page): Promise<{ signOutRequests: Array<{ contentType: string | null; body: string | undefined }> }> {
+    const signOutRequests: Array<{ contentType: string | null; body: string | undefined }> = [];
+    let revoked = false;
+
+    await page.route("**/api/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/auth/sign-out") {
+        signOutRequests.push({
+          contentType: route.request().headers()["content-type"] ?? null,
+          body: route.request().postData() ?? undefined
+        });
+        revoked = true;
+        await route.fulfill({ status: 200, contentType: "application/json", body: '{"success":true}' });
+        return;
+      }
+      if (url.pathname === "/api/me") {
+        await route.fulfill({
+          status: revoked ? 401 : 200,
+          contentType: "application/json",
+          body: revoked ? "" : JSON.stringify(DEVELOPMENT_OWNER_SESSION)
+        });
+        return;
+      }
+      // Unstubbed report endpoints stay unavailable, exactly as the shared stub
+      // answers them: the pages surface an error state rather than fabricating
+      // data. A 200 with a body missing its `totals` is worse than either — it
+      // throws inside the dashboard and takes the whole shell down with it, so
+      // the sign-out button would not even be present to click.
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: "REPORTING_SOURCE_UNAVAILABLE", message: "stubbed by the layout suite" } })
+      });
+    });
+
+    return { signOutRequests };
+  }
+
+  test("revokes the session, and the browser stays signed out", async ({ page }) => {
+    const { signOutRequests } = await installRevocableSession(page);
+    await blockLineEndpoint(page);
+
+    await page.goto("/dashboard");
+    await expect(page.locator(".app-topbar")).toBeVisible();
+
+    await page.locator(".signout-button").click();
+
+    // The request itself, not the destination. Better Auth parses a JSON body on
+    // this endpoint, so a POST without the header is refused 415 before the
+    // handler runs and the cookie is never cleared — which is what left the
+    // browser signed in on 2026-10-02.
+    await expect.poll(() => signOutRequests.length).toBe(1);
+    expect(signOutRequests[0]?.contentType).toContain("application/json");
+
+    // And the outcome: on /login, with a session the API now denies.
+    await expect(page).toHaveURL(/\/login$/);
+
+    // The trap the pair of faults set. The gate redirects a *signed-in* browser
+    // off /login, and after a client-side navigation its `sessionUsable` flag
+    // still described the session from before the sign-out — so it fired
+    // /dashboard, where /api/me answered 200 and the user was put back in.
+    // Reloading remounts the gate, which re-probes and finds the 401.
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+    await expect(page.locator(".app-topbar")).toHaveCount(0);
+  });
+
+  test("does not return to the dashboard on a later visit either", async ({ page }) => {
+    await installRevocableSession(page);
+    await blockLineEndpoint(page);
+
+    await page.goto("/dashboard");
+    await expect(page.locator(".app-topbar")).toBeVisible();
+    await page.locator(".signout-button").click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    // Typing the product URL by hand must not restore access.
+    await page.goto("/dashboard");
+
+    // The claim is that the product does not render, NOT that the URL changes.
+    // With LINE unreachable the gate blocks above `RouterProvider`, so
+    // `_authenticated`'s redirect to /login never runs and the browser sits on
+    // /dashboard behind the LINE error card. That is the designed shape of the
+    // gate — asserting the URL instead would be asserting an accident of which
+    // layer happens to run first, and would have "passed" for a browser that was
+    // merely misrouted while still holding the session.
+    await expect(page.locator(".app-topbar")).toHaveCount(0);
+    await expect(page.locator(".signout-button")).toHaveCount(0);
+    await expect(page.locator(".liff-message-card")).toBeVisible();
+
+    // And with LINE reachable, the API is what refuses — there is no session to
+    // render, so `_authenticated`'s `beforeLoad` redirects to the sign-in page.
+    // This is the half that says the revocation held rather than the gate
+    // merely hiding the product.
+    await page.unroute("**://*.line.me/**");
+    await page.unroute("**://*.line-s.me/**");
+    await page.goto("/dashboard");
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.locator(".app-topbar")).toHaveCount(0);
   });
 });
