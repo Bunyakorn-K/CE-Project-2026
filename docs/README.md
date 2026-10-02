@@ -90,6 +90,7 @@ Ops records, most recent first:
 | [`ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md`](04_traceability/ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md) | Airflow restarts are Postgres cluster reinitializations. 59 of them. Trigger still unidentified |
 | [`ops-verification-2026-09-30-temperature-dedup-migration.md`](04_traceability/ops-verification-2026-09-30-temperature-dedup-migration.md) | 3,762,139 → 2,258,219, and why a reload from IRIS was impossible |
 | [`ops-verification-2026-09-30-gas-collector-deploy.md`](04_traceability/ops-verification-2026-09-30-gas-collector-deploy.md) | the gas collector deploy, the grant step, the `gas_detector_*` exclusion |
+| [`ops-verification-2026-10-02-source-coverage-audit.md`](04_traceability/ops-verification-2026-10-02-source-coverage-audit.md) | **the 68 "missing" usage days are not missing and cannot be backfilled**; the `2026-07-27` exemption's stated reason was false; `2026-06-17` is permanently unrecoverable and no check covers it |
 | [`ops-incident-2026-09-14-clickhouse-lock.md`](04_traceability/ops-incident-2026-09-14-clickhouse-lock.md) | ClickHouse restart loop. **Its fix block writes to a volume — do not run it as a volume procedure** |
 | [`f12-weather-evaluation-2026-09-07.md`](04_traceability/f12-weather-evaluation-2026-09-07.md) | first weather/usage correlation evaluation |
 | [`ops-verification-2026-09-14-r09-offpeak.md`](04_traceability/ops-verification-2026-09-14-r09-offpeak.md) | `get_off_peak_windows` MCP tool |
