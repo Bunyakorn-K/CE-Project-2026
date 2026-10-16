@@ -91,7 +91,7 @@ jobs:
       # when this run starts. If main moved after CI went green, that publishes an
       # untested commit, which is exactly the guarantee this chain exists to
       # provide. workflow_run.head_sha is confirmed present in the run payload.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -159,7 +159,7 @@ jobs:
       name: production
       url: https://laundrytwin.duckdns.org
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The VM is reachable only over ZeroTier (172.30.191.48), or by jumping
       # through the Pi. A GitHub-hosted runner is on neither, so it does not
