@@ -1,7 +1,17 @@
 name: analytics
+# Memory limits (2026-11-06, PRIORITY 2). Measured on VM 117 on 2026-11-06:
+# 11 GiB RAM, 6.5 GiB used at steady state, 4.5 GiB buff/cache. The limits
+# below are 1.5-2x each service's measured peak, so they bind only when a
+# service goes rogue — never at normal operation. The host OOM killer
+# previously took ClickHouse (16 of 22 kills) because nothing bounded any
+# container; the kernel chose the largest consumer. These are `mem_limit`
+# (cgroup hard cap) — a service that hits its cap is OOM-killed inside its
+# own container, not chosen host-wide. Swap is unchanged.
 services:
   airflow-init:
     command: db migrate
+    mem_limit: 1g
+    memswap_limit: 1g
     environment: &airflow-env
       AIRFLOW__API__BASE_URL: http://127.0.0.1:8080
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -21,6 +31,8 @@ services:
     - ./dags:/opt/airflow/dags
   airflow-webserver:
     command: api-server
+    mem_limit: 2g
+    memswap_limit: 2g
     environment: *airflow-env
     healthcheck:
       interval: 30s
@@ -46,6 +58,8 @@ services:
     - ./dags:/opt/airflow/dags
   airflow-scheduler:
     command: scheduler
+    mem_limit: 2g
+    memswap_limit: 2g
     environment:
       <<: *airflow-env
       AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
@@ -63,6 +77,8 @@ services:
     - ./dags:/opt/airflow/dags
   airflow-triggerer:
     command: triggerer
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       <<: *airflow-env
       AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
@@ -80,6 +96,8 @@ services:
     - ./dags:/opt/airflow/dags
   airflow-dag-processor:
     command: dag-processor
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       <<: *airflow-env
       AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
@@ -96,6 +114,8 @@ services:
     - airflow-data:/opt/airflow
     - ./dags:/opt/airflow/dags
   postgres:
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       POSTGRES_DB: airflow
       POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
@@ -140,6 +160,8 @@ services:
     volumes:
     - postgres-airflow-data:/var/lib/postgresql/data
   clickhouse:
+    mem_limit: 4g
+    memswap_limit: 6g
     environment:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
       # Stop the image entrypoint from writing users.d/default-user.xml, which
@@ -184,6 +206,8 @@ services:
     - ./clickhouse-admin-networks.xml:/etc/clickhouse-server/users.d/admin-networks.xml:ro
     - ./clickhouse-reader.xml:/etc/clickhouse-server/users.d/reader.xml:ro
   mcp-inspector:
+    mem_limit: 256m
+    memswap_limit: 256m
     command: npx -y @modelcontextprotocol/inspector
     environment:
       ALLOWED_ORIGINS: https://mcp.laundrytwin.duckdns.org
@@ -195,6 +219,8 @@ services:
     - 127.0.0.1:6274:6274
     restart: unless-stopped
   redis:
+    mem_limit: 512m
+    memswap_limit: 512m
     command: redis-server --save 60 1 --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       interval: 10s
@@ -207,6 +233,8 @@ services:
     image: redis:8-alpine
     restart: unless-stopped
   superset:
+    mem_limit: 1g
+    memswap_limit: 1g
     build:
       context: ./superset-driver
     image: laundrytwin-superset:6.1.0-clickhouse
