@@ -164,33 +164,15 @@ deploy.
 
 ## PRIORITY 4 — The two restore-time guards
 
-> **PLAN (2026-11-06).** Pure-local implementation — no production mutation.
+> **DONE (2026-11-06).** Implemented as `deploy/analytics/restore-guards.sh`
+> + `deploy/analytics/restore-guards.test.sh` (9/9 pass; both guards
+> mutation-verified). §1.5 of
+> `ops-verification-2026-09-30-warehouse-data-recovery.md` updated with the
+> evidence. No deploy, no SSH — invoke inside the next restore procedure.
 >
-> 1. **New script `deploy/analytics/restore-guards.sh`** (bash, stdlib only
->    — the repo has no Python test runner, per `§1.6` of the recovery
->    record). Two functions:
->    - `assert_restore_source_fresh <backup.tgz> <live-volume-dir>` —
->      refuses to run if the backup's newest content is older than the live
->      volume's newest part mtime (the exact gate that would have refused
->      the 2026-08-31 tarball on 2026-09-17).
->    - `assert_post_restore_continuity <clickhouse-url> <pre-boundary>`
->      — queries `max(extracted_at)` on the restored warehouse and refuses
->      to print the `docker compose up` line if it is behind the pre-restore
->      value.
-> 2. **Tests:** shell test harness `deploy/analytics/restore-guards.test.sh`
->    with fixture dirs of controlled mtimes + a mocked ClickHouse HTTP
->    endpoint (same shape as the `find_missing_days` unit assertions in
->    `§1.6` — local harness, not a full Python test runner).
-> 3. **Docs:** update §1.5 of
->    `ops-verification-2026-09-30-warehouse-data-recovery.md` to mark both
->    guards **implemented** with the evidence (file paths + test output),
->    and update this handoff checkbox.
-> 4. **No deploy, no SSH, no production change.** Ship as a normal repo
->    commit; invoke the guards in the restore procedure the next time a
->    restore actually happens.
->
-> Written because §1.5 of the recovery record is explicit that a fix is
-> warranted but was not implemented during the read-only investigation.
+> Original reasoning (kept for history): pure-local implementation
+> following the `find_missing_days` harness pattern of §1.6, because the
+> repo has no Python test runner.
 
 Still open, and the detection half does **not** cover them.
 
