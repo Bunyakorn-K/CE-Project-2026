@@ -287,6 +287,12 @@ be the same attribution error the original investigation avoided for OOM.
       name the deeper cause on the next crash.~~ **Done 2026-11-06.**
       Added `log_min_messages=info` to the postgres `command:` in
       `deploy/analytics/compose.yaml` (same `-c` shape as the §5 logging
-      settings; no postmaster restart required — takes effect on next
-      container recreate/reload). The durable source of truth is the compose
-      file, matching §5.1's two-source pattern.
+      settings) and applied live via `ALTER SYSTEM SET
+      log_min_messages = 'info'; SELECT pg_reload_conf();` on VM 117
+      (two separate statements — `ALTER SYSTEM` cannot run inside a
+      transaction block; `pg_postmaster_start_time()` unchanged at
+      `2026-10-06 03:56:55`, container `Up 4 weeks (healthy)`). Verified
+      `SHOW log_min_messages` → `info` and info-level rows
+      (`disconnection: session time: ...`) rendering in the live log.
+      Rollback: `ALTER SYSTEM RESET log_min_messages;
+      SELECT pg_reload_conf();`
