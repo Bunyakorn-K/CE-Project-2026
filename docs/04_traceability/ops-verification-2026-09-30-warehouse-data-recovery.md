@@ -165,6 +165,16 @@ and no change was made to the production host. The detection gap in §1.3 was a
 separate matter and **has since been closed**; see §1.6. The two restore-time
 guards above remain open.
 
+> **Implementation plan (2026-11-06).**
+> `deploy/analytics/restore-guards.sh` — pure-local, stdlib-only bash,
+> following the `find_missing_days` unit-harness pattern of §1.6
+> (no Python test runner exists in this repo):
+> `assert_restore_source_fresh` (backup newest mtime ≥ live volume newest
+> part mtime) and `assert_post_restore_continuity` (`max(extracted_at)`
+> on the restored warehouse ≥ pre-restore value, before any compose
+> switch). Tests in `deploy/analytics/restore-guards.test.sh`.
+> No deploy, no SSH — the guards run inside the next restore procedure.
+
 ### 1.6 The contiguity check (implemented 2026-09-30)
 
 `check_usage_continuity` was added to

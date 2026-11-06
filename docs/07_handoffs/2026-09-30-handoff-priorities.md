@@ -124,6 +124,19 @@ Untouched. Two sub-groups, only the second is quick.
 
 ### 3b. Backup archives are world-readable — fix this, it takes seconds
 
+> **PLAN (2026-11-06).**
+> - **On VM 117, before anything else:**
+>   ```bash
+>   sudo stat -c "%a %U:%G %n" /opt/backups/pre-upgrade-20260831/*.tgz
+>   ```
+>   If they are still `644`, apply `sudo chmod 0600` and re-verify with the
+>   same `stat` command. Trivial, reversible, no rollback target needed.
+> - **Then do PRIORITY 4** (restore-time guards) — local code only, no host
+>   mutation needed to write and test them.
+> - PRIORITY 3a (credential rotation) and PRIORITY 1+2 (automated backup,
+>   memory limits) still need explicit production approval and are **not**
+>   part of this plan.
+
 ```text
 644 root:root 1814455646  /opt/backups/pre-upgrade-20260831/clickhouse-data.tgz
 644 root:root   17226556  /opt/backups/pre-upgrade-20260831/superset-home.tgz
@@ -150,6 +163,34 @@ deploy.
 ---
 
 ## PRIORITY 4 — The two restore-time guards
+
+> **PLAN (2026-11-06).** Pure-local implementation — no production mutation.
+>
+> 1. **New script `deploy/analytics/restore-guards.sh`** (bash, stdlib only
+>    — the repo has no Python test runner, per `§1.6` of the recovery
+>    record). Two functions:
+>    - `assert_restore_source_fresh <backup.tgz> <live-volume-dir>` —
+>      refuses to run if the backup's newest content is older than the live
+>      volume's newest part mtime (the exact gate that would have refused
+>      the 2026-08-31 tarball on 2026-09-17).
+>    - `assert_post_restore_continuity <clickhouse-url> <pre-boundary>`
+>      — queries `max(extracted_at)` on the restored warehouse and refuses
+>      to print the `docker compose up` line if it is behind the pre-restore
+>      value.
+> 2. **Tests:** shell test harness `deploy/analytics/restore-guards.test.sh`
+>    with fixture dirs of controlled mtimes + a mocked ClickHouse HTTP
+>    endpoint (same shape as the `find_missing_days` unit assertions in
+>    `§1.6` — local harness, not a full Python test runner).
+> 3. **Docs:** update §1.5 of
+>    `ops-verification-2026-09-30-warehouse-data-recovery.md` to mark both
+>    guards **implemented** with the evidence (file paths + test output),
+>    and update this handoff checkbox.
+> 4. **No deploy, no SSH, no production change.** Ship as a normal repo
+>    commit; invoke the guards in the restore procedure the next time a
+>    restore actually happens.
+>
+> Written because §1.5 of the recovery record is explicit that a fix is
+> warranted but was not implemented during the read-only investigation.
 
 Still open, and the detection half does **not** cover them.
 
