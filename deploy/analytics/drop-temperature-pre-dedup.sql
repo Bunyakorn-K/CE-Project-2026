@@ -1,0 +1,24 @@
+-- Drop fact_temperature_sample_pre_dedup (~125 MiB rollback target).
+--
+-- Prerequisites (all must be true before running):
+--   1. >= 2-3 clean ETL cycles since 2026-09-30 (engine is ReplacingMergeTree
+--      and re-reads converge; rollback table was never the live table).
+--   2. CURVE_SQL in apps/api/src/analytics/queries.ts is the ONLY reader of
+--      fact_temperature_sample (verified 2026-11-06: grep across apps/api,
+--      apps/etl, deploy/analytics found exactly 2 reads: CURVE_SQL with
+--      `AS s FINAL`, and the freshness DAG's max(extracted_at) which does not
+--      count rows).
+--   3. `fact_temperature_sample_pre_dedup` still exists (the migration that
+--      created it explicitly did not drop it).
+--
+-- Run manually on VM 117 against the warehouse. This is a destructive
+-- operation: it removes the rollback target for the 2026-09-30 dedup.
+-- Verify row counts first:
+--
+--   SELECT count() AS live_rows FROM fact_temperature_sample FINAL;
+--   SELECT count() AS rollback_rows FROM fact_temperature_sample_pre_dedup;
+--
+-- Expected: live_rows ≈ 2,258,219, rollback_rows ≈ 3,762,139 (pre-migration).
+-- If live_rows is 0 or drastically different, STOP — something else is wrong.
+
+DROP TABLE IF EXISTS laundrytwin_analytics.fact_temperature_sample_pre_dedup;

@@ -197,5 +197,17 @@ ETL cycles.
   the watermark into the warehouse. This is a design decision, not a bug.
 - **`fact_temperature_sample_pre_dedup` costs ~125 MiB** and should be dropped
   after a few days of clean ETL cycles.
-- **Re-check the API's other count surfaces.** The curve's `totalCount` was
-  measured; any other query counting this table was not.
+- ~~**Re-check the API's other count surfaces.** The curve's `totalCount` was
+  measured; any other query counting this table was not.~~
+  **Done 2026-11-06.** Full grep across `apps/api/src`, `apps/etl/src`, and
+  `deploy/analytics` found exactly two readers of `fact_temperature_sample`:
+  (1) `CURVE_SQL` (`apps/api/src/analytics/queries.ts:221`) —
+  `FROM fact_temperature_sample AS s FINAL`, which carries the
+  `count() OVER () AS totalCount` / `countIf(...) OVER () AS synthCount`
+  window already measured; (2) the Airflow freshness DAG
+  (`check_temperature_freshness`, `max(extracted_at)`) which does not count
+  rows at all. The ETL (`apps/etl/src/run.ts:300`) only **inserts** into the
+  table. No other API query counts it — there is no second `totalCount`
+  surface to de-duplicate. Drop script prepared at
+  `deploy/analytics/drop-temperature-pre-dedup.sql` (run manually on VM;
+  destructive, removes the rollback target).

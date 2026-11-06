@@ -237,9 +237,17 @@ the 55 cause lines do not account for all 59 reinitializations.
 - [ ] Drop `fact_temperature_sample_pre_dedup` (~125 MiB) once 2–3 more clean
       ETL cycles have passed. It is the rollback target for the 2026-09-30
       de-duplication and is **not** dropped by that migration by design.
-- [ ] Re-check whether any other API query counts `fact_temperature_sample`.
+      **Drop SQL prepared 2026-11-06** at
+      `deploy/analytics/drop-temperature-pre-dedup.sql` — run manually on
+      the VM after verifying live vs. rollback row counts. Destructive:
+      removes the rollback target.
+- [x] ~~Re-check whether any other API query counts `fact_temperature_sample`.
       The temperature curve's `totalCount` was measured; other count surfaces
-      were not.
+      were not.~~ **Done 2026-11-06.** Exactly two readers found: `CURVE_SQL`
+      (`AS s FINAL`, already measured) and the freshness DAG's
+      `max(extracted_at)` (does not count rows). ETL only inserts. No second
+      count surface exists. Evidence in
+      `docs/04_traceability/ops-verification-2026-09-30-temperature-dedup-migration.md` §7.
 - [ ] **ML data sufficiency.** 71 days of usage data is still short of the ≥90
       days (3 months) required for the Prophet / SARIMA / GBM candidates in
       `docs/06_ml/ml-training-data-guide.md` §5. Nothing to code — this
