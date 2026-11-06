@@ -124,18 +124,24 @@ Untouched. Two sub-groups, only the second is quick.
 
 ### 3b. Backup archives are world-readable — fix this, it takes seconds
 
-> **PLAN (2026-11-06).**
-> - **On VM 117, before anything else:**
->   ```bash
->   sudo stat -c "%a %U:%G %n" /opt/backups/pre-upgrade-20260831/*.tgz
->   ```
->   If they are still `644`, apply `sudo chmod 0600` and re-verify with the
->   same `stat` command. Trivial, reversible, no rollback target needed.
-> - **Then do PRIORITY 4** (restore-time guards) — local code only, no host
->   mutation needed to write and test them.
-> - PRIORITY 3a (credential rotation) and PRIORITY 1+2 (automated backup,
->   memory limits) still need explicit production approval and are **not**
->   part of this plan.
+> **DONE (2026-11-06).** Applied on VM 117 via the `notnotik-pve →
+> 10.10.0.117` jump (the DietPi/ZeroTier path was failing `publickey`
+> while PVE → VM worked with the same key):
+>
+> ```bash
+> sudo stat -c "%a %U:%G %n" /opt/backups/pre-upgrade-20260831/*.tgz
+> # BEFORE: 644 root:root on all three files
+> sudo chmod 0600 /opt/backups/pre-upgrade-20260831/*.tgz
+> sudo stat -c "%a %U:%G %n" /opt/backups/pre-upgrade-20260831/*.tgz
+> # AFTER:  600 root:root on all three files
+> ```
+>
+> **Follow-up found but not in scope of this fix:** a `find /opt/backups
+> -type f -perm /o+r` shows more world-readable files beyond the three
+> named above — `pre-merge-20260930/_phase2/*` (TSVs/SQLs from the recovery
+> merge) and several `pre-*` `laundrytwin.sqlite` backups. Those need their
+> own `chmod` sweep; do not widen this fix to cover them without checking
+> each set first (P1 automated backup may supersede this entirely).
 
 ```text
 644 root:root 1814455646  /opt/backups/pre-upgrade-20260831/clickhouse-data.tgz
