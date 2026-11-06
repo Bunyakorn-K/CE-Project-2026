@@ -282,6 +282,11 @@ be the same attribution error the original investigation avoided for OOM.
 - [ ] 4 of the 55 cause lines do not account for all 59 reinitializations. The
       remainder are either duplicate lines or events whose cause line was lost;
       not resolved.
-- [ ] `log_min_messages` is still `warning`: the backend's own last error
+- [x] ~~`log_min_messages` is still `warning`: the backend's own last error
       before `exit code 2` is suppressed. Lowering it (bounded window) would
-      name the deeper cause on the next crash.
+      name the deeper cause on the next crash.~~ **Done 2026-11-06.**
+      Added `log_min_messages=info` to the postgres `command:` in
+      `deploy/analytics/compose.yaml` (same `-c` shape as the §5 logging
+      settings; no postmaster restart required — takes effect on next
+      container recreate/reload). The durable source of truth is the compose
+      file, matching §5.1's two-source pattern.
