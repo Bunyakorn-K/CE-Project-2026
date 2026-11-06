@@ -79,6 +79,15 @@ dies with the volume it protects is not a backup.
 
 ## PRIORITY 2 — Host memory limits
 
+> **DONE in repo (2026-11-06).** `deploy/analytics/compose.yaml` now sets
+> `mem_limit` + `memswap_limit` on every analytics service (ClickHouse 4g,
+> Airflow webserver/scheduler 2g each, superset/init 1g, postgres/redis/
+> dag-processor/triggerer 512m, mcp-inspector 256m) — 1.5–2× measured peak
+> on VM 117 (11 GiB, 6.5 GiB used). `docker compose config --quiet`
+> validated. **Takes effect on next `docker compose up -d`** — not live
+> until then. The LaundryTwin **app** container (`laundrytwin-app-1`,
+> separate compose stack at `/opt/laundrytwin`) was **not touched**.
+
 **Every one of the 22 containers on the VM reports `Memory=0`** — no cgroup
 limit at all. The host has 10.8 GiB RAM and 4 GiB swap, shared with an
 unrelated LibreChat / MongoDB / Meilisearch / Arcane stack. All 22 host OOM
