@@ -79,14 +79,40 @@ dies with the volume it protects is not a backup.
 
 ## PRIORITY 2 — Host memory limits
 
-> **DONE in repo (2026-11-06).** `deploy/analytics/compose.yaml` now sets
-> `mem_limit` + `memswap_limit` on every analytics service (ClickHouse 4g,
-> Airflow webserver/scheduler 2g each, superset/init 1g, postgres/redis/
+> **DONE in repo and live (2026-11-06).** `deploy/analytics/compose.yaml`
+> sets `mem_limit` + `memswap_limit` on every analytics service (ClickHouse
+> 4g, Airflow webserver/scheduler 2g each, superset/init 1g, postgres/redis/
 > dag-processor/triggerer 512m, mcp-inspector 256m) — 1.5–2× measured peak
-> on VM 117 (11 GiB, 6.5 GiB used). `docker compose config --quiet`
-> validated. **Takes effect on next `docker compose up -d`** — not live
-> until then. The LaundryTwin **app** container (`laundrytwin-app-1`,
-> separate compose stack at `/opt/laundrytwin`) was **not touched**.
+> on VM 117 (11 GiB, 6.5 GiB used). Synced to `/opt/analytics/compose.yaml`
+> (backup `compose.yaml.bak-20261106`), `config --quiet` validated on both
+> sides. Live application required workaround for stale `Created`
+> containers left by repeated recreate attempts (hash-prefixed orphans
+> holding canonical names): started the created services directly, applied
+> `docker update --memory/--memory-swap` to the four long-running services
+> (`superset`, `airflow-webserver`, `airflow-scheduler`,
+> `airflow-triggerer`, `airflow-dag-processor`) **without restart**, then
+> removed orphans (`09b5956fcf66_analytics-airflow-init-1`,
+> `508ef62ede7a_analytics-mcp-inspector-1`, `analytics-airflow-1`).
+> Verified live:
+>
+> | Service | mem / swap | RSS |
+> |---|---|---|
+> | analytics-clickhouse-1 | 4g / 6g | 1.58 GiB |
+> | analytics-airflow-webserver-1 | 2g / 2g | 1.08 GiB |
+> | analytics-airflow-scheduler-1 | 2g / 2g | 549 MiB |
+> | analytics-superset-1 | 1g / 1g | 337 MiB |
+> | analytics-postgres-1 | 512m / 512m | 23 MiB |
+> | analytics-airflow-dag-processor-1 | 512m / 512m | 207 MiB |
+> | analytics-airflow-triggerer-1 | 512m / 512m | 168 MiB |
+> | analytics-redis-1 | 512m / 512m | 13 MiB |
+> | analytics-mcp-inspector-1 | 256m / 256m | 46 MiB |
+>
+> Warehouse verified after: `fact_machine_usage` 13,022 rows, lag 4 min;
+> `fact_temperature_sample` 2,639,955 rows; `fact_gas_pressure_sample`
+> 242,172 rows. ETL `ETL complete` current; `laundrytwin-app-1` `Up 4 weeks
+> (healthy)`, `/health` 200. The LaundryTwin **app** container
+> (`laundrytwin-app-1`, separate compose stack at `/opt/laundrytwin`)
+> was **not touched**.
 
 **Every one of the 22 containers on the VM reports `Memory=0`** — no cgroup
 limit at all. The host has 10.8 GiB RAM and 4 GiB swap, shared with an
