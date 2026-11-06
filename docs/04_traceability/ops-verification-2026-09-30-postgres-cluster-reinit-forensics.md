@@ -216,15 +216,72 @@ Also corrected: an earlier note recorded `dmesg` as empty. It is not empty —
 `journalctl -k` carries all 22 OOM events. That earlier reading would have
 hidden the entire host memory-pressure history.
 
-## 7. Open items
+## 8. The two crashes since the logging fix (captured 2026-11-06)
+
+The counter moved from 59 (2026-09-30) to **61** as of 2026-11-06. Both new
+crashes carry the client identity the §5 fix was for. They are **in-place
+postmaster crash-restarts, not container restarts** (`RestartCount=0` on both
+windows), and neither has a host OOM within ±1h (`journalctl -k` empty).
+
+### 2026-10-05 17:33:35 UTC — backend `exit code 2`, Airflow/ClickHouse churn
+
+```text
+172.19.0.10 = analytics-clickhouse-1  (the analytics ClickHouse)
+172.19.0.7  = analytics-superset-1
+172.19.0.5  = analytics-airflow-scheduler-1
+172.19.0.2  = analytics-airflow-triggerer-1
+```
+
+Just before the crash, the log shows a burst of short Airflow sessions
+reconnecting to `airflow` on `172.19.0.10` every ~15s (disconnection →
+reconnect, 30–35 min session times). At 17:33:30, PID 965607 (a local
+backend) exits with code 2 and the postmaster reinitializes at 17:33:35.
+The dying backend itself has no more specific cause line than `exit code
+2`, which is the same signature as the original 39 events (backend and
+postmaster log levels suppress the deeper cause).
+
+What is new: `%h`/`%a` makes the **connection churn visible** — an
+Airflow-shaped client burning connections at ~15s intervals for minutes
+before the crash. `app=[unknown]` for all of them (Airflow sets no
+application_name), which is consistent with the §5.1 note: `[unknown]`
+still distinguishes from `pg_isready` / `psql`.
+
+### 2026-10-06 03:56–03:57 UTC — container restart, not a crash
+
+This one is different. The container **was restarted** (`Started
+2026-10-06T03:55:35Z`, previous `Finished 2026-10-06T03:52:34Z`); the
+journal shows `dockerd` "Loading containers: start" at 03:52:30 and systemd
+deactivating overlay mounts — Docker itself restarted the container
+runtime. Postgres starts, then PID 14 exits with code 2 at 03:56:59 and
+the postmaster reinitializes at 03:57:00. **The reinitialization is the
+same count line, but the cause is a host-level Docker restart, not an
+in-place backend crash.** Counting it as the 61st "Postgres fault" would
+be the same attribution error the original investigation avoided for OOM.
+
+### What this does and does not establish
+
+- The client is now identifiable on at least one crash: **connection churn
+  from an `app=[unknown]` client on `172.19.0.10`** (Airflow-shaped)
+  precedes the 2026-10-05 crash by minutes.
+- The deeper cause of `exit code 2` is still suppressed — `log_min_messages`
+  remains `warning`, so the dying backend's own last error is never logged.
+  Lowering it to `info`/`debug1` for a bounded window is the next step if
+  another crash makes it worth the log volume.
+- The 2026-10-06 event is a **Docker restart**, not a Postgres fault, and
+  should not be counted in the same series.
+
+## 9. Open items
 
 - [x] Apply the logging settings in §5 — **done 2026-09-30**, verified in §5.1.
-- [ ] Watch for the next reinitialization and capture the full crash window;
-      the client is now identifiable. This document should then be updated with
-      the actual cause.
-- [ ] Decide memory limits for the host (§5, second half) as its own change.
+- [x] Watch for the next reinitialization and capture the full crash window;
+      the client is now identifiable. This section is that capture.
+- [ ] Decide memory limits for the host (§5, second half) as its own change
+      (PRIORITY 2 — not done).
 - [ ] 19 of the 59 crashes have no OOM within 30 min. Whether the 09-18 cluster
       has a different cause is untested.
 - [ ] 4 of the 55 cause lines do not account for all 59 reinitializations. The
       remainder are either duplicate lines or events whose cause line was lost;
       not resolved.
+- [ ] `log_min_messages` is still `warning`: the backend's own last error
+      before `exit code 2` is suppressed. Lowering it (bounded window) would
+      name the deeper cause on the next crash.
