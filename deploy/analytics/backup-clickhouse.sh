@@ -1,6 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_clickhouse_query() {
+  local sql="$1"
+  if [[ -n "${MOCK_CLICKHOUSE_RESPONSES_FILE:-}" ]]; then
+    # Test-only affordance: file contains one response per line.
+    local idx=0
+    while IFS= read -r line; do
+      if [[ "$idx" -eq "${MOCK_QUERY_INDEX:-0}" ]]; then
+        printf '%s\n' "$line"
+        return 0
+      fi
+      idx=$((idx + 1))
+    done < "$MOCK_CLICKHOUSE_RESPONSES_FILE"
+    return 1
+  fi
+  local url="${CLICKHOUSE_URL:-http://127.0.0.1:8123}"
+  local user="${CLICKHOUSE_USER:-default}"
+  local password="${CLICKHOUSE_PASSWORD:-}"
+  curl -sS --fail --max-time 300 \
+    --data-urlencode "query=$sql" \
+    --data-urlencode "user=$user" \
+    --data-urlencode "password=$password" \
+    --data-urlencode "database=$CLICKHOUSE_DATABASE" \
+    "$url/"
+}
+
 create_clickhouse_backup() {
   : "${BACKUP_TARGET_DIR:?BACKUP_TARGET_DIR is required}"
   : "${BACKUP_NAME:?BACKUP_NAME is required}"
@@ -9,24 +34,22 @@ create_clickhouse_backup() {
   mkdir -p "$BACKUP_TARGET_DIR"
 
   local backup_sql="BACKUP DATABASE $CLICKHOUSE_DATABASE TO Disk('backup', '$BACKUP_NAME')"
-  local url="${CLICKHOUSE_URL:-http://127.0.0.1:8123}"
-  local user="${CLICKHOUSE_USER:-default}"
-  local password="${CLICKHOUSE_PASSWORD:-}"
-
-  if [[ -n "${BACKUP_COMMAND:-}" ]]; then
-    # Test-only affordance used by backup-clickhouse.test.sh.
-    eval "$BACKUP_COMMAND" >/dev/null
-  else
-    curl -sS --fail --max-time 300 \
-      --data-urlencode "query=$backup_sql" \
-      --data-urlencode "user=$user" \
-      --data-urlencode "password=$password" \
-      --data-urlencode "database=$CLICKHOUSE_DATABASE" \
-      "$url/" >/dev/null
-  fi
-
   local status
-  status="$(printf '%s' "${BACKUP_STATUS:-OK}")"
+
+  # Step 1: run BACKUP and capture the response (ClickHouse can return
+  # 200 with an error body, so --fail alone is not sufficient).
+  local backup_response
+  backup_response="$(_clickhouse_query "$backup_sql")" || {
+    printf 'Refusing: BACKUP DATABASE failed\n' >&2
+    return 1
+  }
+
+  # Step 2: verify via system.backups that the backup actually completed.
+  status="$(_clickhouse_query "SELECT status FROM system.backups WHERE name = '$BACKUP_NAME' ORDER BY start_time DESC LIMIT 1")" || {
+    printf 'Refusing: cannot verify backup status\n' >&2
+    return 1
+  }
+
   if [[ "$status" != "OK" ]]; then
     printf 'Refusing: ClickHouse backup status is %s, not OK\n' "$status" >&2
     return 1

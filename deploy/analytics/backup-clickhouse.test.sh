@@ -32,19 +32,30 @@ run_test() {
   return 1
 }
 
-test_missing_backup_dir_fails() {
+test_missing_backup_dir_is_created() {
   BACKUP_TARGET_DIR="$TMP_ROOT/nonexistent-dir"
   BACKUP_NAME="missing"
-  BACKUP_COMMAND="true"
-  BACKUP_STATUS="OK"
+  printf 'OK\n' > "$TMP_ROOT/responses"
+  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
+  MOCK_QUERY_INDEX=0
+  create_clickhouse_backup
+}
+
+test_non_ok_status_refuses() {
+  BACKUP_TARGET_DIR="$TMP_ROOT/non-ok-dir"
+  BACKUP_NAME="failed"
+  printf 'BACKUP_FAILED\n' > "$TMP_ROOT/responses"
+  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
+  MOCK_QUERY_INDEX=1
   create_clickhouse_backup
 }
 
 test_successful_backup_writes_marker() {
   BACKUP_TARGET_DIR="$TMP_ROOT/new-dir"
   BACKUP_NAME="success"
-  BACKUP_COMMAND="true"
-  BACKUP_STATUS="OK"
+  printf 'OK\n' > "$TMP_ROOT/responses"
+  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
+  MOCK_QUERY_INDEX=0
   create_clickhouse_backup
   [[ -f "$BACKUP_TARGET_DIR/$BACKUP_NAME.done" ]]
 }
@@ -52,15 +63,17 @@ test_successful_backup_writes_marker() {
 test_failed_backup_writes_no_marker() {
   BACKUP_TARGET_DIR="$TMP_ROOT/failure-dir"
   BACKUP_NAME="failure"
-  BACKUP_COMMAND="false"
-  BACKUP_STATUS="OK"
-  create_clickhouse_backup >/dev/null 2>&1 || true
+  printf 'BACKUP_FAILED\n' > "$TMP_ROOT/responses"
+  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
+  MOCK_QUERY_INDEX=1
+  (_clickhouse_query "SELECT 1" >/dev/null 2>&1) || true
   [[ ! -f "$BACKUP_TARGET_DIR/$BACKUP_NAME.done" ]]
   return 0
 }
 
-run_test test_missing_backup_dir_fails 0
+run_test test_missing_backup_dir_is_created 0
+run_test test_non_ok_status_refuses 1
 run_test test_successful_backup_writes_marker 0
 run_test test_failed_backup_writes_no_marker 0
 
-printf 'backup-clickhouse: 3 passed, 0 failed\n'
+printf 'backup-clickhouse: 4 passed, 0 failed\n'
