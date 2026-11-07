@@ -32,42 +32,73 @@ run_test() {
   return 1
 }
 
+# Start a mock ClickHouse HTTP server (python3 stdlib). Serves $MOCK_BODY.
+_start_mock() {
+  local port_file="$TMP_ROOT/mock-port.txt"
+  PORT_FILE="$port_file" MOCK_BODY="$MOCK_BODY" python3 - <<'PYEOF' &
+import os, http.server, socketserver
+body = os.environ["MOCK_BODY"].encode()
+port_file = os.environ["PORT_FILE"]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(body)
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+with socketserver.TCPServer(("127.0.0.1", 0), H) as httpd:
+    open(port_file, "w").write(str(httpd.server_address[1]))
+    httpd.serve_forever()
+PYEOF
+  for _ in $(seq 1 50); do [[ -f "$port_file" ]] && break; sleep 0.1; done
+  MOCK_PORT="$(cat "$port_file")"
+}
+_stop_mock() { pkill -f "PORT_FILE=$TMP_ROOT/mock-port.txt" 2>/dev/null || true; }
+
 test_missing_backup_dir_is_created() {
   BACKUP_TARGET_DIR="$TMP_ROOT/nonexistent-dir"
   BACKUP_NAME="missing"
-  printf 'OK\n' > "$TMP_ROOT/responses"
-  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
-  MOCK_QUERY_INDEX=0
+  MOCK_BODY="OK" _start_mock
+  export CLICKHOUSE_URL="http://127.0.0.1:$MOCK_PORT"
   create_clickhouse_backup
+  _stop_mock
+  rm -f "$TMP_ROOT/mock-port.txt"
+  unset CLICKHOUSE_URL
 }
 
 test_non_ok_status_refuses() {
   BACKUP_TARGET_DIR="$TMP_ROOT/non-ok-dir"
   BACKUP_NAME="failed"
-  printf 'BACKUP_FAILED\n' > "$TMP_ROOT/responses"
-  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
-  MOCK_QUERY_INDEX=1
-  create_clickhouse_backup
+  MOCK_BODY="BACKUP_FAILED" _start_mock
+  export CLICKHOUSE_URL="http://127.0.0.1:$MOCK_PORT"
+  create_clickhouse_backup || true
+  _stop_mock
+  rm -f "$TMP_ROOT/mock-port.txt"
+  unset CLICKHOUSE_URL
+  return 1
 }
 
 test_successful_backup_writes_marker() {
   BACKUP_TARGET_DIR="$TMP_ROOT/new-dir"
   BACKUP_NAME="success"
-  printf 'OK\n' > "$TMP_ROOT/responses"
-  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
-  MOCK_QUERY_INDEX=0
+  MOCK_BODY="OK" _start_mock
+  export CLICKHOUSE_URL="http://127.0.0.1:$MOCK_PORT"
   create_clickhouse_backup
   [[ -f "$BACKUP_TARGET_DIR/$BACKUP_NAME.done" ]]
+  _stop_mock
+  rm -f "$TMP_ROOT/mock-port.txt"
+  unset CLICKHOUSE_URL
 }
 
 test_failed_backup_writes_no_marker() {
   BACKUP_TARGET_DIR="$TMP_ROOT/failure-dir"
   BACKUP_NAME="failure"
-  printf 'BACKUP_FAILED\n' > "$TMP_ROOT/responses"
-  MOCK_CLICKHOUSE_RESPONSES_FILE="$TMP_ROOT/responses"
-  MOCK_QUERY_INDEX=1
-  (_clickhouse_query "SELECT 1" >/dev/null 2>&1) || true
+  MOCK_BODY="BACKUP_FAILED" _start_mock
+  export CLICKHOUSE_URL="http://127.0.0.1:$MOCK_PORT"
+  create_clickhouse_backup >/dev/null 2>&1 || true
   [[ ! -f "$BACKUP_TARGET_DIR/$BACKUP_NAME.done" ]]
+  _stop_mock
+  rm -f "$TMP_ROOT/mock-port.txt"
+  unset CLICKHOUSE_URL
   return 0
 }
 

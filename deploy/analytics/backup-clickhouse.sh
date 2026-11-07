@@ -3,18 +3,9 @@ set -euo pipefail
 
 _clickhouse_query() {
   local sql="$1"
-  if [[ -n "${MOCK_CLICKHOUSE_RESPONSES_FILE:-}" ]]; then
-    # Test-only affordance: file contains one response per line.
-    local idx=0
-    while IFS= read -r line; do
-      if [[ "$idx" -eq "${MOCK_QUERY_INDEX:-0}" ]]; then
-        printf '%s\n' "$line"
-        return 0
-      fi
-      idx=$((idx + 1))
-    done < "$MOCK_CLICKHOUSE_RESPONSES_FILE"
-    return 1
-  fi
+  # No test-only affordance in production code; no eval, no env-controlled
+  # execution. Tests use a real HTTP endpoint, same as production.
+  :
   local url="${CLICKHOUSE_URL:-http://127.0.0.1:8123}"
   local user="${CLICKHOUSE_USER:-default}"
   local password="${CLICKHOUSE_PASSWORD:-}"
