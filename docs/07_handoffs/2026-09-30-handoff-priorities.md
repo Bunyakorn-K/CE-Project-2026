@@ -269,13 +269,13 @@ the 55 cause lines do not account for all 59 reinitializations.
 
 ## PRIORITY 6 — Housekeeping
 
-- [ ] Drop `fact_temperature_sample_pre_dedup` (~125 MiB) once 2–3 more clean
-      ETL cycles have passed. It is the rollback target for the 2026-09-30
-      de-duplication and is **not** dropped by that migration by design.
-      **Drop SQL prepared 2026-11-06** at
-      `deploy/analytics/drop-temperature-pre-dedup.sql` — run manually on
-      the VM after verifying live vs. rollback row counts. Destructive:
-      removes the rollback target.
+- [x] ~~Drop `fact_temperature_sample_pre_dedup` (~125 MiB) once 2–3 more clean
+      ETL cycles have passed.~~ **Done 2026-11-07.** Dropped on VM 117 after
+      a full volume tar backup (`/opt/backups/clickhouse-pre-drop-temperature-pre-dedup-20261107T040927Z.tgz`,
+      ~9 GiB). Pre/post verification: metadata search returns 0 tables,
+      `fact_temperature_sample` 2,644,225 rows (lag 2 min), `fact_machine_usage`
+      13,098 rows (lag 2 min), ETL `ETL complete`, app `/health` 200. The
+      dropped table is no longer a rollback target; the tar archive is.
 - [x] ~~Re-check whether any other API query counts `fact_temperature_sample`.
       The temperature curve's `totalCount` was measured; other count surfaces
       were not.~~ **Done 2026-11-06.** Exactly two readers found: `CURVE_SQL`
