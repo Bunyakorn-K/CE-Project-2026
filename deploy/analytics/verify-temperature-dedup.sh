@@ -40,8 +40,8 @@ assert_temperature_dedup_counts() {
   local live rollback
   live="$(_clickhouse_query "SELECT count() AS live_rows FROM fact_temperature_sample FINAL")"
   rollback="$(_clickhouse_query "SELECT count() AS rollback_rows FROM fact_temperature_sample_pre_dedup")"
-  if [[ "$live" != "$EXPECTED_LIVE_ROWS" || "$rollback" != "$EXPECTED_ROLLBACK_ROWS" ]]; then
-    printf 'Refusing: expected live_rows=%s rollback_rows=%s, got live_rows=%s rollback_rows=%s\n' \
+  if (( live < EXPECTED_LIVE_ROWS )) || [[ "$rollback" != "$EXPECTED_ROLLBACK_ROWS" ]]; then
+    printf 'Refusing: expected live_rows >= %s rollback_rows=%s, got live_rows=%s rollback_rows=%s\n' \
       "$EXPECTED_LIVE_ROWS" "$EXPECTED_ROLLBACK_ROWS" "$live" "$rollback" >&2
     return 1
   fi

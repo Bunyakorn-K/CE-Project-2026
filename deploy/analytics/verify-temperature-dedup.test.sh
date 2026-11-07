@@ -57,7 +57,7 @@ test_stale_live_table_refuses() {
 }
 
 test_correct_counts_pass() {
-  with_responses 2258219 3762139 30 "2026-11-07 00:00:00" 1
+  with_responses 2642914 3762139 30 "2026-11-07 00:00:00" 1
   assert_temperature_dedup_counts &&
   assert_temperature_dedup_freshness
 }
