@@ -205,6 +205,8 @@ services:
     - ./clickhouse-alias-settings.xml:/etc/clickhouse-server/users.d/alias-settings.xml:ro
     - ./clickhouse-admin-networks.xml:/etc/clickhouse-server/users.d/admin-networks.xml:ro
     - ./clickhouse-reader.xml:/etc/clickhouse-server/users.d/reader.xml:ro
+    - ./clickhouse-backup-disk.xml:/etc/clickhouse-server/config.d/backup-disk.xml:ro
+    - /data/backups/clickhouse:/backups
   mcp-inspector:
     mem_limit: 256m
     memswap_limit: 256m
