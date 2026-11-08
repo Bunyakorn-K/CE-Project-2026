@@ -1,5 +1,12 @@
 # LINE Redirect and Sign-Out Production Verification Plan
 
+> **Status 2026-11-08: executed — Task 1 PASS, Task 2 FAIL, Task 3 recorded.**
+> Record: `docs/04_traceability/ops-verification-2026-11-07-line-redirect-signout-production.md`.
+> Do not re-run this plan as written: "the real LINE client" in the constraint
+> below means LINE for PC, which cannot open a LIFF URL at all. The run used a
+> real LINE app on Android. The sign-out leg uncovered a defect and is owned by
+> `docs/superpowers/plans/2026-11-08-sign-out-reauthentication-defect.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prove that a LINE SDK redirect returns to `/dashboard`, that sign-out revokes the session, and that `/privacy` and `/terms` are never redirected after sign-in.

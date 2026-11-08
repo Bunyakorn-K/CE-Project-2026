@@ -1,0 +1,25 @@
+%% LINE Chat Bot activity - Part 4/4: deliver the answer, and the failure path
+%% Sources: apps/api/src/bot/index.ts (error catch, sendText), apps/api/src/bot/line-adapter.ts
+flowchart TD
+ Start([Part 3: answer assembled]) --> Throws{Did processing throw?}
+
+ Throws -->|Yes| Catch[Catch and log the error]
+ Catch --> RetryPush[pushMessage: Thai retry notice]
+ RetryPush --> Shown([The user sees the message])
+
+ Throws -->|No| Push[pushMessage: deliver the answer]
+ Push --> Shown
+
+ Shown --> Note([Push, not reply - the 200 ack<br/>already consumed the reply window])
+
+ classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+ classDef process fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
+ classDef decision fill:#FFD700,stroke:#333,stroke-width:2px,color:black
+ classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
+ classDef quiet fill:#D3D3D3,stroke:#555,stroke-width:2px,color:black
+
+ class Start,Shown startEnd
+ class Push process
+ class Throws decision
+ class Catch,RetryPush error
+ class Note quiet

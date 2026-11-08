@@ -1,0 +1,24 @@
+%% LINE Chat Bot activity - Part 1/4: receive the message and ack immediately
+%% Sources: apps/api/src/index.ts (route), apps/api/src/bot/index.ts (handle), apps/api/src/line.ts
+flowchart TD
+ Start([A LINE text message arrives]) --> Hook[POST /webhooks/line<br/>read raw body + signature]
+ Hook --> Sig{Signature valid?}
+
+ Sig -->|No| Reject[Return 401<br/>stop processing]
+ Reject --> Stop([Nothing is sent to the user])
+
+ Sig -->|Yes| Ack[Return 200 ok<br/>immediately, before any LLM call]
+ Ack --> Detach[Continue detached<br/>handleTextEvent]
+ Detach --> Next([Part 2: authorization])
+
+ classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+ classDef process fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
+ classDef decision fill:#FFD700,stroke:#333,stroke-width:2px,color:black
+ classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
+ classDef quiet fill:#D3D3D3,stroke:#555,stroke-width:2px,color:black
+
+ class Start,Next startEnd
+ class Hook,Ack,Detach process
+ class Sig decision
+ class Reject error
+ class Stop quiet

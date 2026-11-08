@@ -1,0 +1,32 @@
+%% LINE Chat Bot activity - Part 2/4: authorization (enforced server-side)
+%% Sources: apps/api/src/bot/index.ts (busy set, reject branch), apps/api/src/bot/identity.ts, apps/api/src/access-store.ts
+flowchart TD
+ Start([Part 1: message accepted]) --> Busy{A question already in flight?}
+
+ Busy -->|Yes| Drop[Drop the new message<br/>never answer out of order]
+ Drop --> Stop([No answer produced])
+
+ Busy -->|No| Resolve[Resolve grants from SQLite<br/>never trust the user's own claim]
+ Resolve --> Granted{Granted access?}
+
+ Granted -->|No| Deny[Refuse the request]
+ Deny --> Queue[Record a pending<br/>access request]
+ Queue --> DenyPush[pushMessage: Thai no-permission notice]
+ DenyPush --> Stop
+
+ Granted -->|Yes| Scope[Build AccessScope<br/>branchIds + canViewRevenue]
+ Scope --> Next([Part 3: build the answer])
+
+ classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+ classDef process fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
+ classDef decision fill:#FFD700,stroke:#333,stroke-width:2px,color:black
+ classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
+ classDef quiet fill:#D3D3D3,stroke:#555,stroke-width:2px,color:black
+ classDef data fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+
+ class Start,Next startEnd
+ class Resolve,Scope,DenyPush process
+ class Busy,Granted decision
+ class Drop,Deny error
+ class Queue data
+ class Stop quiet

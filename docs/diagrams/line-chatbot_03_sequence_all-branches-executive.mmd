@@ -1,0 +1,100 @@
+%% Executive views ALL branches - sequence
+%% Sources: apps/web/src/routes/_authenticated/dashboard.tsx (branch selector, parallel fetches),
+%%          apps/api/src/index.ts (requireReportPrincipal, resolveReportScope, /api/report/dashboard,
+%%          /api/twin, /api/report/summary),
+%%          apps/api/src/report/clickhouse-report.ts (queryDashboard, buildDashboardSQL,
+%%          buildMachineStateSQL, usageFreshnessOf),
+%%          apps/api/src/reporting.ts (redactDashboardDataRevenue, mayViewRevenue)
+sequenceDiagram
+    autonumber
+    participant Exec as Executive (owner)
+    participant Web as Web dashboard
+    participant API as LaundryTwin API
+    participant Guard as Access guard
+    participant CH as ClickHouse
+    participant Dwh as Warehouse tables
+
+    Note over Exec,Dwh: 1. The executive asks for every branch
+
+    Exec->>Web: opens /dashboard
+    Note over Web: branch filter has no branch selected,<br/>which means tenant-wide
+    Exec->>Web: picks a date range (from / to)
+
+    Web->>+API: GET /api/report/dashboard?from&to<br/>(no branchId)
+    API->>+Guard: requireReportPrincipal
+
+    alt no grant at all
+        Guard-->>API: 403 ACCESS_NOT_GRANTED
+        API-->>Web: 403 ACCESS_NOT_GRANTED
+        Web-->>Exec: Thai error: access revoked or not granted
+    else has grants
+        Guard-->>-API: principal + grants
+
+        Note over API,Guard: 2. No branchId is a decision, not an omission
+
+        API->>+Guard: resolveReportScope(branchId = undefined)
+
+        alt owner role
+            Guard-->>API: scope = undefined (tenant-wide)
+            Note over API,Guard: an owner reading every branch<br/>is the one case that widens scope
+        else manager or technician
+            Guard-->>API: 400 BRANCH_REQUIRED<br/>or the single granted branch
+            Note over API,Guard: a narrower role must name a branch,<br/>so it can never read all of them by accident
+        end
+        deactivate Guard
+
+        Note over API,Dwh: 3. Three queries in parallel - one round trip
+
+        par Branch list + KPIs
+            API->>+CH: buildDashboardSQL(from, to, branchId = '')
+            CH->>Dwh: fact_machine_usage + dim_branch + dim_machine
+            Dwh-->>CH: per-branch revenue and cycles
+            CH-->>-API: rows
+        and Machine states for the twin
+            API->>+CH: buildMachineStateSQL(from, to, branchId = '')
+            CH->>Dwh: argMax(status), max(started_at)<br/>countIf(status IN paid, finished)
+            Note over CH: usage_rows counted separately,<br/>so "no rows" and "zero" stay different facts
+            Dwh-->>CH: per-machine state rows
+            CH-->>-API: states
+        and Daily trend
+            API->>+CH: buildDashboardTrendSQL(from, to, branchId = '')
+            CH->>Dwh: day buckets over the same WHERE
+            Dwh-->>CH: daily series
+            CH-->>-API: trendRows
+        end
+
+        Note over API: 4. Freshness and revenue redaction
+
+        API->>API: usageFreshnessOf(lastActiveAt)<br/>fresh / stale / unavailable
+        API->>API: redactDashboardDataRevenue(data, canViewRevenue)
+
+        alt role cannot view revenue
+            Note over API: revenue fields are nulled,<br/>never sent and hidden by the UI
+        else owner or manager
+            Note over API: revenue stays
+        end
+
+        API-->>-Web: 200 dashboard + source + availability<br/>+ cycleAttribution
+        Note over Web,Exec: source tells the executive<br/>whether this is real warehouse data
+    end
+
+    Note over Exec,Dwh: 5. The dashboard also loads the twin and the summary
+
+    Web->>+API: GET /api/twin?from&to (same scope)
+    Note over API: same principal, same resolveReportScope
+    API->>CH: queryMachineStates(from, to, scope)
+    CH-->>API: machines with status + freshness
+    API-->>-Web: 200 machines, availability = usage-derived
+    Note over Web: no live telemetry: fact_machine_event holds 0 rows,<br/>so Digital Twin state is derived from usage, not telemetry
+
+    Web->>+API: GET /api/report/summary?from&to
+    API-->>-Web: Thai executive summary
+
+    Web-->>Exec: KPIs, branch cards, twin grid, summary
+
+    Note over Exec,Dwh: 6. Failure is reported, not faked
+
+    alt analytics source unreachable
+        API-->>Web: 503 ANALYTICS_SOURCE_UNAVAILABLE
+        Web-->>Exec: Thai message naming the source,<br/>never a zero-filled dashboard
+    end

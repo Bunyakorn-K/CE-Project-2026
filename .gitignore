@@ -29,6 +29,10 @@ apps/etl/.tmp/
 # Coverage / profiling output
 *.profraw
 
+# Rendered diagram/image output (sources are tracked: docs/diagrams/*.mmd)
+docs/diagrams/*.png
+generated-images/
+
 # TypeScript build info
 *.tsbuildinfo
 

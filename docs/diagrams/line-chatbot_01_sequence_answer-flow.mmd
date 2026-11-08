@@ -1,0 +1,77 @@
+sequenceDiagram
+ autonumber
+ participant User as LINE User
+ participant LINE as LINE Platform
+ participant Bot as Bot Handler
+ participant Id as Identity + Scope
+ participant DB as SQLite
+ participant CH as ClickHouse
+ participant Conv as Conversation
+ participant MCP as MCP Data Server
+ participant LLM as LLM Gateway
+
+ Note over User,LLM: 1. Webhook intake - ack BEFORE the model runs
+
+ User->>LINE: types a text question
+ LINE->>+Bot: POST /webhooks/line<br/>x-line-signature
+ Bot->>Bot: verify HMAC (LINE_CHANNEL_SECRET)
+
+ alt signature invalid
+ Bot-->>LINE: 401 Invalid signature
+ Note over LINE: nothing is sent to the user
+ else signature valid
+ Bot-->>-LINE: 200 { ok: true }<br/>(returned before any LLM call)
+ Note over Bot: work continues detached<br/>because LLM + tool latency<br/>can exceed LINE's reply window
+ Bot->>Bot: handleTextEvent(event)
+
+ Note over User,LLM: 2. Authorization - grants resolved server-side
+
+ Bot->>+Id: resolveLineIdentity(userId)
+ Id->>+DB: SELECT liff user + grants
+ DB-->>-Id: principal or none
+
+ alt unknown user or no grants
+ Id-->>Bot: not permitted
+ Bot->>DB: recordPendingLiffAccessRequest()
+ Bot->>LINE: pushMessage: Thai no-permission notice
+ else permitted
+ Id-->>-Bot: AccessScope { branchIds, canViewRevenue }
+ Note over Bot,Id: the user's own claim never
+ Note over Bot,Id: chooses a branch
+
+ Note over User,LLM: 3. Agentic answer - off the webhook
+
+ Bot->>+CH: listBranchNames (allowed only)
+ CH-->>-Bot: branch context
+ Bot->>+Conv: answerForMessage(text, role, scope)
+ Conv->>DB: getAiSettingsWithKey()
+ DB-->>Conv: baseURL / model / prompt
+ Conv->>+MCP: listTools(scope)<br/>x-mcp-scope (signed)
+ MCP-->>-Conv: allow-listed tool descriptors
+ Note over Conv,MCP: 401 INVALID_SCOPE / 403 SCOPE_MISMATCH<br/>on a bad scope signature
+
+ Note over User,LLM: 4. MCP tool round-trip
+
+ Conv->>+LLM: streamText: system prompt + tools
+ LLM-->>-Conv: tool_call (bounded by maxSteps = 2)
+ Conv->>MCP: callTool(name, args, scope)
+ MCP->>CH: parameterized reporting query
+ CH-->>MCP: rows
+ MCP-->>Conv: tool result text
+ Conv->>+LLM: feed tool result back
+ LLM-->>-Conv: assembled Thai answer
+
+ Note over User,LLM: 5. Answer pushed, not replied
+
+ Conv-->>-Bot: answer text
+ Bot->>+LINE: pushMessage(to: userId)
+ Note over Bot,LINE: reply token has already expired
+ LINE-->>-User: answer appears in the chat
+
+ alt LLM or tool throws
+ Conv-->>Bot: error
+ Bot->>Bot: log error
+ Bot->>LINE: pushMessage: Thai retry notice
+ end
+ end
+ end

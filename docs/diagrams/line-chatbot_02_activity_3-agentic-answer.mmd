@@ -1,0 +1,28 @@
+%% LINE Chat Bot activity - Part 3/4: answer with the LLM and allow-listed tools
+%% Sources: apps/api/src/bot/conversation.ts, apps/api/src/bot/mcp-client.ts, apps/api/src/llm-client.ts, apps/api/src/analytics/mcp.ts
+flowchart TD
+ Start([Part 2: scope resolved]) --> BranchCtx[Load branch names<br/>in scope only]
+ BranchCtx --> Prompt[Build the prompt<br/>role + scope + tools]
+ Prompt --> Tools[Request tools from MCP<br/>with the signed scope]
+ Tools --> Llm[Call the LLM with the question<br/>maxSteps = 2]
+
+ Llm --> ToolCall{LLM calls a tool?}
+ ToolCall -->|Yes| Call[Call that tool, stripping<br/>accessScope from model args]
+ Call --> Query[Run a parameterized query<br/>against ClickHouse]
+ Query --> Result[Feed the result back to the LLM]
+ Result --> Llm
+
+ ToolCall -->|No| Answer[Assemble the Thai answer]
+ Answer --> Next([Part 4: reply])
+
+ classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+ classDef process fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
+ classDef decision fill:#FFD700,stroke:#333,stroke-width:2px,color:black
+ classDef cloud fill:#FFF3B0,stroke:#B8860B,stroke-width:2px,color:#5C4033
+ classDef data fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+
+ class Start,Next startEnd
+ class Prompt,Tools,Call,Result,Answer process
+ class ToolCall decision
+ class Llm cloud
+ class BranchCtx,Query data

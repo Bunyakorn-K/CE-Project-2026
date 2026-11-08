@@ -1,0 +1,49 @@
+%% LINE Chat Bot - full activity, one page
+%% Sources: apps/api/src/bot/index.ts, apps/api/src/bot/identity.ts,
+%% apps/api/src/bot/conversation.ts, apps/api/src/bot/line-adapter.ts,
+%% apps/api/src/llm-client.ts, apps/api/src/analytics/mcp.ts
+flowchart TD
+ Start([A LINE text message arrives]) --> Hook[POST /webhooks/line<br/>raw body + x-line-signature]
+ Hook --> Sig{Signature valid?}
+
+ Sig -->|No| Reject[Reject 401<br/>untrusted caller]
+ Reject --> NoReply([Nothing sent to the user])
+
+ Sig -->|Yes| Ack[Ack 200 ok<br/>BEFORE any LLM call]
+ Ack --> Detach[handleTextEvent detached<br/>per-user busy set]
+
+ Detach --> Busy{Question already<br/>in flight?}
+ Busy -->|Yes| Drop[Drop it<br/>answer already pending]
+ Drop --> NoReply
+
+ Busy -->|No| Resolve[Resolve grants<br/>from SQLite, not the claim]
+ Resolve --> Granted{Granted?}
+
+ Granted -->|Unknown or none| Deny[Deny + notify<br/>queue access request]
+ Deny --> DenyPush[pushMessage<br/>Thai no-permission notice]
+ DenyPush --> NoReply
+
+ Granted -->|Yes| BranchCtx[Branch context<br/>allowed branches only]
+ BranchCtx --> Prompt[Build prompt<br/>role + scope + tools]
+ Prompt --> Tools[MCP tools<br/>allow-listed, signed scope]
+ Tools --> LLM[LLM + tool loop<br/>maxSteps = 2]
+
+ LLM --> Throws{Throws?}
+ Throws -->|Yes| Catch[Catch + log<br/>best-effort reply]
+ Catch --> RetryPush[pushMessage<br/>Thai retry notice]
+ RetryPush --> Shown
+
+ Throws -->|No| Push[pushMessage<br/>reply token has expired]
+ Push --> Shown([Answer appears in the chat])
+
+ classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+ classDef process fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
+ classDef decision fill:#FFD700,stroke:#333,stroke-width:2px,color:black
+ classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
+ classDef quiet fill:#D3D3D3,stroke:#555,stroke-width:2px,color:black
+
+ class Start,Shown startEnd
+ class Hook,Ack,Detach,Resolve,BranchCtx,Prompt,Tools,LLM process
+ class Sig,Busy,Granted,Throws decision
+ class Reject,Deny,DenyPush,Catch,RetryPush,Drop error
+ class NoReply quiet

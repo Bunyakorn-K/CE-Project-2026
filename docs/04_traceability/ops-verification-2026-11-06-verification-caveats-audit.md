@@ -75,16 +75,30 @@ says the branch shuts — a deliberate ops action, not a code gap.
 
 ### LINE redirect / sign-out
 
-**Unit + Playwright only; needs one real LINE client press.**
+**Redirect PASSES in production. Sign-out FAILS — measured 2026-11-07, defect
+open, caveat NOT promoted.** Record:
+`docs/04_traceability/ops-verification-2026-11-07-line-redirect-signout-production.md`.
 
-| Leg | Evidence | Gap |
+The plan named LINE for PC as the required client, and measurement shows that is
+the one client that cannot reach the code path: LINE documents the LINE URL
+scheme (`https://liff.line.me/{liffId}`) as unsupported on PC, and `liff.login()`
+cannot be used inside a LIFF browser at all. The run therefore used a real LINE
+app on Android (emulator) driving production in Android Chrome — real account,
+real `liff.login()` redirect, no seeded session.
+
+| Leg | Evidence | Status |
 |---|---|---|
-| Post-LINE-redirect navigation (`decideAfterSignIn`) | 7 unit tests (`liff-gate.test.ts`), each guard mutation-verified ×4; 3 Playwright specs (`stale-liff-session.pw.ts`) | Defect needs `liff.login()` redirect — a desktop browser cannot perform it |
-| Sign-out session revocation | 2 unit tests (`app-shell.test.ts`, content-type + `credentials` mutations); 2 Playwright specs (assert `/api/me` 401 after, not URL) | Revoking a real production cookie needs the owner's credentials |
-| Stale-session gate | `decideGate` unit tests (`liff-gate.test.ts`) + Playwright (LINE unreachable) | A **real expired token** cannot be reproduced — LIFF SDK validates the cached token first and discards a seeded store; the specs use an unreachable LINE as the proxy cause |
+| Post-LINE-redirect navigation (`decideAfterSignIn`) | One press at `18:18:14Z` → `/dashboard`; `/api/me` **200**; KPI rendered (`แถว usage ที่ได้: 818`, window `2026-11-03…2026-11-09`); `/privacy` `18:19:13Z` and `/terms` `18:19:18Z` both stayed on the document | ✅ production-verified (Android Chrome + real LINE app; **not** the LIFF-browser press) |
+| Sign-out session revocation | `POST /api/auth/sign-out` `ct=application/json` → 200 and `POST /api/auth/liff/logout` → 200, then `POST /api/auth/liff/exchange` → 200 at `+0.58s`, `GET /api/me` → **200**, browser back on `/dashboard` | ❌ **defect** — the gate re-mints the session from the still-cached LINE token |
+| Revocation itself | `liff/logout` alone → `/api/me` **401**; cookies+storage cleared → **401** | ✅ the server revokes; the client undoes it |
+| Stale-session gate | `decideGate` unit tests + Playwright (LINE unreachable) | unchanged — a **real expired token** still cannot be reproduced |
 
-One LINE-client press (sign-in → dashboard) + one sign-in/sign-out cycle
-would close these. Not a code gap.
+Mechanism: `handleSignOut` ends in `window.location.replace("/login")`
+(`apps/web/src/lib/components/app-shell.tsx:81`), and `LiffGate`'s mount effect
+(`apps/web/src/lib/components/liff-gate.tsx:306-357`) exchanges a live token on
+**every** path with no "just signed out" state. Fix plan:
+`docs/superpowers/plans/2026-11-08-sign-out-reauthentication-defect.md`.
+
 
 ### CI deploy (`release.yml` / `ci.yml`)
 
@@ -112,5 +126,5 @@ any automated deploy touches production.
 | ML ≥90 days | ⏳ Waiting on elapsed time |
 | Narrow-grant (production) | Needs single-branch account creation |
 | `closed` rendering (production) | Unreachable — schedule is 24/7 |
-| LINE redirect/sign-out (real client) | Needs one LINE-client press + one sign-out cycle |
+| LINE redirect/sign-out (real client) | Redirect ✅ production-verified (Android Chrome + real LINE app); sign-out ❌ **fails** — the gate re-authenticates after revocation; fix plan open |
 | CI deploy | GitHub config only (secrets + `production` env) |

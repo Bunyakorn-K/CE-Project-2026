@@ -1,0 +1,84 @@
+%% Digital Twin - sequence: how machine state is derived, not read live
+%% Sources: apps/web/src/routes/_authenticated/dashboard.tsx (parallel twin fetch),
+%%          apps/api/src/index.ts (/api/twin, /api/report/live, resolveReportScope),
+%%          apps/api/src/report/clickhouse-report.ts (queryMachineStates, buildMachineStateSQL,
+%%          buildBranchHoursSQL, queryBranchHours, usageFreshnessOf, resolveBranchOpenState),
+%%          apps/web/src/lib/branch-availability-view.ts (effectiveAvailability),
+%%          apps/web/src/lib/machine-status.ts (freshnessMeta, branchOpenStateMeta)
+sequenceDiagram
+    autonumber
+    participant Exec as Executive (owner)
+    participant Web as Web dashboard
+    participant API as LaundryTwin API
+    participant Guard as Access guard
+    participant CH as ClickHouse
+    participant Dwh as Warehouse tables
+
+    Note over Exec,Dwh: 1. The twin is requested with the dashboard
+
+    Exec->>Web: opens /dashboard (twin card is on the same page)
+    Web->>+API: GET /api/twin?from&to (no branchId for an owner)
+    API->>Guard: requireReportPrincipal + resolveReportScope
+    Guard-->>API: owner, so scope = undefined (all branches)
+
+    Note over API,Dwh: 2. Two independent queries, deliberately not joined
+
+    par Machine state
+        API->>+CH: buildMachineStateSQL(from, to, branchId = '')
+        CH->>Dwh: dim_machine FINAL JOIN dim_branch FINAL<br/>LEFT JOIN fact_machine_usage FINAL
+        Note over CH: argMax(status, started_at) = latest status<br/>max(started_at) = last activity<br/>countIf(status IN paid, finished) = cycle count
+        Dwh-->>CH: one row per machine
+        CH-->>-API: rows
+    and Opening hours (best effort)
+        API->>+CH: buildBranchHoursSQL(branchId)
+        Note over API,CH: a SEPARATE query on purpose: dim_branch_hours<br/>does not exist on every warehouse, and a JOIN would fail<br/>the whole machine query with Code 60 UNKNOWN_TABLE
+        alt table exists
+            CH->>Dwh: dim_branch_hours FINAL
+            Dwh-->>CH: open_minute / close_minute / open_days
+            CH-->>API: hours
+        else table missing or query fails
+            CH-->>API: empty map (no schedule)
+            Note over API,CH: failure degrades to "unknown" schedule,<br/>it never fails the twin
+        end
+        deactivate CH
+    end
+
+    Note over API,Dwh: 3. Three states, never collapsed into two
+
+    API->>API: usageFreshnessOf(lastActiveAt)<br/>fresh (<= 30 min) / stale / unavailable
+    API->>API: resolveBranchOpenState(hours, timezone, now)<br/>open / closed / unknown
+    API->>API: hasUsageRows = usage_rows > 0
+
+    alt machine has usage rows
+        API->>API: cycleCount = counted cycles<br/>cycleCountSource = "usage_row"
+        Note over API: a real 0 stays a real 0
+    else no usage rows in the window
+        API->>API: cycleCount = null<br/>cycleCountSource = "unavailable"
+        Note over API: null is "not measured",<br/>never "measured zero"
+    end
+
+    API-->>-Web: 200 machines[], availability = usage-derived
+    Note over API,Web: source = clickhouse, and fetchedAt is stamped
+
+    Note over Web,Dwh: 4. The web decides what may be claimed
+
+    Web->>Web: freshnessMeta(freshness) -> Thai label
+    Web->>Web: effectiveAvailability(freshness, branchOpenState)
+
+    alt branch positively closed
+        Note over Web: render "closed according to opening hours"<br/>in a neutral pill, not red
+    else branch open, or schedule unknown
+        Note over Web: pass freshness through UNCHANGED -<br/>an unknown schedule must not suppress a real fault
+    end
+
+    Web-->>Exec: twin grid: status, freshness, cycle count + basis
+
+    Note over Exec,Dwh: 5. What the twin is NOT
+
+    Note over Exec,Dwh: fact_machine_event holds 0 rows (measured on the VM),<br/>so no live telemetry exists. Twin state is DERIVED from usage rows.
+    Note over Exec,Dwh: /api/report/events answers availability = "unavailable"<br/>with a reason, because an empty list would read as "no events happened".
+
+    alt analytics source unreachable
+        API-->>Web: 503 ANALYTICS_SOURCE_UNAVAILABLE
+        Web-->>Exec: Thai message naming the source
+    end
