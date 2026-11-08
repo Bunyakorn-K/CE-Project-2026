@@ -64,6 +64,67 @@ export function loginSentRecently(): boolean {
   return true;
 }
 
+/**
+ * The browser has deliberately signed out, and must not be signed back in by
+ * anything except a press.
+ *
+ * Measured in production on 2026-11-08: pressing "ออกจากระบบ" revoked both
+ * sessions (`sign-out` 200, `liff/logout` 200) and then the gate's mount effect
+ * traded the still-cached LINE token for a **new** session 0.58 s later
+ * (`POST /api/auth/liff/exchange` 200, `GET /api/me` 200, back on `/dashboard`).
+ * The revocations were never broken — the page load the sign-out itself performs
+ * was re-authenticating, because `LiffGate` exchanges on every path and nothing
+ * recorded that the user had asked to leave.
+ *
+ * `"1"` is the only value that means signed out. Absent, unreadable or
+ * unrecognised reading is `false` on purpose: suppressing the automatic exchange
+ * for a first-time visitor would break sign-in for everyone, so only a marker
+ * this build wrote may suppress it. There is deliberately no expiry — a marker
+ * that lapses would silently restore the defect on the next reload, which is the
+ * state nobody inspects. The explicit press is the only thing that clears it.
+ */
+const SIGNED_OUT_KEY = "liff_signed_out";
+
+export function markLiffSignedOut(): void {
+  try {
+    localStorage.setItem(SIGNED_OUT_KEY, "1");
+  } catch {
+    // Private mode, disabled storage, quota. A sign-out must never throw here;
+    // the revocations have already been sent, and the marker is an extra lock.
+  }
+}
+
+export function isLiffSignedOut(): boolean {
+  try {
+    return localStorage.getItem(SIGNED_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function clearLiffSignedOut(): void {
+  try {
+    localStorage.removeItem(SIGNED_OUT_KEY);
+  } catch {
+    // See markLiffSignedOut.
+  }
+}
+
+/**
+ * Drop the SDK's cached tokens, so the next press is a real `liff.login()`
+ * rather than a silent exchange against a token that outlived the sign-out.
+ *
+ * A no-op when the SDK was never initialized — the marker still holds the line.
+ */
+export function logoutLiff(): void {
+  try {
+    liffInstance?.logout();
+  } catch {
+    // `logout()` is documented not to navigate and not to throw on an
+    // uninitialized SDK, but a sign-out must not depend on that promise.
+  }
+}
+
 /** Manual "Sign in with LINE" press: fire login() once, guarded. */
 export function manualLiffLogin(liffId: string): void {
   if (loginSentRecently()) return;
@@ -240,6 +301,11 @@ async function readIdToken(liff: typeof import("@line/liff")["default"]): Promis
  * continue.
  */
 export async function signInWithLiff(liffId: string): Promise<LiffIdentity | null> {
+  // The one place a sign-in starts, and therefore the only place the signed-out
+  // marker may be cleared. Presses reach here; neither the gate's mount effect
+  // nor a page load does, which is what keeps a sign-out from being undone by
+  // the next navigation.
+  clearLiffSignedOut();
   const liff = await initLiff(liffId);
 
   if (!liff?.isLoggedIn()) {

@@ -3,6 +3,7 @@ import {
   getLiffInitError,
   initLiff,
   isIdTokenExpired,
+  isLiffSignedOut,
   missingIdTokenReason,
   signInWithLiff,
   staleLiffSessionMessage
@@ -289,6 +290,56 @@ export function decideAfterSignIn(pathname: string, sessionUsable: boolean): str
   return normalizePath(pathname) === "/login" ? "/dashboard" : null;
 }
 
+/**
+ * What the gate should do with the LINE session it finds on mount.
+ *
+ * The defect this encodes was measured in production on 2026-11-08: the gate
+ * exchanges a live token on **every** path, so the full page load that
+ * `handleSignOut` performs to `/login` minted a new session immediately after
+ * the revocations succeeded (`POST /api/auth/liff/exchange` 200 at +0.58 s,
+ * `GET /api/me` 200, browser back on `/dashboard`). Sign-out revoked and then
+ * the client re-authenticated itself.
+ *
+ * `signedOut` is checked **before** the expiry branch on purpose. A signed-out
+ * browser holds a perfectly good token — that is exactly why it must not be
+ * traded for a session — and sending it down the stale path would show the
+ * "เซสชัน LINE หมดอายุแล้ว" card, a false statement about a token that has not
+ * expired.
+ *
+ * `isLoggedIn` is part of the decision rather than assumed by the caller so the
+ * function is total and the caller's early return cannot be dropped unnoticed.
+ */
+export type MountExchange = "idle" | "stale" | "exchange";
+
+export function decideMountExchange(input: {
+  isLoggedIn: boolean;
+  idToken: string | null | undefined;
+  signedOut: boolean;
+  now?: number;
+}): MountExchange {
+  if (!input.isLoggedIn) return "idle";
+  if (input.signedOut) return "idle";
+  return isIdTokenExpired(input.idToken, input.now) ? "stale" : "exchange";
+}
+
+/**
+ * The same decision, with the marker read here rather than passed in.
+ *
+ * This exists so the storage→decision seam is testable. It is one line, but it
+ * is the line that decides whether a stray `liff_signed_out` value suppresses
+ * sign-in: `decideMountExchange` takes `signedOut` as a boolean and cannot see
+ * how it was produced, so a widened read (`!== null`, "any truthy value") would
+ * pass every test of the pure function while breaking first-time sign-in. The
+ * gate calls this and nothing else.
+ */
+export function decideMountExchangeForThisBrowser(input: {
+  isLoggedIn: boolean;
+  idToken: string | null | undefined;
+  now?: number;
+}): MountExchange {
+  return decideMountExchange({ ...input, signedOut: isLiffSignedOut() });
+}
+
 export function LiffGate({ children }: PropsWithChildren) {
   const [state, setState] = useState<State>("loading");
   const [phase, setPhase] = useState<Phase>("init");
@@ -328,12 +379,23 @@ export function LiffGate({ children }: PropsWithChildren) {
         const [profile, idToken] = await Promise.all([liff.getProfile(), liff.getIDToken()]);
         if (cancelled) return;
         if (!idToken) throw new Error(await missingIdTokenReason(liff));
+        const action = decideMountExchangeForThisBrowser({ isLoggedIn: true, idToken });
+        if (action === "idle") {
+          // Signed out deliberately. The API is still asked, because a session
+          // created elsewhere (another tab, another press) is the server's fact
+          // and not this browser's to assume — but LINE is not asked for a new
+          // one, which is the whole point.
+          setSessionUsable(await probeSession(controller.signal));
+          if (cancelled) return;
+          setState("ready");
+          return;
+        }
         // Checked BEFORE the exchange. LIFF reports a stale token as a perfectly
         // good one — isLoggedIn() is true and getIDToken() returns it happily —
         // so the API is the only place the expiry surfaces, and its answer is
         // an opaque failure. Catching it here lets the user re-login instead of
         // retrying an exchange that cannot succeed.
-        if (isIdTokenExpired(idToken)) {
+        if (action === "stale") {
           setSessionUsable(await probeSession(controller.signal));
           if (cancelled) return;
           setState("stale");
