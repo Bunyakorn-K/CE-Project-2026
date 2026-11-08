@@ -2234,3 +2234,41 @@ and `docker compose up -d etl`; restore the DAG from
 `/opt/laundrytwin-rollback/`. Rolling back the DAG **removes
 `check_usage_continuity` from production**, which is a real loss of detection —
 it is the check that makes a fresh-but-holey warehouse visible.
+
+## Deploy record — 2026-11-09, sign-out fix only (`4fb470d`)
+
+One service, one image, no Caddy change. This is the deploy that makes
+`ออกจากระบบ` hold: the previous image revoked both sessions and then the gate
+re-authenticated from the still-cached LINE token 0.58 s later (measured
+2026-11-08). Full measurement, traces and before/after table:
+`docs/04_traceability/ops-verification-2026-11-09-sign-out-holds.md`.
+
+| Component | Action | Rollback |
+|---|---|---|
+| `laundrytwin-app-1` | recreated on `laundrytwin:deploy-4fb470d-20261109` | `APP_IMAGE=laundrytwin:deploy-ffa4e15-20261002`, then `docker compose up -d app` |
+| Caddy | **untouched** — the port does not move | n/a |
+| ETL, gas, weather, analytics stack | untouched (`Up 4 weeks` / unchanged) | n/a |
+
+- **Backup first, through the API**: `db.backup()` inside the container →
+  `/data/backup-pre-signoutfix-20261108T184619Z.sqlite`, 229,376 bytes,
+  `integrity_check: ok`, 15 tables, 5 users, 4 `access_grant`, 6 `session`.
+  `/opt/laundrytwin/.env` copied to `.env.bak-20261109-pre-signoutfix`.
+- **Image verified by running it before it was loaded**: the built image's own
+  `/app/public/assets` carry `liff_signed_out` and the ordered sequence
+  `Promise.allSettled([...]), mark, dropLiffToken, clearClientSession, replace`.
+- **Transfer**: `docker save | gzip -1 | ssh … | docker load` (32 s).
+  Image ID differs after load — **8/8 RootFS layer digests identical**.
+- **Smoke, identical to baseline on both hostnames**: `/health` 200 JSON,
+  `/` `/login` `/privacy` `/terms` `/playground` 200 HTML, `/api/me` 401,
+  `/api/__smoke__` 404, `POST /nope` 404, traversal 404.
+- **Only intended change**: entry chunk `index-BGIBi0Rb.js` → `index-dD3HfW6M.js`;
+  `laundrytwin-app-1` **0 restarts**, healthy.
+- **Production re-measurement, same emulator harness**: both revocations 200,
+  **no** `/api/auth/liff/exchange`, `/api/me` **401**, `/login` with the sign-in
+  form; a reload while signed out makes exactly one API call; one press signs in
+  again and clears the marker.
+
+**A local `pnpm build` without `VITE_LIFF_ID` strips the LIFF branches**, so its
+chunk hashes differ from the image's. Grep the image, not `apps/web/dist`.
+
+**Rolling back to `deploy-ffa4e15-20261002` restores the defect.**
