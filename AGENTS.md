@@ -481,6 +481,27 @@ the owner's credentials, which were not requested or handled, so one
 sign-in/sign-out cycle in a browser is what would close it. **Rolling back to
 `deploy-504a244-20261002` restores the defect.**
 
+**That fix made the revocation land; it did not make the sign-out hold.
+Re-measured in production on 2026-11-08** (real LINE app on Android, Android
+Chrome driven over CDP): both revocations answered 200 and **0.58 s later
+`POST /api/auth/liff/exchange` answered 200, `GET /api/me` answered 200, and the
+browser was back on `/dashboard`.** The revocations were never at fault — the
+full page load the sign-out performs remounts `LiffGate`, which exchanges a live
+token on *every* path, and nothing recorded that the user had asked to leave.
+`liff/logout` is load-bearing and cannot be "simplified" away: Better Auth's
+`sign-out` answers 200 for a `laundrytwin_liff_session` and revokes nothing.
+The fix in `main` is a `liff_signed_out` marker, written before the navigation
+and cleared only by `signInWithLiff`, with `decideMountExchange` putting
+`signedOut` ahead of the stale branch, plus `liff.logout()` to drop the cached
+token. **Not deployed**, so production still signs the user back in.
+Record: `docs/04_traceability/ops-verification-2026-11-07-line-redirect-signout-production.md`;
+deploy and re-verification: Tasks 5–6 of
+`docs/superpowers/plans/2026-11-08-sign-out-reauthentication-defect.md`. The same
+run **verified the LINE redirect leg** — one press → `/dashboard`, `/api/me` 200,
+`/privacy` and `/terms` stay on the document — in Android Chrome with a real LINE
+app, which is *not* the LIFF-browser press, and it established that LINE for PC
+cannot open a LIFF URL at all.
+
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
 decided from the SDK's own state whether to render, so it could replace the
@@ -853,7 +874,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-10-03: 858 tests green** — API 485, web 268,
+Local automated evidence on **2026-11-08: 873 tests green** — API 485, web 283,
 ETL 105. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** ETL rose from 87 to 105 with the source coverage
 audit — 13 on the pure classifier and 5 on the source helpers behind it; see
@@ -861,7 +882,9 @@ audit — 13 on the pure classifier and 5 on the source helpers behind it; see
 redirect (7 tests; see the LINE double-press paragraph above for what the defect
 was), then to 236 with the sign-out that did not sign out (2 tests; see the
 sign-out paragraph above), then to 268 with the daily trend chart (32 tests; see
-the chart paragraph above). API rose from 420 to 471 with the closed-branch
+the chart paragraph above), then to 283 with the sign-out that did not hold — 11
+on the marker and `decideMountExchange`, 4 on the sign-out ordering, each of the
+five guards verified to fail against deliberately broken code. API rose from 420 to 471 with the closed-branch
 mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
 including that a warehouse without `dim_branch_hours` resolves every machine to
 `unknown` rather than failing the report, then to 485 with the dashboard's daily

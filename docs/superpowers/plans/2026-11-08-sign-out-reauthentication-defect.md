@@ -1,5 +1,10 @@
 # Sign-out must hold: stop the gate re-authenticating after revocation
 
+> **Status 2026-11-08: Tasks 1–4 done in `main`, Task 5–6 not started.**
+> 15 tests added (web 268 → 283); build, test and check green under Node 24.21.0;
+> marker and ordering confirmed in the built chunk. Nothing is deployed, so
+> production still re-authenticates after a sign-out.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** After `ออกจากระบบ`, no page load may mint a new session from the cached
@@ -105,7 +110,7 @@ where it is, before the decision.
 - Modify: `apps/web/src/lib/components/liff-gate.tsx` (export the decision first)
 - Create: `apps/web/src/lib/signed-out.test.ts`
 
-- [ ] **Step 1: Write the failing tests first**
+- [x] **Step 1: Write the failing tests first**
 
 `apps/web` runs vitest in the node environment with no `localStorage`, so stub it
 (`vi.stubGlobal`) with a Map-backed fake, the way `app-shell.test.ts` stubs
@@ -121,13 +126,13 @@ where it is, before the decision.
 // decideMountExchange: signed out AND expired → "idle", not "stale" (a sign-out is not a stale session)
 ```
 
-- [ ] **Step 2: Run them and record the failure**
+- [x] **Step 2: Run them and record the failure**
 
 `pnpm --filter @laundrytwin/web test` — they must fail on the missing export, not
 on a typo. The behavioural red already exists and is the recorded production
 trace; do not claim a unit test "reproduced" the defect.
 
-- [ ] **Step 3: Implement the marker**
+- [x] **Step 3: Implement the marker**
 
 In `liff.ts`, beside the login guard, with the same defensive style already used
 by `loginSentRecently` (storage can be absent or throw):
@@ -139,7 +144,7 @@ export function isLiffSignedOut(): boolean { try { return localStorage.getItem(S
 export function clearLiffSignedOut(): void { try { localStorage.removeItem(SIGNED_OUT_KEY); } catch {} }
 ```
 
-- [ ] **Step 4: Implement the decision**
+- [x] **Step 4: Implement the decision**
 
 In `liff-gate.tsx`, exported, with a comment on why `signedOut` outranks `stale`
 (a signed-out browser has a perfectly good token — that is exactly the point):
@@ -166,14 +171,14 @@ is total and the early return cannot be dropped unnoticed.
 - Modify: `apps/web/src/liff.ts`
 - Modify: `apps/web/src/lib/components/app-shell.test.ts`
 
-- [ ] **Step 1: Mark the sign-out before the navigation**
+- [x] **Step 1: Mark the sign-out before the navigation**
 
 In `handleSignOut`, after the `Promise.allSettled` and **before**
 `window.location.replace("/login")`: `markLiffSignedOut()`. It must not depend on
 any request succeeding. If the owner chose `liff.logout()`, call it here too —
 guarded, non-throwing, and never a reason to skip the marker.
 
-- [ ] **Step 2: Honour it in the gate**
+- [x] **Step 2: Honour it in the gate**
 
 Replace the inline `isIdTokenExpired` branch with `decideMountExchange`. On
 `idle`: `setSessionUsable(await probeSession(controller.signal)); setState("ready")`.
@@ -181,13 +186,13 @@ On `stale` and `exchange`: unchanged. Keep the existing `cancelled`/`controller`
 guards — that effect already has them and dropping one leaks a setState after
 unmount.
 
-- [ ] **Step 3: Clear it only on a press**
+- [x] **Step 3: Clear it only on a press**
 
 First line of `signInWithLiff` (`liff.ts:242`): `clearLiffSignedOut()`. Nothing
 else clears it — in particular nothing on mount, which would re-arm the defect on
 the very next load.
 
-- [ ] **Step 4: Pin the ordering in `app-shell.test.ts`**
+- [x] **Step 4: Pin the ordering in `app-shell.test.ts`**
 
 Stub `fetch`, `localStorage` and `window.location.replace`; call the handler;
 assert the marker exists **at the moment** `replace` is called. The ordering is
@@ -197,7 +202,7 @@ the fix — a marker written after the navigation never lands.
 
 **Files:** none — this is verification.
 
-- [ ] **Step 1: Mutate one at a time and re-run**
+- [x] **Step 1: Mutate one at a time and re-run**
 
 | Mutation | Must fail |
 |---|---|
@@ -207,21 +212,21 @@ the fix — a marker written after the navigation never lands.
 | clear the marker on mount instead of on press | the app-shell ordering test |
 | `isLiffSignedOut()` throwing when storage is unavailable | the private-mode case |
 
-- [ ] **Step 2: Report the mapping**
+- [x] **Step 2: Report the mapping**
 
 State which assertion failed for each mutation. A mutation that only bites when
 the code is already correct is a tautology — say so instead of counting it.
 
 ### Task 4: Local gates
 
-- [ ] **Step 1: Build before test** — `spa-bundle.test.ts` reads the real
+- [x] **Step 1: Build before test** — `spa-bundle.test.ts` reads the real
   `apps/web/dist` and **fails** rather than skips without it. Order matters.
 
 ```bash
 pnpm build && pnpm test && pnpm check
 ```
 
-- [ ] **Step 2: Read the shipped bytes** — `liff_signed_out` and the decision must
+- [x] **Step 2: Read the shipped bytes** — `liff_signed_out` and the decision must
   appear in a built chunk (`apps/web/dist/assets/*.js`). A fix that is not in the
   chunk is not a fix; note that route code is lazily imported, so follow the
   router manifest rather than grepping `index.html`.
