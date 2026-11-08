@@ -24,6 +24,10 @@ apps/etl/.tmp/
 .firecrawl/
 .claude/
 .opencode/
+.archify/
+
+# Coverage / profiling output
+*.profraw
 
 # TypeScript build info
 *.tsbuildinfo
