@@ -1,9 +1,12 @@
 # Sign-out must hold: stop the gate re-authenticating after revocation
 
-> **Status 2026-11-08: Tasks 1–4 done in `main`, Task 5–6 not started.**
-> 15 tests added (web 268 → 283); build, test and check green under Node 24.21.0;
-> marker and ordering confirmed in the built chunk. Nothing is deployed, so
-> production still re-authenticates after a sign-out.
+> **Status 2026-11-09: complete — deployed and verified in production as
+> `laundrytwin:deploy-4fb470d-20261109`.** Both revocations 200, no
+> `/api/auth/liff/exchange`, `GET /api/me` 401, sign-in page visible; a reload
+> while signed out made exactly one API call (`/api/me`, 401); one press signed
+> in again and cleared the marker. Record:
+> `docs/04_traceability/ops-verification-2026-11-09-sign-out-holds.md`.
+> 15 tests added (web 268 → 283); build, test and check green under Node 24.21.0.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -233,13 +236,13 @@ pnpm build && pnpm test && pnpm check
 
 ### Task 5: Deploy through the runbook gate
 
-- [ ] **Step 1: The runbook, not a shortcut.** SQLite backup via `db.backup()` and
+- [x] **Step 1: The runbook, not a shortcut.** SQLite backup via `db.backup()` and
   verified (`integrity_check`, table and row count) — a file copy captures a 4 KB
   stub and zero rows. One image (`linux/amd64`) carrying both halves;
   `APP_IMAGE` pinned in `/opt/laundrytwin/.env`; rollback target recorded; Caddy
   untouched because the port does not change.
 
-- [ ] **Step 2: Public status matches the baseline.** `/health` 200 JSON,
+- [x] **Step 2: Public status matches the baseline.** `/health` 200 JSON,
   `/login`, `/privacy`, `/terms` 200 HTML, `/api/me` 401 unauthenticated, app
   container `0` restarts.
 
@@ -248,13 +251,13 @@ pnpm build && pnpm test && pnpm check
 **Files:**
 - Create: `docs/04_traceability/ops-verification-<date>-sign-out-holds.md`
 
-- [ ] **Step 1: Same device, same method.** Emulator `ltline` (Pixel 6, API 35),
+- [x] **Step 1: Same device, same method.** Emulator `ltline` (Pixel 6, API 35),
   Android Chrome over CDP (`adb forward tcp:9222 localabstract:chrome_devtools_remote`,
   a small Node `WebSocket` client on `Network.*`), real LINE login. This is the
   harness that produced the defect trace; reusing it keeps the before/after
   comparable.
 
-- [ ] **Step 2: Require all four, in one trace**
+- [x] **Step 2: Require all four, in one trace**
 
 ```
 POST /api/auth/sign-out      ct=application/json   → 200
@@ -264,11 +267,11 @@ GET  /api/me                                       → 401
 visible surface: sign-in form
 ```
 
-- [ ] **Step 3: Prove the sign-in leg still works.** One press → exchange →
+- [x] **Step 3: Prove the sign-in leg still works.** One press → exchange →
   `/dashboard`; `/privacy` still does not redirect. Two presses means the marker
   is cleared too late and the fix is wrong.
 
-- [ ] **Step 4: Record, then decide promotion.** Write the ops record with the
+- [x] **Step 4: Record, then decide promotion.** Write the ops record with the
   trace, timestamps, chunk hashes and an explicit "what this does NOT establish".
   Promote the sign-out leg in
   `ops-verification-2026-11-06-verification-caveats-audit.md` **only if** every

@@ -493,11 +493,14 @@ token on *every* path, and nothing recorded that the user had asked to leave.
 The fix in `main` is a `liff_signed_out` marker, written before the navigation
 and cleared only by `signInWithLiff`, with `decideMountExchange` putting
 `signedOut` ahead of the stale branch, plus `liff.logout()` to drop the cached
-token. **Not deployed**, so production still signs the user back in.
-Record: `docs/04_traceability/ops-verification-2026-11-07-line-redirect-signout-production.md`;
-deploy and re-verification: Tasks 5–6 of
-`docs/superpowers/plans/2026-11-08-sign-out-reauthentication-defect.md`. The same
-run **verified the LINE redirect leg** — one press → `/dashboard`, `/api/me` 200,
+token. **Deployed as `deploy-4fb470d-20261109` and re-measured on the same
+device**: both revocations 200, **no** `liff/exchange` on the load that follows,
+`/api/me` **401**, `/login` with the sign-in form; a reload while signed out makes
+exactly one API call (`/api/me`, 401), and one press then signs in and clears the
+marker. Record: `docs/04_traceability/ops-verification-2026-11-09-sign-out-holds.md`
+(defect and before-state: `…-2026-11-07-line-redirect-signout-production.md`).
+**Rolling back to `deploy-ffa4e15-20261002` restores the defect.** The same run
+**verified the LINE redirect leg** — one press → `/dashboard`, `/api/me` 200,
 `/privacy` and `/terms` stay on the document — in Android Chrome with a real LINE
 app, which is *not* the LIFF-browser press, and it established that LINE for PC
 cannot open a LIFF URL at all.

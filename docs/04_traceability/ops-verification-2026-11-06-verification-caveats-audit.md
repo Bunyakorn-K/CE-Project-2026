@@ -89,15 +89,16 @@ real `liff.login()` redirect, no seeded session.
 | Leg | Evidence | Status |
 |---|---|---|
 | Post-LINE-redirect navigation (`decideAfterSignIn`) | One press at `18:18:14Z` → `/dashboard`; `/api/me` **200**; KPI rendered (`แถว usage ที่ได้: 818`, window `2026-11-03…2026-11-09`); `/privacy` `18:19:13Z` and `/terms` `18:19:18Z` both stayed on the document | ✅ production-verified (Android Chrome + real LINE app; **not** the LIFF-browser press) |
-| Sign-out session revocation | `POST /api/auth/sign-out` `ct=application/json` → 200 and `POST /api/auth/liff/logout` → 200, then `POST /api/auth/liff/exchange` → 200 at `+0.58s`, `GET /api/me` → **200**, browser back on `/dashboard` | ❌ **defect** — the gate re-mints the session from the still-cached LINE token |
-| Revocation itself | `liff/logout` alone → `/api/me` **401**; cookies+storage cleared → **401** | ✅ the server revokes; the client undoes it |
+| Sign-out session revocation | `POST /api/auth/sign-out` `ct=application/json` → 200 and `POST /api/auth/liff/logout` → 200, then `POST /api/auth/liff/exchange` → 200 at `+0.58s`, `GET /api/me` → **200**, browser back on `/dashboard` | ❌ defect found — fixed and re-measured below |
+| Sign-out after the fix (`deploy-4fb470d-20261109`) | Both revocations 200, **no** `/api/auth/liff/exchange`, `GET /api/me` **401** at `+2.53s`, `/login` with the sign-in form, `liff_signed_out="1"`; reload signed out made exactly one API call (`/api/me`, 401); one press then signed in and cleared the marker | ✅ production-verified — `docs/04_traceability/ops-verification-2026-11-09-sign-out-holds.md` |
+| Revocation itself | `liff/logout` alone → `/api/me` **401**; cookies+storage cleared → **401** | ✅ the server revokes; the client had been undoing it |
 | Stale-session gate | `decideGate` unit tests + Playwright (LINE unreachable) | unchanged — a **real expired token** still cannot be reproduced |
 
-Mechanism: `handleSignOut` ends in `window.location.replace("/login")`
-(`apps/web/src/lib/components/app-shell.tsx:81`), and `LiffGate`'s mount effect
-(`apps/web/src/lib/components/liff-gate.tsx:306-357`) exchanges a live token on
-**every** path with no "just signed out" state. Fix plan:
-`docs/superpowers/plans/2026-11-08-sign-out-reauthentication-defect.md`.
+Mechanism of the defect: `handleSignOut` ended in `window.location.replace("/login")`,
+and `LiffGate`'s mount effect exchanged a live token on **every** path with no
+"just signed out" state. Fixed by `liff_signed_out` (written before the
+navigation, cleared only by `signInWithLiff`) plus `liff.logout()`, with
+`decideMountExchange` putting `signedOut` ahead of the stale branch.
 
 
 ### CI deploy (`release.yml` / `ci.yml`)
@@ -126,5 +127,5 @@ any automated deploy touches production.
 | ML ≥90 days | ⏳ Waiting on elapsed time |
 | Narrow-grant (production) | Needs single-branch account creation |
 | `closed` rendering (production) | Unreachable — schedule is 24/7 |
-| LINE redirect/sign-out (real client) | Redirect ✅ production-verified (Android Chrome + real LINE app); sign-out ❌ **fails** — the gate re-authenticates after revocation; fix plan open |
+| LINE redirect/sign-out (real client) | Redirect ✅ production-verified (Android Chrome + real LINE app); sign-out ✅ production-verified after the fix (`deploy-4fb470d-20261109`): no re-exchange, `/api/me` 401 |
 | CI deploy | GitHub config only (secrets + `production` env) |
