@@ -75,10 +75,13 @@ which is the only way a unit test can catch a query that is never executed.
 
 - The DAG is scheduled (`*/5 * * * *`), fires on the minute, and now runs green
   because the endpoint answers 200 when the gas half evaluated.
-- Two consecutive scheduled runs succeeded with the summary in the log:
-  `scheduled__2026-11-09T11:00:00+00:00` and `scheduled__2026-11-09T11:05:00+00:00`
-  (the 11:05 log is the one quoted above). The three runs before the fix all
-  failed — `manual__2026-11-09T10:06:39`, `scheduled__…T10:20:00`, `scheduled__…T10:25:00`.
+- Three consecutive scheduled runs succeeded with the summary in the log:
+  `scheduled__2026-11-09T11:00:00+00:00`, `…T11:05:00` (the one quoted above) and
+  `…T11:10:00`. The three runs before the fix all failed —
+  `manual__2026-11-09T10:06:39`, `scheduled__…T10:20:00`, `scheduled__…T10:25:00`.
+- The 11:10 run used the updated DAG and printed, verbatim:
+  `WARNING: the IRIS alert list was not read (state=unavailable, reason=reporting_source_unavailable); only the gas rules were evaluated, so \`scanned\` is a gap and not a zero.`
+  — so the gap is in every log, not only in this record.
 - The gas rules evaluate against production rows: coverage 97.9 / 99.2 / 99.5 %,
   NULL minutes counted rather than coerced, `gas_detector_*` excluded by the typed
   channel list.
