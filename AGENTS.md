@@ -78,15 +78,16 @@ current product authority.
 | Superset bootstrap (#42) | Done (2026-09-13) | `deploy/analytics/bootstrap-superset.sh` |
 | Airflow Postgres (#42) | Done (2026-09-13) | `docs/04_traceability/ops-verification-2026-09-13-airflow-superset.md` |
 
-Data volume is **~8,000 non-synthetic usage rows over ~70 calendar days**, which
-is still short of the ≥ 3 months (90 days) needed for Prophet/SARIMA/GBM
-candidates — sufficient for the percentile baseline only. **The exact row
-count, its measurement date, and the day-coverage gaps are stated in one place
-only: `docs/06_ml/ml-training-data-guide.md` §5 and §9.1. Do not restate the
-number here.** It moves as the ETL ingests the IRIS backlog and as recovery
-merges land, so any figure quoted without a measurement date is stale. One gap
-day is a genuine source gap, not an artefact — a missing day in a training
-series is a discontinuity, not a zero.
+Data volume is **110 distinct business days over a 111-day span** as measured on
+2026-11-09, which **clears the ≥ 3 months (90 days) gate** that blocked
+Prophet/SARIMA/GBM for months — the gate released itself and no document
+noticed. **The exact row count, its measurement date, and the day-coverage gaps
+are stated in one place only: `docs/06_ml/ml-training-data-guide.md` §5 and
+§9.1. Do not restate the number here.** It moves as the ETL ingests the IRIS
+backlog and as recovery merges land, so any figure quoted without a measurement
+date is stale. One gap day is a genuine source gap, not an artefact — a missing
+day in a training series is a discontinuity, not a zero, and `fact_ml_features`
+emits it as NULL for exactly that reason.
 
 The 2026-09-30 recovery merge closed a 17-day hole (2026-08-31 → 2026-09-16)
 the live warehouse was missing — see
@@ -886,9 +887,15 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-11-09: 893 tests green** — API 485, web 303,
-ETL 105. **This is the only place the count is recorded; `README.md` points here
-rather than repeating it.** ETL rose from 87 to 105 with the source coverage
+Local automated evidence on **2026-11-09: 967 tests green** — API 547, web 303,
+ETL 117. **This is the only place the count is recorded; `README.md` points here
+rather than repeating it.** The 2026-11-09 batch added 62 API tests: 19 for the
+scheduled alert sweep and the gas wiring inside it (R05/R06), 29 for the
+gas-pressure trend decision itself, and 14 for the AI audit (R08/F-07, including
+the purge route that could not run at all). The ETL gained 12 for
+`fact_ml_features` (R09), so 105 → 117, and the API went 485 → 547. Every guard
+in those 62 was checked against deliberately broken code, one failure at a
+time. ETL rose from 87 to 105 with the source coverage
 audit — 13 on the pure classifier and 5 on the source helpers behind it; see
 `docs/04_traceability/ops-verification-2026-10-02-source-coverage-audit.md`. Web rose from 227 to 234 with the post-sign-in
 redirect (7 tests; see the LINE double-press paragraph above for what the defect

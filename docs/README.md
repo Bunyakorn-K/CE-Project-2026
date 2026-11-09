@@ -86,6 +86,10 @@ Ops records, most recent first:
 
 | File | What it establishes |
 |---|---|
+| [`ops-verification-2026-11-09-ml-dataset-and-candidates.md`](04_traceability/ops-verification-2026-11-09-ml-dataset-and-candidates.md) | R09: the guide's numbers re-measured, `fact_ml_features` built (456 NULLs = the gap day), four candidates vs seasonal-naive, **adopt none** |
+| [`ops-verification-2026-11-09-ai-audit.md`](04_traceability/ops-verification-2026-11-09-ai-audit.md) | R08/F-07: AI tool calls audited with digests, a real `/api/ai/chat` call's rows quoted, two latent defects fixed |
+| [`ops-verification-2026-11-09-gas-trend-evaluation.md`](04_traceability/ops-verification-2026-11-09-gas-trend-evaluation.md) | R06: the gas trend decision and its evidence; the gate corrected to the edge rate by a production measurement; **no sweep has run** |
+| [`ops-verification-2026-11-09-alert-sweep-scheduled.md`](04_traceability/ops-verification-2026-11-09-alert-sweep-scheduled.md) | R05: the sweep route and DAG built and tested; **not deployed, R05 still open** |
 | [`ops-verification-2026-09-30-warehouse-data-recovery.md`](04_traceability/ops-verification-2026-09-30-warehouse-data-recovery.md) | the 17-day hole, the 2026-09-17 rollback, and **the two still-missing restore-time guards.** Read §1 before any restore, backup, volume swap, or host migration |
 | [`ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md`](04_traceability/ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md) | Airflow restarts are Postgres cluster reinitializations. 59 of them. Trigger still unidentified |
 | [`ops-verification-2026-09-30-temperature-dedup-migration.md`](04_traceability/ops-verification-2026-09-30-temperature-dedup-migration.md) | 3,762,139 → 2,258,219, and why a reload from IRIS was impossible |
