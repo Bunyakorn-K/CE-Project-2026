@@ -112,6 +112,48 @@ assumed.
   mode 644 and is not read by anything. It should be removed or made 600; the
   server has its own copy.
 
+## Card v2: four facts, a button, and the page behind it (`469a751`)
+
+The first card carried nine rows. The reader was asked to parse all of them on a
+phone to find the two that decide anything, so v2 keeps four — channel, pressure,
+gating rate, machine state — at 16px bold against 13px labels under a 22px title,
+and moves the rest behind a button.
+
+The button is a LIFF deep link, `https://liff.line.me/2011592166-uToRdTwS/alerts/<id>`,
+built from `LIFF_ID` and omitted when that variable is unset, because a button
+that goes nowhere is worse than no button. Alert ids contain colons, so the path
+segment is percent-encoded; the router decodes it.
+
+That link opens `/alerts/<id>`, backed by `GET /api/alerts/:id`, which returns the
+alert **as it was sent** from `alert_notification` — every evidence row in
+decision order, the ambient's age, coverage and NULL minutes, the message body
+verbatim, the raw evidence JSON, and an acknowledge button. Authorisation is
+narrow on purpose: a recipient of that alert, or branch access to the branch it
+names; otherwise 403, and an unknown id is 404 rather than an empty body.
+
+Measured after deploy (`deploy-469a751-20261109`, healthy):
+
+```text
+GET /alerts/gas%3A…%3A2026-11-09T16   200   (SPA shell index-C6cTnvQf.js)
+GET /api/alerts/gas%3A…%3A2026-11-09T16   401   (no session — route exists, auth enforced)
+POST https://api.line.me/v2/bot/message/validate/push   200 {}   (the exact card, with the button)
+```
+
+Delivery, unassisted, from the schedule:
+
+| run | alerts | status | delivered_at |
+|---|---|---|---|
+| `scheduled__2026-11-09T15:20:00` | `gas:…run_a:declining:2026-11-09T15`, `gas:…run_b:declining:2026-11-09T15` | sent | 1794237602049 (15:20:02Z) |
+| `scheduled__2026-11-09T16:25:00` | `gas:…run_a:declining:2026-11-09T16`, `gas:…run_b:declining:2026-11-09T16` | sent | 1794241501541 (16:25:01Z) |
+
+Notification rows at 16:36 UTC: `sent: 8, failed: 4`. The four failures are the
+pre-credential history and have not changed.
+
+Not verified here: that the delivered message rendered as a card rather than the
+text fallback (the row stores text either way), and the authenticated rendering of
+the detail page — opening it from the button is the check, and it needs the
+owner's own session.
+
 ## The card, delivered by the scheduler (`cfb12ed`)
 
 The alert is a Flex Message now: a coloured header by severity, one labelled row
