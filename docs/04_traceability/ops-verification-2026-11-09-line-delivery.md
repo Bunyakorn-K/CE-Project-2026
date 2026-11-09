@@ -94,10 +94,20 @@ assumed.
 - **Not delivered, still**: anything sourced from IRIS. `iris.state: unavailable`
   is in the same response, because production sets no `IRIS_READ_BASE_URL`. The
   mechanism is proven; half of its inputs are not.
-- **Inbound** is still off: `LINE_CHANNEL_SECRET` was placed but the app only reads
-  it for webhook signature validation, and a secret that was empty at deploy time
-  is now present — that path needs its own test with a signed payload before it can
-  be called working.
+- **Inbound signature validation now works**, tested with three payloads against
+  the live container:
+
+  ```text
+  POST /webhooks/line  (no signature)            → 401
+  POST /webhooks/line  (x-line-signature: AAAA…) → 401
+  POST /webhooks/line  (HMAC-SHA256 of the body   → 200 {"ok":true}
+                        base64, events: [])
+  ```
+
+  So a forged event is refused and a correctly signed one is accepted. What that
+  does *not* prove is a real LINE delivery of an inbound event through the bot's
+  handler — that needs an actual message from a user, and the empty-events payload
+  exercises the signature gate and the ack only.
 - **The Mac copy of the credentials** at `/opt/laundrytwin/.env` is `root:wheel`
   mode 644 and is not read by anything. It should be removed or made 600; the
   server has its own copy.
