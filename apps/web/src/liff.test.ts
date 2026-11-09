@@ -122,31 +122,43 @@ describe("planLineSignIn", () => {
     // any logged-in session and returned, so pressing it destroyed a perfectly
     // valid session and exchanged nothing. The user never reached the
     // dashboard. Logging out here is the bug, not the safety measure.
-    expect(planLineSignIn({ isLoggedIn: true, idToken: LIVE, now: NOW })).toBe("exchange");
+    expect(planLineSignIn({ isLoggedIn: true, idToken: LIVE, isInClient: false, now: NOW })).toBe("exchange");
   });
 
   it("renews an expired token, because logout is what forces a new one", () => {
     // Without the logout the SDK replays the same dead token forever.
-    expect(planLineSignIn({ isLoggedIn: true, idToken: DEAD, now: NOW })).toBe("renew");
+    expect(planLineSignIn({ isLoggedIn: true, idToken: DEAD, isInClient: false, now: NOW })).toBe("renew");
+  });
+
+  it("renews by reload inside LINE, where login() cannot be used", () => {
+    // The SDK logs in during `liff.init()` in a LIFF browser and the docs state
+    // `liff.login()` cannot be called there. A renewal that called it anyway
+    // would be a no-op dressed as a fix, so the plan changes shape instead.
+    expect(planLineSignIn({ isLoggedIn: true, idToken: DEAD, isInClient: true, now: NOW })).toBe("renew-reload");
   });
 
   it("logs in when there is no session at all", () => {
-    expect(planLineSignIn({ isLoggedIn: false, idToken: null, now: NOW })).toBe("login");
+    expect(planLineSignIn({ isLoggedIn: false, idToken: null, isInClient: false, now: NOW })).toBe("login");
     // A first-time visitor must never be logged out of nothing.
-    expect(planLineSignIn({ isLoggedIn: false, idToken: LIVE, now: NOW })).toBe("login");
+    expect(planLineSignIn({ isLoggedIn: false, idToken: LIVE, isInClient: false, now: NOW })).toBe("login");
+    // Inside LINE the same is true: init() performs the login, so the press has
+    // nothing to renew either.
+    expect(planLineSignIn({ isLoggedIn: false, idToken: DEAD, isInClient: true, now: NOW })).toBe("login");
   });
 
   it("exchanges rather than renews when the token cannot be read", () => {
     // Unknown stays unknown: discarding a session over an unreadable cache
     // would sign out users whose token was fine. The exchange then reports the
     // real reason — missing openid scope, or no consent.
-    expect(planLineSignIn({ isLoggedIn: true, idToken: null, now: NOW })).toBe("exchange");
-    expect(planLineSignIn({ isLoggedIn: true, idToken: "garbage", now: NOW })).toBe("exchange");
+    expect(planLineSignIn({ isLoggedIn: true, idToken: null, isInClient: false, now: NOW })).toBe("exchange");
+    expect(planLineSignIn({ isLoggedIn: true, idToken: "garbage", isInClient: false, now: NOW })).toBe("exchange");
+    // …in both clients, because the input is the same unknown.
+    expect(planLineSignIn({ isLoggedIn: true, idToken: "garbage", isInClient: true, now: NOW })).toBe("exchange");
   });
 
   it("never renews on a logged-out session, whatever the token says", () => {
     // logout() on a session that is not there is meaningless, and a stale token
     // string left over from a previous visit must not drive the decision.
-    expect(planLineSignIn({ isLoggedIn: false, idToken: DEAD, now: NOW })).toBe("login");
+    expect(planLineSignIn({ isLoggedIn: false, idToken: DEAD, isInClient: false, now: NOW })).toBe("login");
   });
 });

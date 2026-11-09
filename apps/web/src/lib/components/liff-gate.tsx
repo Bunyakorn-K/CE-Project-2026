@@ -1,10 +1,16 @@
 import type { LiffIdentity } from "../../liff";
 import {
+  bumpRenewAttempts,
+  closeLiffWindow,
   getLiffInitError,
   initLiff,
   isIdTokenExpired,
+  isLiffInClient,
   isLiffSignedOut,
   missingIdTokenReason,
+  readRenewAttempts,
+  resetLiffLoginGuard,
+  resetRenewAttempts,
   signInWithLiff,
   staleLiffSessionMessage
 } from "../../liff";
@@ -13,7 +19,7 @@ import type { PropsWithChildren } from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { apiUrl } from "../api/client";
 
-type State = "loading" | "ready" | "error" | "stale";
+type State = "loading" | "ready" | "error" | "stale" | "terminal" | "denied";
 type Phase = "init" | "exchange" | "session";
 type ExchangeResponse = { user: { id: string; name: string; email: string }; roles: string[] };
 type ApiErrorResponse = { error?: { code?: string; message?: string } };
@@ -89,31 +95,203 @@ function reauthenticateWithLiff(liffId: string): void {
   })();
 }
 
+/** Thai copy for a throttle, carrying the one number that helps: how long to wait. */
+function rateLimitedMessage(retryAfterSeconds: number | null): string {
+  const wait = retryAfterSeconds && retryAfterSeconds > 0 ? `ประมาณ ${retryAfterSeconds} วินาที` : "สักครู่";
+  return `มีการพยายามเข้าสู่ระบบถี่เกินไป กรุณารอ${wait}แล้วลองใหม่`;
+}
+
+/**
+ * The screen after the renewal budget is spent.
+ *
+ * It carries no retry button on purpose: three renewals have already failed, so
+ * a fourth attempts the same thing with the user's click as the only variable.
+ * The action offered is the way out, plus the email sign-in for anyone who can
+ * reach the product without LINE at all.
+ */
+function LiffTerminalCard() {
+  return (
+    <main className="public-page liff-public-page">
+      <section className="public-card liff-message-card" role="alert">
+        <span className="brand-symbol" aria-hidden="true">LT</span>
+        <h1>LINE ส่งข้อมูลที่ยืนยันไม่ได้ซ้ำ ๆ</h1>
+        <p>
+          ลองเข้าสู่ระบบใหม่หลายครั้งแล้ว แต่ LINE ยังส่งข้อมูลที่ใช้ยืนยันตัวตนไม่ได้
+          ถ้าเครื่องนี้ตั้งเวลาไว้ผิด (นาฬิกาเครื่องคลาดเคลื่อนจากเวลาจริง) ให้แก้เวลาเครื่องแล้วเปิดหน้านี้ใหม่
+        </p>
+        <button type="button" onClick={closeLiffWindow} className="primary-button">
+          ปิดหน้านี้
+        </button>
+        <p className="liff-message-alt">
+          <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
+        </p>
+      </section>
+    </main>
+  );
+}
+
 class LiffExchangeError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string | null = null,
+    public readonly retryAfterSeconds: number | null = null
+  ) {
     super(message);
     this.name = "LiffExchangeError";
   }
 }
 
 /**
- * A token the API refused, as opposed to an API that could not be reached.
+ * Why an exchange failed, as a closed set the UI can act on.
  *
- * Only the former is fixed by signing in again. A 502 or 503 means LINE or the
- * channel config is the problem, and re-logging the user in would be noise.
+ * The API already tells these apart — `apps/api/src/index.ts:157-193` answers
+ * 401 `LIFF_TOKEN_REJECTED` / `LIFF_VERIFICATION_FAILED` for a token LINE will
+ * not accept, 429 with `Retry-After` when the caller is being throttled,
+ * 502/503 when LINE or the channel config is down, and 403
+ * `ACCESS_PENDING` / `ACCESS_NOT_GRANTED` for access. Collapsing all of it into
+ * "the status was 401" is what made a throttle look like an expired session and
+ * sent the user to a button that re-runs the same failing request.
+ *
+ * `status` is `0` when no response arrived at all — the fetch itself threw.
  */
-function isRejectedTokenError(error: unknown): boolean {
-  return error instanceof LiffExchangeError && error.status === 401;
+export type ExchangeFailure =
+  | { kind: "expired" }
+  | { kind: "rate_limited"; retryAfterSeconds: number | null }
+  | { kind: "server" }
+  | { kind: "pending" }
+  | { kind: "not_granted" }
+  | { kind: "network" }
+  | { kind: "other"; status: number };
+
+export function classifyExchangeFailure(input: {
+  status?: number | undefined;
+  code?: string | null | undefined;
+  retryAfterSeconds?: number | null | undefined;
+}): ExchangeFailure {
+  const status = input.status ?? 0;
+  if (status === 0 || input.code === "NETWORK") return { kind: "network" };
+  switch (status) {
+    case 401:
+      // Both codes the API uses here mean "get a new token", not "the server
+      // is broken" — the distinction `liffError` exists to preserve.
+      return { kind: "expired" };
+    case 429:
+      return { kind: "rate_limited", retryAfterSeconds: input.retryAfterSeconds ?? null };
+    case 502:
+    case 503:
+      return { kind: "server" };
+    case 403:
+      if (input.code === "ACCESS_PENDING") return { kind: "pending" };
+      if (input.code === "ACCESS_NOT_GRANTED") return { kind: "not_granted" };
+      return { kind: "other", status };
+    default:
+      return { kind: "other", status };
+  }
 }
 
-async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Promise<ExchangeResponse | null> {
-  const response = await fetch(apiUrl("/api/auth/liff/exchange"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ idToken: identity.idToken }),
-    signal
-  });
+/** What the gate does about a failure. `idle` means: show what the API says, act on nothing. */
+export type Recovery =
+  | "idle"
+  | "renew-external"
+  | "renew-in-client"
+  | "terminal"
+  | "pending"
+  | "denied"
+  | "rate-limited"
+  | "error";
+
+/**
+ * Three renewals, then stop.
+ *
+ * A device whose clock runs ahead of LINE's can make every freshly issued token
+ * look expired, and "log out, get a new token" then never converges. The bound
+ * is what converts that loop into a screen that says so.
+ */
+export const MAX_RENEW_ATTEMPTS = 3;
+
+/**
+ * The recovery decision, pure, with its guards in the order that matters.
+ *
+ * `signedOut` is checked **first**, before anything that could navigate: an
+ * automatic re-authentication after a deliberate sign-out is the defect
+ * measured on 2026-11-08 (`ops-verification-2026-11-07-…`), and no recovery
+ * branch may reintroduce it.
+ *
+ * `ungated` is checked next: `/privacy` and `/terms` are legal documents, and a
+ * renewal redirect fired while someone is reading one navigates them away from
+ * the text they came for. Bypassed paths render, and nothing else.
+ */
+export function decideRecovery(input: {
+  failure: ExchangeFailure;
+  attempts: number;
+  signedOut: boolean;
+  isInClient: boolean;
+  ungated: boolean;
+}): Recovery {
+  if (input.signedOut) return "idle";
+  if (input.ungated) return "idle";
+  switch (input.failure.kind) {
+    case "expired":
+      if (input.attempts >= MAX_RENEW_ATTEMPTS) return "terminal";
+      // `liff.login()` cannot be used inside a LIFF browser; there the renewal
+      // is `logout()` + a reload, which re-runs `liff.init()`.
+      return input.isInClient ? "renew-in-client" : "renew-external";
+    case "pending":
+      return "pending";
+    case "not_granted":
+      return "denied";
+    case "rate_limited":
+      return "rate-limited";
+    default:
+      // server | network | other: retrying a 502 or a dropped connection from
+      // the client is noise, and neither is fixed by a new token.
+      return "error";
+  }
+}
+
+/** Turn whatever was thrown into a classified failure. */
+export function exchangeFailureOf(error: unknown): ExchangeFailure {
+  if (error instanceof LiffExchangeError) {
+    return classifyExchangeFailure({
+      status: error.status,
+      code: error.code,
+      retryAfterSeconds: error.retryAfterSeconds
+    });
+  }
+  // Not ours: JSON that was not JSON, an aborted request, a thrown string.
+  return { kind: "other", status: 0 };
+}
+
+function retryAfterSecondsOf(response: Response): number | null {
+  const header = response.headers.get("retry-after");
+  if (!header) return null;
+  const seconds = Number(header);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+
+/**
+ * Exchange the LINE ID token for a session cookie.
+ *
+ * Exported for its own test: the renewal budget is cleared here, on success and
+ * nowhere else, and "cleared on mount" would make a single bad afternoon
+ * permanent by resetting the bound the moment the page loads.
+ */
+export async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Promise<ExchangeResponse | null> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl("/api/auth/liff/exchange"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ idToken: identity.idToken }),
+      signal
+    });
+  } catch (error) {
+    // No response at all. `status: 0` is the flag classifyExchangeFailure reads
+    // as `network`, so a dropped connection cannot be mistaken for a rejection.
+    throw new LiffExchangeError(error instanceof Error ? error.message : "network", 0, "NETWORK");
+  }
   if (response.status === 403) {
     const data = (await response.json().catch(() => null)) as ApiErrorResponse | null;
     if (data?.error?.code === "ACCESS_PENDING") return null;
@@ -122,10 +300,16 @@ async function exchangeIdentity(identity: LiffIdentity, signal: AbortSignal): Pr
     const data = (await response.json().catch(() => null)) as ApiErrorResponse | null;
     throw new LiffExchangeError(
       data?.error?.message ?? `LINE exchange failed (HTTP ${response.status})`,
-      response.status
+      response.status,
+      data?.error?.code ?? null,
+      retryAfterSecondsOf(response)
     );
   }
-  return (await response.json()) as ExchangeResponse;
+  const body = (await response.json()) as ExchangeResponse;
+  // A working exchange clears the renewal budget: this browser is demonstrably
+  // not stuck, and anything else would make one bad afternoon permanent.
+  resetRenewAttempts();
+  return body;
 }
 
 /**
@@ -198,7 +382,7 @@ function useCurrentPath(pathSource: PathSource): string {
 }
 
 /** What the gate puts on screen. `render` means the route renders as usual. */
-export type GateDecision = "render" | "loading" | "stale" | "error" | "pending";
+export type GateDecision = "render" | "loading" | "stale" | "error" | "pending" | "terminal" | "denied";
 
 /**
  * What the gate should show, as a pure function of four facts.
@@ -225,6 +409,12 @@ export function decideGate(input: {
   if (input.bypass) return "render";
   if (input.state === "loading") return "loading";
   if (input.sessionUsable) return "render";
+  // Both of these are terminal answers about the account or the device, and both
+  // outrank `stale`: telling someone their session expired when three renewals
+  // have already failed (or their access was revoked) would send them to a
+  // button that cannot help.
+  if (input.state === "terminal") return "terminal";
+  if (input.state === "denied") return "denied";
   if (input.state === "stale") return "stale";
   if (input.state === "error") return "error";
   if (input.state === "ready" && input.pendingAccess) return "pending";
@@ -344,6 +534,9 @@ export function LiffGate({ children }: PropsWithChildren) {
   const [state, setState] = useState<State>("loading");
   const [phase, setPhase] = useState<Phase>("init");
   const [error, setError] = useState<string | null>(null);
+  // Our own Thai copy for a failure we can explain precisely (a throttle, with
+  // its Retry-After). `error` keeps whatever was thrown and is never rendered.
+  const [notice, setNotice] = useState<string | null>(null);
   const [pendingAccess, setPendingAccess] = useState(false);
   const [sessionUsable, setSessionUsable] = useState(false);
   const pathname = useCurrentPath(routerPathSource);
@@ -362,6 +555,10 @@ export function LiffGate({ children }: PropsWithChildren) {
     }
     const controller = new AbortController();
     let cancelled = false;
+    // Assigned once the SDK exists, so the catch block can route an exchange
+    // failure through the same decision the happy path uses. Before that point
+    // there is nothing to exchange and the init failure keeps its own card.
+    let failureHandler: ((failure: ExchangeFailure) => Promise<void>) | null = null;
     void (async () => {
       try {
         const liff = await initLiff(liffId);
@@ -390,15 +587,75 @@ export function LiffGate({ children }: PropsWithChildren) {
           setState("ready");
           return;
         }
+        // Every recovery runs through here, so the guards cannot be honoured by
+        // one branch and skipped by another: the sign-out marker comes first
+        // (an automatic re-auth after a deliberate sign-out is the 2026-11-08
+        // defect), then the ungated paths, then the failure kind.
+        const handleFailure = async (failure: ExchangeFailure): Promise<void> => {
+          const verdict = decideRecovery({
+            failure,
+            attempts: readRenewAttempts(),
+            signedOut: isLiffSignedOut(),
+            isInClient: isLiffInClient(),
+            ungated: bypass
+          });
+          if (verdict === "renew-external" || verdict === "renew-in-client") {
+            // Counted before navigating, because the page is about to go away.
+            bumpRenewAttempts();
+            resetLiffLoginGuard();
+            try {
+              liff.logout();
+            } catch {
+              // The navigation below does not depend on it.
+            }
+            if (verdict === "renew-in-client") {
+              // `liff.login()` cannot be used inside LINE's browser; a reload
+              // re-runs `liff.init()` and lets LINE re-issue the token.
+              window.location.reload();
+              return;
+            }
+            liff.login({ redirectUri: window.location.href });
+            return;
+          }
+          setSessionUsable(await probeSession(controller.signal));
+          if (cancelled) return;
+          if (verdict === "terminal") {
+            setState("terminal");
+            return;
+          }
+          if (verdict === "denied") {
+            setState("denied");
+            return;
+          }
+          if (verdict === "pending") {
+            setPendingAccess(true);
+            setState("ready");
+            return;
+          }
+          if (verdict === "rate-limited") {
+            setNotice(rateLimitedMessage(failure.kind === "rate_limited" ? failure.retryAfterSeconds : null));
+            setState("error");
+            return;
+          }
+          if (verdict === "idle") {
+            setState("ready");
+            return;
+          }
+          // server | network | other. The card keeps our Thai copy; the SDK's
+          // own wording is never rendered.
+          setNotice(null);
+          setError(null);
+          setState("error");
+        };
+        failureHandler = handleFailure;
+
         // Checked BEFORE the exchange. LIFF reports a stale token as a perfectly
         // good one — isLoggedIn() is true and getIDToken() returns it happily —
         // so the API is the only place the expiry surfaces, and its answer is
-        // an opaque failure. Catching it here lets the user re-login instead of
-        // retrying an exchange that cannot succeed.
+        // an opaque failure. Classifying it here lets the renew path run without
+        // a wasted request that is certain to fail.
         if (action === "stale") {
-          setSessionUsable(await probeSession(controller.signal));
-          if (cancelled) return;
-          setState("stale");
+          await handleFailure({ kind: "expired" });
           return;
         }
         setPhase("exchange");
@@ -419,21 +676,17 @@ export function LiffGate({ children }: PropsWithChildren) {
         setState("ready");
       } catch (nextError) {
         if (cancelled) return;
-        // A 401 from the exchange means the token is no longer usable — it can
-        // expire between the check above and the response. Route it to the same
-        // re-login path rather than showing a dead "try again".
-        if (isRejectedTokenError(nextError)) {
-          setSessionUsable(await probeSession(controller.signal));
-          if (cancelled) return;
-          setState("stale");
+        if (failureHandler) {
+          // A failure after the SDK was ready: classify it and let one decision
+          // choose. No branch here may sign the user back in after a sign-out,
+          // or navigate them off a legal document.
+          await failureHandler(exchangeFailureOf(nextError));
           return;
         }
-        // Same reasoning as the 401 branch: a LINE failure blocks only the
-        // people who still need LINE to get a session. Probed last so a genuine
-        // outage does not add a request on top of the one that just failed.
+        // The init itself failed. There is no exchange to classify, and the card
+        // names the step rather than repeating the SDK's English.
         setSessionUsable(await probeSession(controller.signal));
         if (cancelled) return;
-        setError(nextError instanceof Error ? nextError.message : "LINE initialization failed");
         setState("error");
       }
     })();
@@ -472,7 +725,29 @@ export function LiffGate({ children }: PropsWithChildren) {
       );
 
     case "error":
-      return <LiffGateMessage phase={phase} message={liffFailureMessage(phase, error)} />;
+      return <LiffGateMessage phase={phase} message={notice ?? liffFailureMessage(phase, error)} />;
+
+    case "terminal":
+      // Three renewals have failed. Another button that re-runs the exchange is
+      // the loop this exists to end, so the only action is to leave the page.
+      return <LiffTerminalCard />;
+
+    case "denied":
+      return (
+        <main className="public-page liff-public-page">
+          <section className="public-card liff-message-card" role="alert">
+            <span className="brand-symbol" aria-hidden="true">LT</span>
+            <h1>บัญชีนี้ไม่ได้รับสิทธิ์เข้าใช้งาน</h1>
+            {/* The API's own distinction, kept: ACCESS_NOT_GRANTED is a
+                permanent answer about this account, not an expired session, and
+                a re-login button here would imply otherwise. */}
+            <p>สิทธิ์ของบัญชี LINE นี้ถูกถอนหรือยังไม่ได้รับอนุมัติจากผู้ดูแลระบบ — หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อผู้ดูแลร้าน</p>
+            <p className="liff-message-alt">
+              <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
+            </p>
+          </section>
+        </main>
+      );
 
     case "pending":
       return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status"><span className="status-pill status-pill--warning">รอการอนุมัติ</span><h1>ส่งคำขอเข้าใช้งานแล้ว</h1><p>กรุณารอผู้ดูแลระบบอนุมัติสิทธิ์ แล้วเปิดหน้านี้อีกครั้ง</p></section></main>;

@@ -881,7 +881,7 @@ Do not create a speculative parallel `src/` tree. Extend `apps/api` and
 
 Use Node.js 24.x (see `.nvmrc`) and pnpm 10.33.4.
 
-Local automated evidence on **2026-11-08: 873 tests green** — API 485, web 283,
+Local automated evidence on **2026-11-09: 893 tests green** — API 485, web 303,
 ETL 105. **This is the only place the count is recorded; `README.md` points here
 rather than repeating it.** ETL rose from 87 to 105 with the source coverage
 audit — 13 on the pure classifier and 5 on the source helpers behind it; see
@@ -891,7 +891,11 @@ was), then to 236 with the sign-out that did not sign out (2 tests; see the
 sign-out paragraph above), then to 268 with the daily trend chart (32 tests; see
 the chart paragraph above), then to 283 with the sign-out that did not hold — 11
 on the marker and `decideMountExchange`, 4 on the sign-out ordering, each of the
-five guards verified to fail against deliberately broken code. API rose from 420 to 471 with the closed-branch
+five guards verified to fail against deliberately broken code — then to 303 with
+typed LIFF exchange failures and a bounded renew retry (20 tests: 13 on the
+classification, the recovery decision and the renewal budget, 5 on
+`planLineSignIn`'s in-client branch, 2 on `decideGate`'s terminal and denied
+states). API rose from 420 to 471 with the closed-branch
 mechanism — 38 tests on the pure decision and 13 on the ClickHouse wiring,
 including that a warehouse without `dim_branch_hours` resolves every machine to
 `unknown` rather than failing the report, then to 485 with the dashboard's daily

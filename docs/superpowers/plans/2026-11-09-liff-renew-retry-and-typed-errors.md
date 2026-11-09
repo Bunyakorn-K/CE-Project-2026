@@ -1,5 +1,15 @@
 # Typed LIFF exchange failures and a bounded renew retry
 
+> **Status 2026-11-09: Tasks 1–4 done in `main`; Task 5 partly blocked.**
+> 20 tests added (web 283 → 303); `pnpm build`, `test` and `check` green under
+> Node 24.21.0. Five mutations each fail the test that names them.
+> Task 5 Step 1 could not run: this emulator is a Play-store **production** image,
+> so `adb root` is refused and the device clock cannot be moved. CDP virtual time
+> was tried instead and is **not** a substitute — it skews every origin, and
+> LINE's own login page dies with "Uncaught" before our token is ever judged.
+> Task 5 Step 2 was measured afterwards on the same device: the ordinary
+> one-press sign-in still reaches `/dashboard` with no renewal spent.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A rejected or rate-limited LIFF exchange should recover **once, on its
@@ -136,7 +146,7 @@ in a try/catch, as iris does at `:77-94`.
 - Modify: `apps/web/src/lib/components/liff-gate.tsx` (export only)
 - Create: `apps/web/src/lib/liff-recovery.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `apps/web` tests are pure-node; no jsdom. Cover:
 
@@ -151,9 +161,9 @@ in a try/catch, as iris does at `:77-94`.
 // decide: rate_limited → "rate-limited"; server/network → "error"; pending/denied unchanged
 ```
 
-- [ ] **Step 2: Run and record the failure** — missing exports, not a typo.
+- [x] **Step 2: Run and record the failure** — missing exports, not a typo.
 
-- [ ] **Step 3: Implement** both functions in `liff-gate.tsx`, with the table above
+- [x] **Step 3: Implement** both functions in `liff-gate.tsx`, with the table above
   as the doc comment. `exchangeIdentity` parses `error.code` from the body it
   already reads and throws `LiffExchangeError` carrying `{ status, code }`;
   `isRejectedTokenError` becomes `classifyExchangeFailure` at its call site.
@@ -164,13 +174,13 @@ in a try/catch, as iris does at `:77-94`.
 - Modify: `apps/web/src/lib/components/liff-gate.tsx`
 - Modify: `apps/web/src/liff.ts`
 
-- [ ] **Step 1: Counter helpers beside the existing guards**
+- [x] **Step 1: Counter helpers beside the existing guards**
 
 `readRenewAttempts()`, `bumpRenewAttempts()`, `resetRenewAttempts()` in `liff.ts`,
 next to `loginSentRecently` (`:51-65`) and the signed-out marker (`:67-130`), same
 try/catch style: storage that throws must degrade to "0 attempts", never to a throw.
 
-- [ ] **Step 2: Wire the effect**
+- [x] **Step 2: Wire the effect**
 
 Replace the `if (action === "stale")` branch (`liff-gate.tsx:398-405`) and the
 catch block's `isRejectedTokenError` branch (`:358-368`) with one path:
@@ -178,13 +188,13 @@ catch block's `isRejectedTokenError` branch (`:358-368`) with one path:
 counter **before** navigating. Success anywhere (`probeSession` true, or the
 exchange 200) resets it.
 
-- [ ] **Step 3: Terminal screen**
+- [x] **Step 3: Terminal screen**
 
 New `state === "terminal"`, rendered with the close-window action and the email
 escape. Keep `decideGate` total: add `"terminal"` to `GateDecision`, with tests
 that a signed-out browser never reaches it (it must render the form, not a card).
 
-- [ ] **Step 4: `planLineSignIn` stays the press path**
+- [x] **Step 4: `planLineSignIn` stays the press path**
 
 A manual press keeps its current behaviour (`renew` → `logout()` + `login()`), but
 `renew-in-client` inside a LIFF browser becomes `logout()` + `reload()`. That is a
@@ -193,7 +203,7 @@ combinations.
 
 ### Task 3: Prove each guard bites
 
-- [ ] **Step 1: Mutate, one at a time**
+- [x] **Step 1: Mutate, one at a time**
 
 | Mutation | Must fail |
 |---|---|
@@ -203,7 +213,7 @@ combinations.
 | call `liff.login()` regardless of `isInClient` | the in-client renew case |
 | reset the counter on mount instead of on success | the counter-reset ordering test |
 
-- [ ] **Step 2: Report the mapping**, and say which mutation only bites when the
+- [x] **Step 2: Report the mapping**, and say which mutation only bites when the
   code is already correct (those are tautologies, not evidence).
 
 ### Task 4: Local gates
@@ -219,16 +229,22 @@ reads like a code fault.
 
 ### Task 5: Production-shaped check on the emulator (best effort)
 
-- [ ] **Step 1: Force the failing state without touching the server.** On the
+- [ ] **Step 1: BLOCKED — the device clock cannot be moved on this image.** On the
   emulator, set the device clock two hours ahead (`adb shell su 0 date` on a
   debuggable image, or disable auto-time first), open the app, and watch the renew
   path: the first exchange should be rejected 401, the client should renew **once**,
   then stop at the terminal screen by attempt 3 instead of looping.
+  **Not run, and the reason matters:** `adb root` is refused on a Play-store
+  production image, so the guest clock cannot be set. `Emulation.setVirtualTimePolicy`
+  does move `Date.now()` (+2.00 h measured), but it moves it for *every* origin in the
+  renderer: LINE's login page then fails with an uncaught error and the token is never
+  judged. The bound is therefore covered by the unit tests and the mutation, not by a
+  device run.
 
-- [ ] **Step 2: Restore the clock**, reopen, and confirm an ordinary sign-in still
+- [x] **Step 2: Restore the clock**, reopen, and confirm an ordinary sign-in still
   lands on `/dashboard` in one press — the fix must not cost the ordinary path.
 
-- [ ] **Step 3: Record what it did and did not prove.** A clock skew simulates an
+- [x] **Step 3: Record what it did and did not prove.** A clock skew simulates an
   expired token; it does not reproduce LINE issuing a genuinely expired one. Say so.
 
 ## Out of scope

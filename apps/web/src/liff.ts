@@ -125,6 +125,81 @@ export function logoutLiff(): void {
   }
 }
 
+/**
+ * How many automatic renewals this browser has already spent.
+ *
+ * A device whose clock runs ahead of LINE's can make every freshly issued ID
+ * token look expired, so "log out and get a new token" is not a fix that
+ * converges — it is a loop. The count is what turns that loop into a stop.
+ *
+ * `localStorage`, not `sessionStorage`, and for a measured reason: LINE's auth
+ * leg can open a **new tab** (observed on Android on 2026-11-08), and a per-tab
+ * counter would start at zero in it — exactly the tab where the loop continues.
+ */
+const RENEW_ATTEMPT_KEY = "liff_renew_attempt";
+
+export function readRenewAttempts(): number {
+  try {
+    const raw = localStorage.getItem(RENEW_ATTEMPT_KEY);
+    return raw === null ? 0 : Number(raw) || 0;
+  } catch {
+    // Storage unavailable is "no attempts recorded", never a throw: the worst
+    // case is one extra renewal, not a page that cannot render.
+    return 0;
+  }
+}
+
+export function bumpRenewAttempts(): number {
+  const next = readRenewAttempts() + 1;
+  try {
+    localStorage.setItem(RENEW_ATTEMPT_KEY, String(next));
+  } catch {
+    // See readRenewAttempts.
+  }
+  return next;
+}
+
+export function resetRenewAttempts(): void {
+  try {
+    localStorage.removeItem(RENEW_ATTEMPT_KEY);
+  } catch {
+    // See readRenewAttempts.
+  }
+}
+
+/** True when the app is running inside LINE's browser, where `login()` is unusable. */
+export function isLiffInClient(): boolean {
+  try {
+    return liffInstance?.isInClient() ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Leave the page, the way each client allows.
+ *
+ * `liff.closeWindow()` is the only thing that works inside LINE; `window.close()`
+ * succeeds only for a tab a script opened, so it is best effort. Neither is
+ * required for correctness — the terminal card still explains itself — and
+ * neither may throw.
+ */
+export function closeLiffWindow(): void {
+  try {
+    if (liffInstance?.isInClient()) {
+      liffInstance.closeWindow();
+      return;
+    }
+  } catch {
+    // Fall through to window.close().
+  }
+  try {
+    window.close();
+  } catch {
+    // Nothing else is available; the visitor closes the tab themselves.
+  }
+}
+
 /** Manual "Sign in with LINE" press: fire login() once, guarded. */
 export function manualLiffLogin(liffId: string): void {
   if (loginSentRecently()) return;
@@ -255,7 +330,7 @@ export function staleLiffSessionMessage(): string {
 /**
  * What a "sign in with LINE" press has to do, given the session it finds.
  *
- * The three cases are genuinely different and collapsing any two of them breaks
+ * The cases are genuinely different and collapsing any two of them breaks
  * sign-in for real users:
  *
  * - `login` — no session. Fire `liff.login()`. The ordinary first visit.
@@ -263,23 +338,29 @@ export function staleLiffSessionMessage(): string {
  *   This is the common case for anyone already signed in to LINE, and it must
  *   NOT log them out: discarding a valid session and returning early is what
  *   made the button do nothing at all (fixed 2026-10-01).
- * - `renew` — a session whose token is expired. `logout()` first, or the SDK
- *   replays the same dead token and the press loops forever.
+ * - `renew` — a session whose token is expired, outside LINE. `logout()` first,
+ *   or the SDK replays the same dead token and the press loops forever.
+ * - `renew-reload` — the same, **inside** LINE's browser. `liff.login()` cannot
+ *   be used there (the SDK logs in during `liff.init()`), so the renewal is
+ *   `logout()` + a reload, which re-runs init and lets LINE re-issue.
  *
  * Kept pure and separate from the SDK so the decision can be tested without a
  * LINE client, which is the only reason this bug reached production.
  */
-export type LineSignInPlan = "login" | "exchange" | "renew";
+export type LineSignInPlan = "login" | "exchange" | "renew" | "renew-reload";
 
 export function planLineSignIn(input: {
   isLoggedIn: boolean;
   idToken: string | null | undefined;
+  /** `liff.isInClient()` — decides whether a renewal may call `login()` at all. */
+  isInClient: boolean;
   now?: number;
 }): LineSignInPlan {
   if (!input.isLoggedIn) return "login";
   // An unreadable or absent token is NOT an expiry — it stays unknown, and the
   // exchange reports the real reason (missing openid scope, or no consent).
-  return isIdTokenExpired(input.idToken, input.now) ? "renew" : "exchange";
+  if (!isIdTokenExpired(input.idToken, input.now)) return "exchange";
+  return input.isInClient ? "renew-reload" : "renew";
 }
 
 /** `getIDToken()` reads a cache and can reject; a failure here is "unknown". */
@@ -313,14 +394,29 @@ export async function signInWithLiff(liffId: string): Promise<LiffIdentity | nul
     return null;
   }
 
-  const plan = planLineSignIn({ isLoggedIn: true, idToken: await readIdToken(liff) });
-  if (plan === "renew") {
+  const plan = planLineSignIn({
+    isLoggedIn: true,
+    idToken: await readIdToken(liff),
+    isInClient: isLiffInClient()
+  });
+  if (plan === "renew" || plan === "renew-reload") {
     // `logout()` is documented as clearing the session and returning nothing;
     // it is NOT documented to navigate, so nothing here may assume the page is
     // about to go away. Clear the one-shot login guard so the login fired below
     // is not swallowed by the guard left over from the press that got here.
-    liff.logout();
+    try {
+      liff.logout();
+    } catch {
+      // Keep going: the reload path below re-runs init regardless.
+    }
     resetLiffLoginGuard();
+    if (plan === "renew-reload") {
+      // Inside LINE's browser `login()` cannot be used, so the renewal is a
+      // reload: `liff.init()` runs again and LINE re-issues a token to the
+      // fresh page load. Returns null because the page is going away.
+      window.location.reload();
+      return null;
+    }
     manualLiffLogin(liffId);
     return null;
   }

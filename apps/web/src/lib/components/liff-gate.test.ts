@@ -96,9 +96,33 @@ describe("decideGate", () => {
   it("never blocks an ungated path, even mid-exchange", () => {
     // /login, /privacy and /terms hold no branch data. A card that replaces
     // them is not protecting anything.
-    for (const state of ["loading", "stale", "error", "ready"] as const) {
+    for (const state of ["loading", "stale", "error", "ready", "terminal", "denied"] as const) {
       expect(decideGate({ bypass: true, state, pendingAccess: true, sessionUsable: false })).toBe("render");
     }
+  });
+
+  it("shows the terminal card once the renewal budget is spent", () => {
+    // Three renewals have failed. A fourth button would re-run the exchange that
+    // keeps failing, which is the loop the bound exists to end — so this must
+    // outrank `stale`, whose card offers exactly that button.
+    expect(
+      decideGate({ bypass: false, state: "terminal", pendingAccess: false, sessionUsable: false })
+    ).toBe("terminal");
+    // With a session there is nothing to recover from.
+    expect(
+      decideGate({ bypass: false, state: "terminal", pendingAccess: false, sessionUsable: true })
+    ).toBe("render");
+  });
+
+  it("shows the denied card for a revoked grant, not the expired-session card", () => {
+    // ACCESS_NOT_GRANTED is a permanent answer about the account. Offering
+    // "sign in with LINE again" here would promise a fix that cannot exist.
+    expect(
+      decideGate({ bypass: false, state: "denied", pendingAccess: false, sessionUsable: false })
+    ).toBe("denied");
+    expect(
+      decideGate({ bypass: false, state: "denied", pendingAccess: false, sessionUsable: true })
+    ).toBe("render");
   });
 });
 
