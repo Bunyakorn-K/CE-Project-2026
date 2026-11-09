@@ -10,6 +10,9 @@
 #   1. `check_postgres_reinit` warns with BOTH timestamps when the postmaster
 #      start time moves, initialises on its first run, and stays quiet when the
 #      value is unchanged.
+#   2. `sweep_alerts` FAILS (rather than silently succeeding) when the token
+#      Variable is missing, when the endpoint answers non-200, and when the body
+#      is not JSON — and prints the summary verbatim on success.
 #
 # Run: bash deploy/analytics/dags.test.sh
 # Exit 0 = all pass. Exit 1 = at least one failed.
@@ -150,8 +153,10 @@ def load(name):
 
 
 freshness = load("laundrytwin_warehouse_freshness.py")
+sweep_dag = load("laundrytwin_alert_sweep.py")
 
 check("freshness DAG loads and declares check_postgres_reinit", hasattr(freshness, "check_postgres_reinit"))
+check("alert sweep DAG loads and declares sweep_alerts", hasattr(sweep_dag, "sweep_alerts"))
 
 # --- check_postgres_reinit ------------------------------------------------
 
@@ -186,6 +191,84 @@ except RuntimeError:
     check("a database failure propagates rather than reporting a healthy cluster", True)
 finally:
     FAKE_SQL_STATE["raise"] = None
+
+# --- sweep_alerts ---------------------------------------------------------
+
+Variable.store.clear()
+
+
+def fail_with(exc):
+    def urlopen(request, timeout=None):
+        raise exc
+    return urlopen
+
+
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        sweep_dag.sweep_alerts()
+    check("a missing token Variable fails", False)
+except AirflowFailException as error:
+    check("a missing token Variable fails", "alert_sweep_token" in str(error), str(error))
+
+Variable.store["alert_sweep_token"] = "not-printed"
+
+original_urlopen = sweep_dag.urllib.request.urlopen
+
+sweep_dag.urllib.request.urlopen = fail_with(
+    urllib.error.HTTPError("http://app:8787/x", 401, "Unauthorized", {}, io.BytesIO(b'{"error":{"code":"UNAUTHORIZED"}}'))
+)
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        sweep_dag.sweep_alerts()
+    check("a 401 fails the task", False)
+except AirflowFailException as error:
+    check("a 401 fails the task", "401" in str(error), str(error))
+    check("the failure message explains the token", "ALERT_SWEEP_TOKEN" in str(error), str(error))
+
+sweep_dag.urllib.request.urlopen = fail_with(urllib.error.URLError("name resolution failed"))
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        sweep_dag.sweep_alerts()
+    check("an unreachable endpoint fails the task", False)
+except AirflowFailException as error:
+    check("an unreachable endpoint fails the task", "unreachable" in str(error), str(error))
+
+
+class _Response:
+    status = 200
+
+    def __init__(self, body):
+        self._body = body.encode()
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+sweep_dag.urllib.request.urlopen = lambda request, timeout=None: _Response(
+    json.dumps({"scanned": 0, "window": {"from": "a", "to": "b"}, "summary": {"scanned": 0}, "gas": {"evaluated": 3}})
+)
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    result = sweep_dag.sweep_alerts()
+check("a 200 prints the summary verbatim", "alert sweep summary: " in buffer.getvalue(), buffer.getvalue())
+check("a 0-alert sweep is a valid pass carrying scanned: 0", result.get("scanned") == 0)
+check("the printed summary carries the gas evaluation count", '"evaluated": 3' in buffer.getvalue(), buffer.getvalue())
+
+sweep_dag.urllib.request.urlopen = lambda request, timeout=None: _Response("not json")
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        sweep_dag.sweep_alerts()
+    check("a non-JSON body fails rather than passing silently", False)
+except AirflowFailException as error:
+    check("a non-JSON body fails rather than passing silently", "non-JSON" in str(error), str(error))
+
+sweep_dag.urllib.request.urlopen = original_urlopen
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

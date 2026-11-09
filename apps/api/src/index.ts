@@ -49,7 +49,7 @@ import { isDemoModeEnabled } from "./demo-read-client";
 import { spaHandler } from "./spa";
 import { createBotHandler } from "./bot";
 import { LineAdapter } from "./bot/line-adapter";
-import { runAlertSweep } from "./alert-engine";
+import { isAlertSweepTokenValid, performAlertSweep } from "./alert-sweep";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
@@ -108,6 +108,29 @@ export function createApp(dependencies: AppDependencies = {}) {
     lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
     clickhouse
   });
+
+  /**
+   * One sweep, two entry points.
+   *
+   * The body is identical for the owner button and the scheduler on purpose:
+   * the requirement is met by whatever the scheduler's log quotes, so a shape
+   * that differed by caller would make the evidence record ambiguous. Gas is
+   * additive — an unreadable gas source reports `unavailable` with a reason and
+   * does not fail the IRIS sweep.
+   */
+  const sweepResponse = async (c: Context) => {
+    const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    try {
+      const result = await performAlertSweep({
+        fetchAlerts: async (window) => (await iris.getAlerts(window)).alerts,
+        adapter: new LineAdapter(lineToken),
+        adapterAvailable: Boolean(lineToken)
+      });
+      return c.json(result);
+    } catch (error) {
+      return irisError(c, error);
+    }
+  };
 
   // Compress JSON responses (esp. analytics payloads like the temperature curve).
   // Node 24 ships CompressionStream, so no extra dependency is needed.
@@ -575,19 +598,27 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.post("/api/admin/alerts/notify", async (c) => {
     const principal = requireOwner(c);
     if (principal instanceof Response) return principal;
-    const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-    const now = new Date();
-    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    try {
-      const alerts = await iris.getAlerts({ from: from.toISOString(), to: now.toISOString() });
-      const summary = await runAlertSweep(alerts.alerts, {
-        adapter: new LineAdapter(lineToken),
-        adapterAvailable: Boolean(lineToken)
-      });
-      return c.json({ scanned: alerts.alerts.length, lineConfigured: Boolean(lineToken), summary });
-    } catch (error) {
-      return irisError(c, error);
+    return sweepResponse(c);
+  });
+
+  /**
+   * The scheduler's entry point (R05).
+   *
+   * Guarded by a machine credential, not by a cookie and not by an owner
+   * session: a cron job is not a person. `ALERT_SWEEP_TOKEN` unset means the
+   * route answers 401 to everything, which is the safe direction — a
+   * deployment that forgot the token must not become an open notification
+   * trigger.
+   *
+   * It shares `performAlertSweep` with the owner button above, so the two
+   * cannot drift, and it answers the same body so a summary pasted into an
+   * evidence record means the same thing whichever route produced it.
+   */
+  app.post("/api/internal/alerts/sweep", async (c) => {
+    if (!isAlertSweepTokenValid(c.req.header("x-alert-sweep-token"), process.env.ALERT_SWEEP_TOKEN)) {
+      return apiError(c, 401, "UNAUTHORIZED", "A valid alert sweep token is required");
     }
+    return sweepResponse(c);
   });
 
   app.post("/webhooks/line", async (c) => {
