@@ -112,6 +112,22 @@ assumed.
   mode 644 and is not read by anything. It should be removed or made 600; the
   server has its own copy.
 
+## One scheduled run failed, and why
+
+`scheduled__2026-11-09T13:15:00+00:00` **failed** with
+
+```text
+alert sweep endpoint unreachable at http://app:8787/api/internal/alerts/sweep:
+[Errno -2] Name or service not known
+```
+
+That is the restart itself: the app container was removed and recreated to pick up
+the new environment, so for the few seconds the old name was gone, Docker's DNS
+answered nothing for `app`. The next scheduled run, `…T13:20:00`, was **success**,
+and the notification table still held exactly `sent: 2, failed: 4` — the 13:20
+sweep was inside the cooldown and sent nothing. A recreate is not a free
+operation for a 5-minute schedule; it costs at most one run, and this one did.
+
 ## Provenance
 
 Owner placed the credentials and said so in chat; the token was validated against

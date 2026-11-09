@@ -96,7 +96,10 @@ def sweep_alerts(**context):
     except urllib.error.URLError as error:
         raise AirflowFailException(
             f'alert sweep endpoint unreachable at {url}: {error.reason}. '
-            'The app container must be on the analytics_default network.'
+            'The scheduler must share a network with the app container '
+            '(deploy/analytics/compose.yaml attaches it to laundrytwin_default, '
+            'where the app alias is `app`); a container being recreated also '
+            'resolves to nothing for a few seconds.'
         ) from error
 
     if status != 200:
