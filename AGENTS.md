@@ -503,11 +503,16 @@ marker. Record: `docs/04_traceability/ops-verification-2026-11-09-sign-out-holds
 **verified the LINE redirect leg** — one press → `/dashboard`, `/api/me` 200,
 `/privacy` and `/terms` stay on the document — in Android Chrome with a real LINE
 app, which is *not* the LIFF-browser press, and it established that LINE for PC
-cannot open a LIFF URL at all. The LIFF browser itself was then opened
-(2026-11-09): it **does** sign the user in without a press — the expected
-`liff.init()` exchange — but LINE answered every later open with its generic
-"An unknown error occurred", so the press and sign-out inside it stay unmeasured.
-See `docs/04_traceability/ops-verification-2026-11-09-liff-browser-leg.md`.
+cannot open a LIFF URL at all. The LIFF browser itself was then opened and driven
+end to end against `deploy-4fb470d-20261109` (2026-11-09): `ออกจากระบบ` lands on
+the sign-in form, **reopening the LIFF URL keeps it there** — the case where
+`liff.init()` logs the user in by itself — `/privacy` and `/terms` stay on the
+document, and one press signs back in. Record:
+`docs/04_traceability/ops-verification-2026-11-09-liff-browser-leg.md`. An earlier
+"blocked" reading of that leg was a **mistyped LIFF ID** in the test URL
+(`…uToRdTwT` for `…uToRdTwS`): LINE answered 404 "LIFF app was not found", which
+from the client's screen is indistinguishable from a deleted app. Read identifiers
+out of the served chunk; never retype them.
 
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
