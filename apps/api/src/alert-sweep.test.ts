@@ -5,7 +5,7 @@ import { accessGrant, alertNotification, auditLog, liffIdentity, user } from "./
 import type { Principal } from "./access-store";
 import type { ClickHouseExecutor } from "./analytics/clickhouse";
 import type { Role } from "./access-policy";
-import type { IrisAlert } from "./iris-read-client";
+import { IrisReadResponseError, IrisReadUnavailableError, type IrisAlert } from "./iris-read-client";
 
 const testAuth = vi.hoisted(() => ({ principal: null as Principal | null }));
 
@@ -246,6 +246,70 @@ describe("POST /api/internal/alerts/sweep", () => {
     expect(body.gas.state).toBe("unavailable");
     expect(body.gas.reason).toContain("gas_source_unavailable");
     expect(body.summary).toBeTruthy();
+  });
+
+  function appWithBrokenIris(error: Error, options: { clickhouse?: ClickHouseExecutor } = {}) {
+    const getAlerts = vi.fn(async () => {
+      throw error;
+    });
+    const instance = createApp({
+      irisClient: {
+        getBranches: vi.fn(),
+        getDashboard: vi.fn(),
+        getLiveSnapshot: vi.fn(),
+        getAlerts,
+        getEvents: vi.fn()
+      } as never,
+      analyticsDeps: { clickhouse: options.clickhouse ?? gasClickhouse() }
+    });
+    return { app: instance, getAlerts };
+  }
+
+  // Production has no IRIS_READ_BASE_URL (see /health `reportingConfigured: false`),
+  // so before this the scheduled sweep could only ever answer 503 and the gas half
+  // — which reads ClickHouse and needs nothing from IRIS — never ran at all.
+  it("answers 200 from the gas half when IRIS is unset, and says the IRIS list was not read", async () => {
+    process.env.ALERT_SWEEP_TOKEN = "s3cret-token";
+    const { app: instance, getAlerts } = appWithBrokenIris(new IrisReadUnavailableError());
+    const response = await sweep(instance, "s3cret-token");
+    expect(response.status).toBe(200);
+    expect(getAlerts).toHaveBeenCalledTimes(1);
+    const body = (await response.json()) as {
+      scanned: number;
+      iris: { state: string; reason: string | null };
+      gas: { state: string; evaluated: number; window: { from: string; to: string } | null };
+      window: { from: string; to: string };
+    };
+    // A 0 here is a gap, not a measurement, and the body has to say which.
+    expect(body.scanned).toBe(0);
+    expect(body.iris).toEqual({ state: "unavailable", reason: "reporting_source_unavailable" });
+    expect(body.gas.state).toBe("evaluated");
+    expect(body.gas.evaluated).toBe(3);
+    expect(body.gas.window?.from).toEqual(expect.any(String));
+    expect(body.window.from).toEqual(expect.any(String));
+  });
+
+  it("answers 503 only when no source at all could be read", async () => {
+    process.env.ALERT_SWEEP_TOKEN = "s3cret-token";
+    const { app: instance } = appWithBrokenIris(new IrisReadUnavailableError(), {
+      clickhouse: gasClickhouse({ gasThrows: true })
+    });
+    const response = await sweep(instance, "s3cret-token");
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("REPORTING_SOURCE_UNAVAILABLE");
+  });
+
+  // "Not configured" is the only tolerated IRIS failure. A configured endpoint
+  // that answers 500 must stay a red run: sweeping zero alerts against a broken
+  // source is the silent degradation this flag exists to prevent.
+  it("does not read a broken IRIS as an unconfigured one", async () => {
+    process.env.ALERT_SWEEP_TOKEN = "s3cret-token";
+    const { app: instance } = appWithBrokenIris(new IrisReadResponseError("upstream exploded", 500));
+    const response = await sweep(instance, "s3cret-token");
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("REPORTING_SOURCE_FAILED");
   });
 
   it("returns the same body shape as the owner button, so one summary means one thing", async () => {

@@ -30,7 +30,7 @@ import {
   type GasTrendDecision,
   type MachineStateLike
 } from "./gas-trend";
-import type { IrisAlert } from "./iris-read-client";
+import { IrisReadUnavailableError, type IrisAlert } from "./iris-read-client";
 import { resolveBranchOpenState } from "./report/branch-availability";
 import { queryBranchHours } from "./report/clickhouse-report";
 
@@ -68,6 +68,16 @@ export type AlertSweepResult = {
   lineConfigured: boolean;
   summary: AlertSweepSummary;
   gas: GasSweepSummary;
+  /**
+   * Whether the IRIS alert list could be read at all.
+   *
+   * Production configures no IRIS read endpoint (see `/health`
+   * `reportingConfigured: false`), so without this field a scheduled sweep would
+   * report `scanned: 0` and read as "no alerts" when it means "no source". A
+   * 0 with `state: "unavailable"` is a gap; a 0 with `state: "evaluated"` is a
+   * measurement. The distinction is why this is a field and not a log line.
+   */
+  iris: { state: "evaluated" | "unavailable"; reason: string | null };
 };
 
 export type GasSweepDeps = {
@@ -253,7 +263,22 @@ export async function performAlertSweep(deps: AlertSweepDeps): Promise<AlertSwee
   const from = new Date(nowDate.getTime() - IRIS_WINDOW_MS);
   const window = { from: from.toISOString(), to: nowDate.toISOString() };
 
-  const alerts = await deps.fetchAlerts(window);
+  // The gas half reads its own source (ClickHouse) and does not need IRIS, so an
+  // unreadable IRIS must not take it down. Only "not configured" is tolerated
+  // here: a configured endpoint that answers 500 is a real failure and is
+  // rethrown, because silently sweeping zero alerts against a broken source is
+  // exactly the failure this flag exists to prevent.
+  let alerts: IrisAlert[] = [];
+  let irisState: AlertSweepResult["iris"]["state"] = "evaluated";
+  let irisReason: string | null = null;
+  try {
+    alerts = await deps.fetchAlerts(window);
+  } catch (error) {
+    if (!(error instanceof IrisReadUnavailableError)) throw error;
+    irisState = "unavailable";
+    irisReason = "reporting_source_unavailable";
+  }
+
   const engine: AlertEngineDeps = {
     adapter: deps.adapter,
     adapterAvailable: deps.adapterAvailable,
@@ -272,6 +297,7 @@ export async function performAlertSweep(deps: AlertSweepDeps): Promise<AlertSwee
     scanned: alerts.length,
     lineConfigured: deps.adapterAvailable,
     summary,
-    gas
+    gas,
+    iris: { state: irisState, reason: irisReason }
   };
 }

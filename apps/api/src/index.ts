@@ -127,6 +127,19 @@ export function createApp(dependencies: AppDependencies = {}) {
         adapterAvailable: Boolean(lineToken),
         gas: { clickhouse }
       });
+      // 503 means "nothing was measured", not "the IRIS list was unreadable".
+      // When gas evaluated, the response is a real sweep over a named window and
+      // says so — `iris.state: unavailable` carries the caveat in the body that a
+      // status code cannot. Production currently takes the 200 branch, because it
+      // configures no IRIS endpoint and the warehouse does have gas rows.
+      if (result.iris.state === "unavailable" && result.gas.state !== "evaluated") {
+        return apiError(
+          c,
+          503,
+          "REPORTING_SOURCE_UNAVAILABLE",
+          "No alert source is configured: IRIS reporting is unset and the gas source returned nothing"
+        );
+      }
       return c.json(result);
     } catch (error) {
       return irisError(c, error);

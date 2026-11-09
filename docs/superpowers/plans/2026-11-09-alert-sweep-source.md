@@ -72,10 +72,47 @@ then two of the six tasks in the parent plan close as "built, tested, deployed,
 cannot run here", and the plan's premise that production can evaluate alerts is
 wrong on its face.
 
+**(D) Split the dependency — IMPLEMENTED, awaiting a deploy decision.** The gas
+rules were never the IRIS-bound half: `sweepGas()` reads `fact_gas_pressure_sample`
+through the ClickHouse executor and its machine context comes from
+`queryGasContext(clickhouse)`, not from IRIS. The only IRIS call is the 7-day
+alert list at the top of `performAlertSweep`, and it was unguarded, so one
+unconfigured source took down the half that works.
+
+Measured on production before the change (2026-11-09, 6-hour window to 09:44 UTC):
+
+| channel | samples | avg psi | NULLs | last sample |
+|---|---|---|---|---|
+| `gas_run_a_pressure` | 299 | 66.1 | 4 | 09:42:44 |
+| `gas_run_b_pressure` | 681 | 121.9 | 4 | 09:44:29 |
+| `changeover_filter_pressure` | 1,079 | 22.6 | 4 | 09:44:39 |
+
+So a gas evaluation against the warehouse is a real measurement today, not a
+synthetic one. The change: `IrisReadUnavailableError` is tolerated and becomes
+`iris: {state: "unavailable", reason: "reporting_source_unavailable"}` in the
+body; every other IRIS failure still fails (a configured endpoint answering 500
+must not read as "not configured"); the endpoint answers 503 only when **no**
+source could be read; the DAG turns a 200-with-unread-IRIS into a WARNING line
+in every run rather than a red run, because failing it would make the gas rules
+unrunnable on a host where they work.
+
+What this buys: R06 can close on a production sweep summary that names its window
+and its channel set, with `iris.state: unavailable` beside it. What it does not
+buy: R05 (IRIS alerts still cannot be read), and the warning line stays in every
+log until (A) happens. Tests: 3 new route cases (200-with-gas, 503-when-nothing,
+502-on-a-real-failure) and 1 new harness case for the DAG warning.
+
 ## Recommendation
 
-**(A)** if the IRIS endpoint exists — it is two variables against a plan that
-already assumes them, and it makes the alert engine real rather than theoretical.
+**(D) now, then (A).** (D) is a twenty-line change behind tests, it makes a
+safety-relevant rule set (gas pressure) actually run in production today, and it
+is honest about the half it cannot read. (A) remains the only way to close R05,
+and it costs two variables whenever the endpoint shows up — nothing in (D) has to
+be undone for it.
+
+**(A) alone** if the IRIS endpoint exists — it is two variables against a plan
+that already assumes them, and it makes the alert engine real rather than
+theoretical.
 **(B)** only if the owner says the IRIS read integration is not coming, because
 clickhouse-backed alerting is a different product decision about what "stale"
 means.

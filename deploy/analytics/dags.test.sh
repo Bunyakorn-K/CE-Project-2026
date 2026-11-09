@@ -12,7 +12,8 @@
 #      value is unchanged.
 #   2. `sweep_alerts` FAILS (rather than silently succeeding) when the token
 #      Variable is missing, when the endpoint answers non-200, and when the body
-#      is not JSON — and prints the summary verbatim on success.
+#      is not JSON — prints the summary verbatim on success, and WARNS (without
+#      failing) when the answer is a 200 whose IRIS half could not be read.
 #
 # Run: bash deploy/analytics/dags.test.sh
 # Exit 0 = all pass. Exit 1 = at least one failed.
@@ -259,6 +260,30 @@ with contextlib.redirect_stdout(buffer):
 check("a 200 prints the summary verbatim", "alert sweep summary: " in buffer.getvalue(), buffer.getvalue())
 check("a 0-alert sweep is a valid pass carrying scanned: 0", result.get("scanned") == 0)
 check("the printed summary carries the gas evaluation count", '"evaluated": 3' in buffer.getvalue(), buffer.getvalue())
+
+# A 200 with an unread IRIS list is a real measurement of the gas rules and a
+# stated gap for everything else. It must PASS — failing it would make the gas
+# rules unrunnable on a host where they work — and it must say so in the log,
+# because `scanned: 0` on its own reads as "no alerts were found".
+sweep_dag.urllib.request.urlopen = lambda request, timeout=None: _Response(
+    json.dumps(
+        {
+            "scanned": 0,
+            "window": {"from": "a", "to": "b"},
+            "summary": {"scanned": 0},
+            "iris": {"state": "unavailable", "reason": "reporting_source_unavailable"},
+            "gas": {"state": "evaluated", "evaluated": 3},
+        }
+    )
+)
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    sweep_dag.sweep_alerts()
+check(
+    "a 200 with an unread IRIS list passes and warns",
+    "the IRIS alert list was not read" in buffer.getvalue(),
+    buffer.getvalue(),
+)
 
 sweep_dag.urllib.request.urlopen = lambda request, timeout=None: _Response("not json")
 try:

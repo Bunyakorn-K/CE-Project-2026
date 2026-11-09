@@ -7,11 +7,14 @@
 # notifications with cooldowns"; an engine that fires when somebody remembers is
 # not that.
 #
-# HOW IT REACHES THE APP. The app container is attached to `analytics_default`
-# as well as `laundrytwin_default` (measured with `docker inspect
-# laundrytwin-app-1`), so `app:8787` resolves from inside the Airflow containers
-# without publishing anything new to the host. That measured fact is why this
-# DAG exists in Airflow instead of a host cron or a compose sidecar.
+# HOW IT REACHES THE APP. The app lives on `laundrytwin_default`, where its
+# alias is `app` — NOT on `analytics_default`. The first version of this comment
+# claimed otherwise and the DAG would have failed DNS every 5 minutes, so the
+# scheduler is attached to both networks in `deploy/analytics/compose.yaml`
+# (`networks: [default, laundrytwin]`, external name `laundrytwin_default`).
+# Measured 2026-11-09 from inside `analytics-airflow-scheduler-1`:
+# `getent hosts app` → 172.18.0.2 and `http://app:8787/health` → 200. Nothing new
+# is published to the host for this.
 #
 # WHAT MAKES IT SAFE TO RUN EVERY 5 MINUTES. Everything the endpoint invokes is
 # idempotent, so a retry, an overlapping manual press and this schedule can
@@ -23,6 +26,14 @@
 # it would look green forever while nothing was notified. Any non-200 answer
 # fails the task, and the response body is included in the message so the log
 # names the reason.
+#
+# THE ONE 200 THAT IS STILL A GAP. Production configures no IRIS read endpoint,
+# so the endpoint answers 200 with `iris: {state: "unavailable"}` and evaluates
+# only the gas rules — a real measurement of one source, and a stated gap for the
+# other. That case prints WARNING instead of failing, because failing it would
+# make the gas rules unrunnable on a host where they work; the warning is in
+# every log until IRIS exists, and `scanned: 0` beside it must never be read as
+# "no alerts were found".
 #
 # SECRETS. The token lives in the Airflow Variable `alert_sweep_token` and is
 # never printed, logged, or written to a file. Records quote the variable name.
@@ -97,6 +108,22 @@ def sweep_alerts(**context):
         raise AirflowFailException(f'alert sweep returned a non-JSON body at {url}: {body[:500]}') from error
 
     print('alert sweep summary: ' + json.dumps(summary, ensure_ascii=False, sort_keys=True))
+
+    iris = summary.get('iris') or {}
+    if iris.get('state') != 'evaluated':
+        print(
+            'WARNING: the IRIS alert list was not read (state={state}, reason={reason}); '
+            'only the gas rules were evaluated, so `scanned` is a gap and not a zero.'.format(
+                state=iris.get('state'), reason=iris.get('reason')
+            )
+        )
+    gas = summary.get('gas') or {}
+    if gas.get('state') != 'evaluated':
+        print(
+            'WARNING: the gas source was not evaluated (state={state}, reason={reason}).'.format(
+                state=gas.get('state'), reason=gas.get('reason')
+            )
+        )
     return summary
 
 
