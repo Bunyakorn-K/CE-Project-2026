@@ -112,9 +112,13 @@ describe("buildAlertFlex", () => {
     expect(footer.contents.some((item) => item.text.includes("ไม่ใช่การตรวจจับแก๊สรั่ว"))).toBe(true);
   });
 
-  it("keeps only the four facts a reader needs, and the label that names the gate", () => {
+  it("keeps the three values a reader acts on; the channel moves to the header", () => {
     const labels = keyRows(gasAlert()).map((row) => row.label);
-    expect(labels).toEqual(["ช่องวัด", "แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
+    // `gas_run_a_pressure` at 16px in a 60% column broke mid-word in the card that
+    // was actually delivered, so it is a header line now, not a row.
+    expect(labels).toEqual(["แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
+    const header = buildAlertFlex(gasAlert()).contents.header as { contents: Array<{ text: string }> };
+    expect(header.contents.map((item) => item.text)).toContain("gas_run_a_pressure");
     // The detail rows still carry everything the page needs.
     const detailLabels = alertRows(gasAlert()).map((row) => row.label);
     expect(detailLabels).toContain("ความชัน (อ้างอิง)");
@@ -159,6 +163,7 @@ describe("buildAlertFlex", () => {
     const { altText } = buildAlertFlex(gasAlert());
     expect(altText.length).toBeLessThanOrEqual(ALT_TEXT_LIMIT);
     expect(altText).toContain("LaundryTwin");
+    // The banner still names the channel, even though the body row is gone.
     expect(altText).toContain("gas_run_a_pressure");
     expect(altText).toContain("-3.67 psi/ชม.");
     // It carries the strong rows only — the reference slope is not a headline.

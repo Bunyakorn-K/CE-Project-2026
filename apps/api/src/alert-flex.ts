@@ -165,7 +165,11 @@ export function shortTime(value: string): string {
  */
 export function keyRows(alert: IrisAlert): Array<{ label: string; value: string; strong?: boolean }> {
   const all = alertRows(alert);
-  const keep = new Set(["ช่องวัด", "แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
+  // The channel is not a row: at 16px bold in a 60% column `gas_run_a_pressure`
+  // broke mid-word ("gas_run_a_pressur / e") in the delivered card. It belongs in
+  // the header under the title, where it fits whole, and the body keeps the three
+  // values a reader acts on.
+  const keep = new Set(["แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
   const rows = all.filter((row) => keep.has(row.label));
   return rows.length > 0 ? rows : all.slice(0, 4);
 }
@@ -178,6 +182,8 @@ export function buildAlertFlex(
   const severity = severityOf(alert);
   const style = severityStyle(severity);
   const rows = keyRows(alert);
+  const evidence = evidenceOf(alert);
+  const channel = typeof evidence.channel === "string" ? evidence.channel : null;
   const disclaimer = typeof alert.detail === "string" && alert.detail.includes("ไม่ใช่การตรวจจับแก๊สรั่ว")
     ? "เป็นการประเมินแนวโน้มร่วมกับสถานะเครื่องและอุณหภูมิ ไม่ใช่การตรวจจับแก๊สรั่ว"
     : null;
@@ -197,7 +203,8 @@ export function buildAlertFlex(
       paddingAll: "16px",
       contents: [
         text(`🔔 LaundryTwin · ${style.label}`, { size: "sm", color: "#FFFFFF" }),
-        text(alert.title, { size: "xl", color: "#FFFFFF", weight: "bold" })
+        text(alert.title, { size: "xl", color: "#FFFFFF", weight: "bold" }),
+        ...(channel ? [text(channel, { size: "sm", color: "#FFFFFFD9" })] : [])
       ]
     },
     body: {
@@ -236,7 +243,7 @@ export function buildAlertFlex(
     }
   };
 
-  return { altText: buildAltText(alert, style.label, rows), contents };
+  return { altText: buildAltText(alert, style.label, rows, channel), contents };
 }
 
 /**
@@ -244,10 +251,15 @@ export function buildAlertFlex(
  * who never opens LINE must still learn the channel, the drop and the rate — and
  * it has to fit in 400 characters, which is why it carries the strong rows only.
  */
-export function buildAltText(alert: IrisAlert, label: string, rows: Array<{ label: string; value: string; strong?: boolean }>): string {
+export function buildAltText(
+  alert: IrisAlert,
+  label: string,
+  rows: Array<{ label: string; value: string; strong?: boolean }>,
+  channel: string | null = null
+): string {
   const head = `🔔 LaundryTwin (${label}) ${alert.title}`;
   const strong = rows.filter((item) => item.strong).map((item) => `${item.label}: ${item.value}`);
-  const parts = [head, ...strong];
+  const parts = channel ? [head, channel, ...strong] : [head, ...strong];
   let out = parts.join(" · ");
   if (out.length > ALT_TEXT_LIMIT) out = `${out.slice(0, ALT_TEXT_LIMIT - 1)}…`;
   return out;
