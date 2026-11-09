@@ -36,6 +36,12 @@ import { queryBranchHours } from "./report/clickhouse-report";
 
 const IRIS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const GAS_WINDOW_HOURS = 6;
+/**
+ * How far back a temperature reading may be taken as context. The collector runs
+ * 24 h behind, so this has to exceed 24 with room for one missed cycle; beyond it
+ * the answer is `unknown`, not a decision with an old ambient.
+ */
+const TEMPERATURE_CONTEXT_MAX_AGE_HOURS = 30;
 const DEFAULT_BRANCH_TIMEZONE = "Asia/Bangkok";
 
 export type GasChannelSummary = {
@@ -47,6 +53,12 @@ export type GasChannelSummary = {
   sampleCount: number;
   nullMinutes: number;
   reason: string;
+  /**
+   * Age of the temperature reading behind this channel's verdict, in hours.
+   * `0` means the window itself carried one; ~24 means the deliberate ETL lag;
+   * `null` means there was none and the verdict is `unknown`.
+   */
+  temperatureAgeHours: number | null;
 };
 
 export type GasSweepSummary = {
@@ -174,6 +186,11 @@ export type GasContext = {
    * so a broken query and an empty window produced the same word. They must not.
    */
   reasons: { machine: string | null; temperature: string | null };
+  /**
+   * How old the temperature reading used as context was, in hours, relative to
+   * the end of the gas window. `null` when there was no reading at all.
+   */
+  temperatureAgeHours: number | null;
 };
 
 export async function queryGasContext(
@@ -207,6 +224,7 @@ WHERE started_at >= {from:DateTime} AND started_at <= {to:DateTime}`,
     machineState = "unknown";
     reasons.machine = `machine_source_unavailable:${error instanceof Error ? error.message : String(error)}`;
   }
+  let temperatureAgeHours: number | null = null;
   try {
     // `occurred_at`, not `recorded_at` — this table is keyed on the sensor's own
     // timestamp, and `recorded_at` has never existed in it.
@@ -219,12 +237,59 @@ WHERE occurred_at >= {from:DateTime} AND occurred_at <= {to:DateTime} AND temper
     const value = rows[0]?.avg_c;
     temperatureC = value === null || value === undefined ? null : Number(value);
     if (temperatureC !== null && !Number.isFinite(temperatureC)) temperatureC = null;
-    if (temperatureC === null) reasons.temperature = "temperature_no_data";
+    if (temperatureC !== null) temperatureAgeHours = 0;
   } catch (error) {
     temperatureC = null;
     reasons.temperature = `temperature_source_unavailable:${error instanceof Error ? error.message : String(error)}`;
   }
-  return { machineState, temperatureC, reasons };
+
+  // THE 24-HOUR PROBLEM. The ETL ingests temperature behind a deliberate 24-hour
+  // lag (`temperature_lag_hours=24` in its run log), so a 6-hour gas window can
+  // never contain a temperature sample — measured 2026-11-09: the newest row was
+  // 2026-11-08T10:52 while the sweep window began 04:54 the next day. Requiring
+  // in-window temperature made every channel `unknown` by construction.
+  //
+  // A lagged reading is still a reading, and pressure-vs-temperature only needs
+  // the ambient it happened in, so the context falls back to the most recent
+  // available sample inside a bounded lookback — and the result carries its age,
+  // because an alert that used a 25-hour-old temperature has to say so.
+  if (temperatureC === null && reasons.temperature === null) {
+    try {
+      const anchorRows = await clickhouse<{ at: string | null }>(
+        `SELECT toString(max(occurred_at)) AS at
+FROM fact_temperature_sample
+WHERE occurred_at <= {to:DateTime} AND temperature_c IS NOT NULL
+  -- temperature-context-lookback`,
+        params
+      );
+      const at = anchorRows[0]?.at ? new Date(String(anchorRows[0].at).replace(" ", "T") + "Z") : null;
+      const ageHours = at === null ? null : (window.to.getTime() - at.getTime()) / 3_600_000;
+      if (at !== null && ageHours !== null && ageHours >= 0 && ageHours <= TEMPERATURE_CONTEXT_MAX_AGE_HOURS) {
+        const anchorParams = {
+          from: new Date(at.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " "),
+          to: at.toISOString().slice(0, 19).replace("T", " ")
+        };
+        const rows = await clickhouse<{ avg_c: number | string | null }>(
+          `SELECT avg(temperature_c) AS avg_c
+FROM fact_temperature_sample
+WHERE occurred_at >= {from:DateTime} AND occurred_at <= {to:DateTime} AND temperature_c IS NOT NULL
+  -- temperature-context-lookback`,
+          anchorParams
+        );
+        const value = rows[0]?.avg_c;
+        const parsed = value === null || value === undefined ? null : Number(value);
+        if (parsed !== null && Number.isFinite(parsed)) {
+          temperatureC = parsed;
+          temperatureAgeHours = Math.round(ageHours * 10) / 10;
+        }
+      }
+      if (temperatureC === null) reasons.temperature = "temperature_no_data";
+    } catch (error) {
+      temperatureC = null;
+      reasons.temperature = `temperature_source_unavailable:${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+  return { machineState, temperatureC, reasons, temperatureAgeHours };
 }
 
 function unavailableGas(reason: string): GasSweepSummary {
@@ -267,7 +332,10 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
   }
 
   const branchId = deps.branchId ?? samples.find((sample) => sample.branchId)?.branchId ?? null;
-  const { machineState, temperatureC, reasons } = await queryGasContext(deps.clickhouse, window);
+  const { machineState, temperatureC, reasons, temperatureAgeHours } = await queryGasContext(
+    deps.clickhouse,
+    window
+  );
   const hours = branchId ? await queryBranchHours(deps.clickhouse, branchId) : new Map();
   // Only a schedule that POSITIVELY says "shut" suppresses an alert; an absent
   // or unreadable schedule resolves `unknown` and suppresses nothing.
@@ -301,7 +369,8 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
       coveragePct: decision.evidence.coveragePct,
       sampleCount: decision.evidence.sampleCount,
       nullMinutes: decision.evidence.nullMinutes,
-      reason: specificReason(decision, reasons)
+      reason: specificReason(decision, reasons),
+      temperatureAgeHours
     })),
     summary
   };

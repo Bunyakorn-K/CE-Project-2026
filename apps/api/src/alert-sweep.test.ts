@@ -364,6 +364,54 @@ describe("performAlertSweep", () => {
   // throws were swallowed. A fake executor returns rows whatever the SQL says,
   // so the tests that passed proved nothing about the query. These two assert
   // the text instead, which is the only way a unit test can catch it.
+  // THE 24-HOUR LAG. The ETL ingests temperature behind `temperature_lag_hours=24`,
+  // so a 6-hour gas window never contains a sample — measured in production
+  // 2026-11-09: newest row 2026-11-08T10:52 while the window began 04:54 the next
+  // day. Requiring an in-window reading made every channel unknown by
+  // construction, which is a rule that can never fire rather than a safe rule.
+  it("uses a lagged temperature reading as context and says how old it is", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const lagged = new Date(NOW.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
+    const clickhouse = vi.fn(async (sql: string) => {
+      if (sql.includes("fact_gas_pressure_sample")) return gasRows(values);
+      if (sql.includes("fact_machine_usage")) return [{ running: "1" }];
+      if (sql.includes("fact_temperature_sample")) {
+        if (sql.includes("max(occurred_at)")) return [{ at: lagged }];
+        if (sql.includes("temperature-context-lookback")) return [{ avg_c: "58.5" }];
+        return [{ avg_c: null }];
+      }
+      if (sql.includes("dim_branch_hours")) throw new Error("Code: 60 UNKNOWN_TABLE");
+      return [];
+    }) as unknown as ClickHouseExecutor;
+
+    const result = await performAlertSweep(alertDeps({ gas: { clickhouse } }));
+    const channel = result.gas.channels[0];
+    expect(channel.trend).not.toBe("unknown");
+    expect(channel.temperatureAgeHours).toBeGreaterThan(23);
+    expect(channel.temperatureAgeHours).toBeLessThan(25);
+  });
+
+  it("still refuses a verdict when the only temperature is outside the lookback", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const tooOld = new Date(NOW.getTime() - 40 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
+    const clickhouse = vi.fn(async (sql: string) => {
+      if (sql.includes("fact_gas_pressure_sample")) return gasRows(values);
+      if (sql.includes("fact_machine_usage")) return [{ running: "1" }];
+      if (sql.includes("fact_temperature_sample")) {
+        if (sql.includes("max(occurred_at)")) return [{ at: tooOld }];
+        return [{ avg_c: null }];
+      }
+      if (sql.includes("dim_branch_hours")) throw new Error("Code: 60 UNKNOWN_TABLE");
+      return [];
+    }) as unknown as ClickHouseExecutor;
+
+    const result = await performAlertSweep(alertDeps({ gas: { clickhouse } }));
+    const channel = result.gas.channels[0];
+    expect(channel.trend).toBe("unknown");
+    expect(channel.reason).toContain("temperature_no_data");
+    expect(channel.temperatureAgeHours).toBeNull();
+  });
+
   it("asks both context tables for columns they actually have", async () => {
     const sqls: string[] = [];
     const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
