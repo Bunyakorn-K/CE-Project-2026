@@ -86,6 +86,7 @@ Ops records, most recent first:
 
 | File | What it establishes |
 |---|---|
+| [`ops-verification-2026-11-09-ci-publish-ghcr.md`](04_traceability/ops-verification-2026-11-09-ci-publish-ghcr.md) | the publish path moved to GHCR on the run's own token, one secret left (`VITE_LIFF_ID`), and the guard that refuses to publish an image with LINE compiled out |
 | [`ops-verification-2026-11-09-warehouse-backup-scheduled.md`](04_traceability/ops-verification-2026-11-09-warehouse-backup-scheduled.md) | the warehouse's first automated backup: three helper defects that made every call refuse, the daily timer, and a **restore of the first backup** that matched the live tables; same-host only |
 | [`ops-verification-2026-11-09-ml-dataset-and-candidates.md`](04_traceability/ops-verification-2026-11-09-ml-dataset-and-candidates.md) | R09: the guide's numbers re-measured, `fact_ml_features` built (456 NULLs = the gap day), four candidates vs seasonal-naive, **adopt none** |
 | [`ops-verification-2026-11-09-ai-audit.md`](04_traceability/ops-verification-2026-11-09-ai-audit.md) | R08/F-07: AI tool calls audited with digests, a real `/api/ai/chat` call's rows quoted, two latent defects fixed |
