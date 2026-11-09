@@ -21,6 +21,13 @@ Postgres/Airflow forensics. What follows is what is *left*.
 **LaundryTwin has no automated backup of the ClickHouse warehouse. Not one
 channel.** This was measured on 2026-09-30 14:0x UTC, not inferred.
 
+> **Update 2026-11-09: this item is closed.** A daily systemd timer
+> (`laundrytwin-clickhouse-backup.timer`, 02:30 UTC, keep 7) now backs up
+> `laundrytwin_analytics` to `/data/backups/clickhouse`, and the first real
+> backup was restored into a scratch database and matched the live tables. The
+> measurements below stay as the record of why it mattered.
+> Record: `docs/04_traceability/ops-verification-2026-11-09-warehouse-backup-scheduled.md`.
+
 | Channel | Result |
 |---|---|
 | root crontab | 0 lines |

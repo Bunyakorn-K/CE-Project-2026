@@ -60,6 +60,13 @@ Deploying is gated on the warehouse-backup prerequisite, which is still absent
 (`AGENTS.md`: "This warehouse has no automated backup"), so this task stops at
 "built and verified locally".
 
+> **Correction, same day 09:15 UTC:** the warehouse-backup prerequisite is no
+> longer absent — a daily verified backup was scheduled and restore-checked
+> (`ops-verification-2026-11-09-warehouse-backup-scheduled.md`). What blocks this
+> task now is the **deploy decision itself** (an explicit request, a rollback
+> image tag, a `db.backup()`-taken SQLite backup and a post-change smoke), not
+> the backup.
+
 The DAG file is therefore **in the repository and deliberately not copied to
 `/opt/analytics/dags/`**. A scheduler that POSTs to a 404 every five minutes
 produces a permanently red DAG, which is the same class of defect as a check

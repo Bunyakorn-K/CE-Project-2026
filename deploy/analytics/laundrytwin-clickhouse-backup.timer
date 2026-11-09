@@ -1,0 +1,20 @@
+[Unit]
+# Daily trigger for laundrytwin-clickhouse-backup.service.
+#
+# 02:30 UTC (09:30 Asia/Bangkok) is after the overnight merge cycle and before
+# the branch opens, so the backup captures a settled warehouse rather than parts
+# mid-merge. Persistent=true is load-bearing: if the host was off or the timer
+# was missed, systemd runs it once on the next boot instead of silently skipping
+# a day — an unobserved gap in a backup series is the same failure class as a
+# monitoring check that stopped running.
+Description=Daily LaundryTwin ClickHouse backup
+Documentation=file:///opt/analytics/backup-clickhouse.sh
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=laundrytwin-clickhouse-backup.service
+
+[Install]
+WantedBy=timers.target

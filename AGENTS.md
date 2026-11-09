@@ -118,11 +118,20 @@ repository is not a monitoring check that runs** — the diff against the deploy
 file is what found this, because the deploy plan had assumed the DAG edit was
 comment-only.
 
-**This warehouse has no automated backup** — no cron, timer, or
-`system.backup_schedule`; every backup was taken by hand before a specific
-change, and roughly the first two months of temperature history cannot be
-reloaded from IRIS. See
-`docs/07_handoffs/2026-09-30-handoff-priorities.md`.
+**The warehouse has a scheduled, verified daily backup as of 2026-11-09** —
+`laundrytwin-clickhouse-backup.timer` on the VM, 02:30 UTC, `KEEP_BACKUPS=7`,
+`BACKUP DATABASE … TO Disk('backups', …)` into `/data/backups/clickhouse`
+(outside the ClickHouse volume). Before that it had **no** automated backup: the
+VM has no `cron` binary and no timer existed, so every backup was taken by hand
+before a specific change. The helper had three defects that made every call
+refuse (`Disk('backup')` vs the declared `backups`, an equality check against a
+disk-qualified `system.backups.name`, and expecting status `OK` when the server
+reports `BACKUP_CREATED`); a restore of the first real backup was performed and
+matched the live tables. Record:
+`docs/04_traceability/ops-verification-2026-11-09-warehouse-backup-scheduled.md`.
+It is a **same-host** backup — an off-host copy is still outstanding — and the
+app SQLite is still a manual `await db.backup(...)` at deploy time. Roughly the
+first two months of temperature history still cannot be reloaded from IRIS.
 
 **The app SQLite is in WAL mode, so a file copy is not a backup.**
 `/opt/laundrytwin/data/laundrytwin.sqlite` is a 4 KB stub; the real ~192 KB

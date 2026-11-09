@@ -1,0 +1,32 @@
+[Unit]
+# LaundryTwin warehouse backup — one verified backup per run.
+#
+# WHY THIS UNIT EXISTS. AGENTS.md said for months that "this warehouse has no
+# automated backup": no cron, no timer, no schedule. The VM has no `cron` binary
+# at all, so the only mechanism available is systemd, which is already running
+# several timers here (dpkg-db-backup.timer among them).
+#
+# The unit runs deploy/analytics/backup-clickhouse.sh, which refuses rather than
+# reports success when the backup is empty, too small, or the disk name is wrong
+# — the three ways this host has already produced a backup that was not one.
+Description=LaundryTwin ClickHouse warehouse backup
+Documentation=file:///opt/analytics/backup-clickhouse.sh
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The credential lives in a 600 root-only env file, never on the command line and
+# never in this unit (which is in git).
+EnvironmentFile=/opt/analytics/backup.env
+# The backup name carries its own timestamp so two runs can never overwrite each
+# other and a rollback target is dateable. systemd does not expand $(date), so the
+# shell does it here; %% is a literal % inside a unit file.
+ExecStart=/bin/bash -c 'BACKUP_NAME="laundrytwin-$(date -u +%%Y%%m%%dT%%H%%M%%SZ)" exec /opt/analytics/backup-clickhouse.sh'
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# A backup that hangs must not hold the timer's only slot forever.
+TimeoutStartSec=1800
+StandardOutput=journal
+StandardError=journal
