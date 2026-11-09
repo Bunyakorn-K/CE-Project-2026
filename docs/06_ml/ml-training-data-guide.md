@@ -168,50 +168,55 @@ TMD NWP returns hourly forecasts. For ML, aggregate to `(branch_id, date)`.
 
 ### 4.1 Final training dataset (`fact_ml_features`)
 
-One row per `(branch_id, date)`. This is the denormalized training table.
+**One row per `(branch_id, machine_id, hour)`.** This is the denormalized
+training table, built by `apps/etl/src/ml-features.ts` and reproducible with one
+command (`pnpm --filter @laundrytwin/etl ml:features`), which prints its own row,
+day and NULL counts.
+
+The granularity is hourly **per machine**, not daily per branch. An earlier
+version of this section declared one row per `(branch_id, date)` *with* an
+`hour_of_day` column; daily rows cannot carry an hourly cycle series, and an
+hourly column on daily rows is a column that lies about its own resolution.
 
 ```sql
 CREATE TABLE laundrytwin_analytics.fact_ml_features (
     tenant_id UUID,
     branch_id UUID,
-    date Date,
-    -- Usage features
-    cycle_count UInt64,
-    total_duration_min UInt64,
-    total_revenue_satang Int64,
-    avg_duration_min Float64,
-    unique_machines UInt64,
-    paid_ratio Nullable(Float64),
-    -- Weather features
-    avg_temp_c Float64,
-    avg_humidity_pct Float64,
-    total_rain_mm Float64,
-    max_temp_c Float64,
-    min_temp_c Float64,
-    rain_hours UInt64,
-    avg_cond Float64,
-    -- Temporal features
+    machine_id UUID,
+    machine_kind LowCardinality(String),   -- washer | dryer
+    hour DateTime,                          -- UTC, toStartOfHour(started_at)
+    day Date,
     hour_of_day UInt8,
-    day_of_week UInt8,
+    day_of_week UInt8,                      -- 0 = Sunday
     is_weekend UInt8,
     month UInt8,
-    is_holiday UInt8,
-    season String,
-    -- Branch features
-    province String,
-    sub_district Nullable(String),
-    district Nullable(String),
-    lat Float64,
-    lon Float64,
-    -- Interaction features
-    temp_x_hour Float64,
-    humidity_x_weekend Float64,
-    rain_x_is_weekend Float64,
-    -- Target (for supervised learning)
-    target_low_usage UInt8  -- 1 if bottom tercile, 0 otherwise
-) ENGINE = ReplacingMergeTree
-ORDER BY (tenant_id, branch_id, date);
+    -- All measurements are Nullable: see the rule below.
+    cycle_count Nullable(UInt32),
+    paid_count Nullable(UInt32),
+    finished_count Nullable(UInt32),
+    cancelled_count Nullable(UInt32),
+    total_duration_min Nullable(Float64),
+    revenue_satang Nullable(Int64),
+    avg_temperature_c Nullable(Float64),    -- branch-day weather
+    total_rain_mm Nullable(Float64),
+    built_at DateTime
+) ENGINE = ReplacingMergeTree(built_at)
+ORDER BY (tenant_id, branch_id, machine_id, hour);
 ```
+
+**A missing hour is NULL, never 0.** The rows are emitted from a spine of
+`machines × hours`, not from a `GROUP BY` over usage, so an hour with no rows
+still has a row here — and its `cycle_count` is NULL when the **day** reported no
+usage rows at all. Inside a day that did report rows, an empty hour is a real 0.
+Measured on the first build (2026-11-09): 456 of 50,616 rows at the real branch
+are NULL, which is exactly 19 machines × 24 hours for the single `2026-07-27`
+source-gap day — the rule and the data agree.
+
+A `GROUP BY` cannot express this: it can only produce hours that had rows, which
+is the shape that silently turns a gap into a demand collapse.
+
+The dataset is **not** scheduled. There is no DAG and no timer; the command is
+the reproducibility guarantee.
 
 ### 4.2 Target definition
 
@@ -291,12 +296,25 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 
 ### 5.3 Data volume requirements
 
+Measured **2026-11-09 07:45 UTC** against production ClickHouse with the app's
+own `reader` credential:
+
 | Model | Minimum data | Recommended data | Current status |
 |---|---|---|---|
 | Heuristic baseline | None | Any | ✅ Done |
-| ARIMA / SARIMA | 90 days daily | 180+ days | ⏳ **71 days** (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC) — 19 days short of the 90-day minimum |
-| Prophet | 90 days daily | 365+ days | ⏳ **71 days** (same measurement) — 19 days short of the 90-day minimum |
-| Gradient Boosting | 90 days + features | 365+ days | ⏳ **71 days** (same measurement) — 19 days short of the 90-day minimum |
+| ARIMA / SARIMA | 90 days daily | 180+ days | ✅ **110 distinct days** — gate released |
+| Prophet | 90 days daily | 365+ days | ✅ 110 days (below the recommended 365) |
+| Gradient Boosting | 90 days + features | 365+ days | ✅ 110 days (below the recommended 365) |
+
+**The 90-day gate has released itself and nothing noticed.** Every earlier
+version of this table said "71 days, 19 days short", measured 2026-09-30. The
+warehouse has since crossed 90 days on its own: the span is 111 days
+(`2026-07-22` → `2026-11-09`) with one known source gap, `2026-07-27`. A figure
+quoted without its measurement date is stale by construction — this row moves as
+the ETL ingests the IRIS backlog.
+
+Whether 110 days is *enough* is a separate question from whether it clears the
+minimum, and §9.1 states the constraints that cap any claim.
 
 ---
 
@@ -391,9 +409,28 @@ LEFT JOIN weather_daily w ON u.branch_id = w.branch_id AND u.date = w.date;
 ### 9.1 Data limitations
 
 - **Province duplication:** TMD hourly returns byte-identical temp/rh/rain for all Thai provinces in the same collection window. Per-province weather curves need a location-specific source (lat/lon + station code).
-- **Sample size:** **7,908 non-synthetic usage rows over 71 calendar days** (2026-07-22 → 2026-09-30, measured 2026-09-30 11:39:11 UTC). Any model fitted today would overfit, and 71 days remains short of the 90-day minimum above. The figure supersedes 4,458 rows over 9 weeks (measured 2026-09-29) and, before that, the "~4.8k rows as of 2026-09-07" in this document and in `AGENTS.md`, `README.md`, and `docs/06_ml/algorithm-comparison.md` (all corrected 2026-09-29, refreshed 2026-09-30).
-- **Attribution:** **67.8933% of usage rows carry no `machine_session_id`** (5,369 of 7,908, measured 2026-09-30 11:39:11 UTC). `cycle_count` is a row count by decision, but a row count is not a count of *identified* sessions, and no feature here may treat it as one. This share is a live metric — it rises as the ETL ingests the IRIS backlog and as recovery merges land — so it must always be quoted with its measurement date.
-- **Coverage:** 70 of 71 day buckets are populated. **2026-07-27 is the only usage gap day and it is a genuine source gap, not a merge artefact.** A missing day in a training series is a real discontinuity, not a zero.
+- **Sample size:** **13,455 usage rows over 110 distinct business days**
+  (`2026-07-22` → `2026-11-09`, measured 2026-11-09 07:45 UTC with the app's
+  `reader` credential; the span is 111 days and `2026-07-27` is the single
+  missing day). Of those rows, **13,454 belong to the real branch** and `1`
+  belongs to the `SANDBOX` placeholder branch (`22222222-…`), which is not a real
+  branch and holds no usable history. **631 rows carry a NULL `started_at`** and
+  therefore cannot be placed on any business day at all — they exist in the
+  table and in no hour bucket, which is why `fact_ml_features` reports them
+  separately rather than dropping them silently. The earlier figure in this
+  document (7,908 rows over 71 days, measured 2026-09-30 11:39:11 UTC) is
+  superseded; the number moves as the ETL ingests the IRIS backlog, so quote it
+  with its date.
+- **Attribution:** **68.4 % of usage rows carry no `machine_session_id`**
+  (9,198 of 13,455, measured 2026-11-09 07:45 UTC). `cycle_count` is a row count
+  by decision, but a row count is not a count of *identified* sessions, and no
+  feature here may treat it as one. This share is a live metric — quote it with
+  its measurement date.
+- **Coverage:** 110 of 111 day buckets are populated. **2026-07-27 is the only
+  usage gap day and it is a genuine source gap, not a merge artefact.** A missing
+  day in a training series is a real discontinuity, not a zero: `fact_ml_features`
+  emits that day's hours with NULL `cycle_count`, never 0 (measured on the first
+  build: 456 NULL rows = 19 machines × 24 hours).
 - **Weather-source limitation:** TMD NWP is a forecast, not observations. Correlation ≠ causation.
 
 ### 9.2 R12 compliance

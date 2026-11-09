@@ -274,6 +274,43 @@ const FACT_GAS_COLUMNS: Column[] = [
   { name: "ingested_at", ch: "DateTime64(3)" },
 ];
 
+// ML training features (R09 phase C). One row per branch x machine x hour.
+//
+// WHY HOURLY PER MACHINE. The guide's §4.1 declared one row per (branch, date)
+// with an `hour_of_day` column; daily rows cannot carry an hourly cycle series,
+// and an hourly column on daily rows is a column that lies. The granularity is
+// stated in docs/06_ml/ml-training-data-guide.md §4.1 and implemented by
+// apps/etl/src/ml-features.ts.
+//
+// WHY EVERY COUNT IS Nullable. Measured 2026-11-09: 110 usage days over a
+// 111-day span, with 2026-07-27 a genuine source gap. An hour inside a day that
+// reported no rows is unmeasured, not zero — a spine of machines x hours with
+// NULLs says that, and a GROUP BY cannot. Inside a day that DID report rows, an
+// empty hour is a real 0.
+const ML_FEATURES_COLUMNS: Column[] = [
+  { name: "tenant_id", ch: "UUID" },
+  { name: "branch_id", ch: "UUID" },
+  { name: "machine_id", ch: "UUID" },
+  { name: "machine_kind", ch: "LowCardinality(String)" },
+  { name: "hour", ch: "DateTime" },
+  { name: "day", ch: "Date" },
+  { name: "hour_of_day", ch: "UInt8" },
+  { name: "day_of_week", ch: "UInt8" },
+  { name: "is_weekend", ch: "UInt8" },
+  { name: "month", ch: "UInt8" },
+  { name: "cycle_count", ch: "Nullable(UInt32)" },
+  { name: "paid_count", ch: "Nullable(UInt32)" },
+  { name: "finished_count", ch: "Nullable(UInt32)" },
+  { name: "cancelled_count", ch: "Nullable(UInt32)" },
+  { name: "total_duration_min", ch: "Nullable(Float64)" },
+  { name: "revenue_satang", ch: "Nullable(Int64)" },
+  { name: "avg_temperature_c", ch: "Nullable(Float64)" },
+  { name: "total_rain_mm", ch: "Nullable(Float64)" },
+  { name: "built_at", ch: "DateTime" },
+];
+
+export const ML_FEATURES_TABLE = "fact_ml_features";
+
 function ddl(
   table: string,
   columns: Column[],
@@ -287,6 +324,16 @@ function ddl(
   const partitionClause = partitionBy ? `\nPARTITION BY ${partitionBy}` : "";
   return `CREATE TABLE IF NOT EXISTS ${table} (\n${cols}\n) ENGINE = ${engine}${versionClause}${partitionClause}\n  ORDER BY ${orderBy}`;
 }
+
+/** The DDL the builder runs; declared here so the ETL's DDL pass creates it too. */
+export const ML_FEATURES_DDL = ddl(
+  ML_FEATURES_TABLE,
+  ML_FEATURES_COLUMNS,
+  "ReplacingMergeTree",
+  "(tenant_id, branch_id, machine_id, hour)",
+  undefined,
+  "built_at"
+);
 
 export const CREATE_TABLES: string[] = [
   ddl("dim_branch", DIM_BRANCH_COLUMNS, "ReplacingMergeTree", "(tenant_id, branch_id)", undefined, "source_updated_at"),
@@ -319,6 +366,7 @@ export const CREATE_TABLES: string[] = [
     undefined,
     "timestamp"
   ),
+  ML_FEATURES_DDL,
   ddl(
     "fact_gas_pressure_sample",
     FACT_GAS_COLUMNS,
@@ -338,6 +386,7 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
   fact_temperature_sample: FACT_TEMPERATURE_COLUMNS.map((c) => c.name),
   fact_weather_sample: FACT_WEATHER_COLUMNS.map((c) => c.name),
   fact_gas_pressure_sample: FACT_GAS_COLUMNS.map((c) => c.name),
+  fact_ml_features: ML_FEATURES_COLUMNS.map((c) => c.name),
 };
 
 export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as Array<keyof typeof TABLE_COLUMNS>;

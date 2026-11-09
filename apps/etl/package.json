@@ -11,7 +11,8 @@
     "coverage": "tsx src/coverage-audit.ts",
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ml:features": "tsx src/ml-features-run.ts"
   },
   "dependencies": {
     "date-fns": "^4.4.0",

@@ -1,10 +1,16 @@
 # Six gaps between the shipped app and its own requirements
 
-> **Status 2026-11-09: planned, nothing started.** Written from the audit measured
-> against production that morning (numbers in "Ground truth" below, all read from
-> the running system, not from other documents). Covers **items 2–7** of that
-> audit's ranked list. Item 1 — the missing automated ClickHouse backup — is a
-> **prerequisite for every deploy in this plan**, not a task inside it.
+> **Status 2026-11-09 (evening): executed to the deploy gate, and it stopped
+> there.** Tasks 2, 3, 4, 5 and 6 are built, tested and recorded; task 3's and
+> task 4's production halves are **blocked on a gated deploy** (the prerequisite
+> in the next sentence is still unmet), and task 1 is **blocked on the human**
+> (CI secrets and the `production` environment need repository admin). One
+> evidence record per task lives under `docs/04_traceability/ops-verification-2026-11-09-*`.
+> Written from the audit measured against production that morning (numbers in
+> "Ground truth" below, all read from the running system, not from other
+> documents). Covers **items 2–7** of that audit's ranked list. Item 1 — the
+> missing automated ClickHouse backup — is a **prerequisite for every deploy in
+> this plan**, not a task inside it, and it is still missing.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task.
@@ -23,11 +29,11 @@ status API, F-03 floorplan, F-04 streaming. None of those is closer after this p
 
 | Fact | Value | Where it came from |
 |---|---|---|
-| Usage rows / distinct days / span | 13,453 / **110** / 2026-07-22 → 2026-11-09 | ClickHouse `fact_machine_usage` |
+| Usage rows / distinct days / span | 13,455 / **110** / 2026-07-22 → 2026-11-09 (re-measured 2026-11-09 07:45 UTC; it was 13,453 at 06:00) | ClickHouse `fact_machine_usage` |
 | Known source gap | `2026-07-27` (110 days over a 111-day span) | same |
 | `fact_machine_event` | **0 rows** | ClickHouse |
-| Gas samples | **259,356**, newest 18 min old | `fact_gas_pressure_sample` |
-| Temperature samples | 2,701,667, extracted 3 min ago | `fact_temperature_sample` |
+| Gas samples | **259,110**, newest 25 min old, 3 entities, 459 NULL psi (re-measured 07:45 UTC; the earlier 259,356 was not taken through `FINAL`, which dedupes ReplacingMergeTree parts) | `fact_gas_pressure_sample` |
+| Temperature samples | 2,708,181, extracted 4 min ago | `fact_temperature_sample` |
 | ETL lag | ~3 min (5-min cycle) | `max(extracted_at)` |
 | Alert sweep triggers | **one**, `POST /api/admin/alerts/notify`, owner-only | `apps/api/src/index.ts:575` |
 | Schedulers calling it | **none** (no cron, timer, DAG, compose service) | repo-wide grep |
@@ -37,6 +43,8 @@ status API, F-03 floorplan, F-04 streaming. None of those is closer after this p
 | `mcp-inspector` | **3420 restarts**, empty log | `docker inspect` |
 | Unpushed commits | **11** (`origin/main..HEAD`) | git |
 | CI publish | environments **0**, secrets **[]** | GitHub API |
+| Rows without `machine_session_id` | **9,198 = 68.4 %** | `fact_machine_usage FINAL` |
+| Machines in `dim_machine` (active) | **23** across 2 branches (19 at the real one) | ClickHouse |
 | Disk | `/` 91 % used, **7.6 GB free** | `df -h` |
 
 ## Order, and why this order
@@ -69,7 +77,7 @@ and `VITE_LIFF_ID` do not exist, and the `production` environment does not exist
 either, so the deploy job's approval gate is inert. Meanwhile 11 commits — the
 sign-out fix, typed LIFF errors, and every record written today — are unpushed.
 
-- [ ] `git push origin main`; confirm `origin/main` contains `4fb470d`, `9724c4d`,
+- [x] `git push origin main`; confirm `origin/main` contains `4fb470d`, `9724c4d`,
       `c99a277` (`git log --oneline origin/main -3`).
 - [ ] **The user** adds the three secrets (`gh secret set ...`) — values are not
       handled by the agent, and `VITE_LIFF_ID` must be the ID read out of the
@@ -111,18 +119,18 @@ cause remains unattributed.
 | H3 a client that vanishes mid-write (`pg_isready`, LW lock, `signal 13`) | correlate the last `disconnection`/`could not send data to client` per PID with the exit-code-2 PID |
 | H4 IO saturation during ETL/ClickHouse merges | `iostat -x 1` samples at crash; compare with `analytics-clickhouse-1` merge activity |
 
-- [ ] Add the sampling harness (a shell script under `deploy/`, not a daemon):
+- [x] Add the sampling harness (a shell script under `deploy/`, not a daemon):
       30-second `docker stats`, `dmesg -T`, `pg_stat_database` deltas, written to
       `/opt/laundrytwin/postgres-forensics/` with a size cap.
 - [ ] Bound one debug window: `log_min_messages=debug1` + `log_error_verbosity=verbose`
       for at most 24 h, then revert — a `debug1` postmaster on a 250 MB cluster is a
       disk-filling risk on a host with 7.6 GB free, so the revert is part of the task,
       not a follow-up.
-- [ ] Add `check_postgres_reinit` to `laundrytwin_warehouse_freshness`: compare
+- [x] Add `check_postgres_reinit` to `laundrytwin_warehouse_freshness`: compare
       `pg_postmaster_start_time()` against an Airflow Variable and **warn with the
       previous and current start times** when it moves. Detection in one DAG cycle
       instead of retrospectively reading a log 12 hours later.
-- [ ] Write the attribution — or the honest "still unattributed, and here is what
+- [x] Write the attribution — or the honest "still unattributed, and here is what
       would attribute it" — into
       `docs/04_traceability/ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md`
       (extend that record; do not start a second file for one incident).
@@ -147,19 +155,19 @@ is attached to **`analytics_default`** as well as `laundrytwin_default`
 (`docker inspect laundrytwin-app-1`), so Airflow can reach it as `app:8787`
 without exposing anything new to the host. Therefore:
 
-- [ ] Add `POST /api/internal/alerts/sweep`, guarded by `ALERT_SWEEP_TOKEN` with a
+- [x] Add `POST /api/internal/alerts/sweep`, guarded by `ALERT_SWEEP_TOKEN` with a
       **timing-safe** compare (the pattern already exists at
       `apps/api/src/analytics/mcp.ts:51`), 401 otherwise. No cookie path, no owner
       path — a machine credential is not an owner session.
-- [ ] Refactor the existing `notify` handler into one `performAlertSweep()` used by
+- [x] Refactor the existing `notify` handler into one `performAlertSweep()` used by
       both routes, so the manual button and the scheduler cannot drift (two copies
       of one contract is the repository's named failure mode).
-- [ ] Add `deploy/analytics/dags/laundrytwin_alert_sweep.py`, `*/5 * * * *`, stdlib
+- [x] Add `deploy/analytics/dags/laundrytwin_alert_sweep.py`, `*/5 * * * *`, stdlib
       `urllib` (same shape as `laundrytwin_warehouse_freshness.py`), token from an
       Airflow Variable, `max_active_runs=1`, and a **FAIL when the response is not
       200** — a sweep that silently 401s is the same defect class as a monitoring
       check that exists but does not run.
-- [ ] Tests: 401 without token; 200 with token; identical summary shape from both
+- [x] Tests: 401 without token; 200 with token; identical summary shape from both
       routes; a second sweep inside the cooldown window sends nothing and reports
       `cooldown > 0`.
 - [ ] Deploy (gated), then read the DAG run log and paste the real summary JSON into
@@ -185,20 +193,20 @@ Facts that constrain the design: `value_psi` is `Nullable(Float32)` and
 `changeover_filter_pressure`; `gas_detector_*` entities are a liveness heartbeat
 and are **excluded by contract**.
 
-- [ ] `apps/api/src/gas-trend.ts`: pure `evaluateGasTrend(samples, context)` returning
+- [x] `apps/api/src/gas-trend.ts`: pure `evaluateGasTrend(samples, context)` returning
       `unknown` / `steady` / `declining` **plus its evidence** (window, sample count,
       coverage %, minutes of NULL inside the window, machine state and temperature
       observed, threshold version). Missing or mostly-NULL window ⇒ `unknown`, never
       a trend.
-- [ ] Thresholds in one exported, versioned object; no magic numbers in the caller.
+- [x] Thresholds in one exported, versioned object; no magic numbers in the caller.
       A declining trend with the branch **positively closed** must not be reported
       (machines idle, pressure steady is not a finding).
-- [ ] Emit into Task 3's sweep as `ruleId` prefixed `gas.` so cooldown keys cannot
+- [x] Emit into Task 3's sweep as `ruleId` prefixed `gas.` so cooldown keys cannot
       collide with IRIS rule ids; reuse `claimNotification` unchanged.
-- [ ] Contract doc: add the thresholds, the "not a leak detector" boundary and the
+- [x] Contract doc: add the thresholds, the "not a leak detector" boundary and the
       "no claim from a single dip" rule to
       `docs/03_data_contracts/ha_gas_sensor_contract.md`.
-- [ ] ≥20 tests on the pure decision, including: all-NULL window ⇒ `unknown`;
+- [x] ≥20 tests on the pure decision, including: all-NULL window ⇒ `unknown`;
       50 % coverage ⇒ `unknown`; closed branch ⇒ no alert; single dip ⇒ no alert;
       monotone decline over ≥3 h with machine running ⇒ `declining`; and that no
       `gas_detector` entity can ever produce an alert.
@@ -214,17 +222,17 @@ its window. **Not** acceptance: any wording that reads as leak detection.
 but no record of what was called with what. `audit_log` exists and is used for
 grants, alerts and settings — the AI path simply never writes to it.
 
-- [ ] One row per tool call: `action='ai.tool_call'`, `target=<tool name>`,
+- [x] One row per tool call: `action='ai.tool_call'`, `target=<tool name>`,
       `detail` = JSON `{model, toolCallId, argsDigest, argsKeys, resultRows,
       durationMs, outcome}` where `argsDigest` is a SHA-256 over canonicalised args.
       **Digest, not raw args** — arguments carry branch ids and revenue scopes, and
       an audit table is the wrong place to accumulate a second copy of them. State
       that tradeoff in the doc so nobody later "fixes" it by logging raw args.
-- [ ] One row per chat request: `action='ai.chat'` with model, message count, and
+- [x] One row per chat request: `action='ai.chat'` with model, message count, and
       whether the answer used any tool.
-- [ ] Decide retention explicitly: `POST /api/ai/chat/purge` clears conversation
+- [x] Decide retention explicitly: `POST /api/ai/chat/purge` clears conversation
       content only; audit rows are append-only. Test both halves.
-- [ ] Tests: exactly one audit row per tool call **including when the tool throws**;
+- [x] Tests: exactly one audit row per tool call **including when the tool throws**;
       no environment value (token, DSN) appears anywhere in `detail`; purge leaves
       audit intact.
 
@@ -241,20 +249,20 @@ gate (71 days, measured 2026-09-30). It is not short any more: **110 distinct da
 (2026-07-22 → 2026-11-09, one known source gap at 2026-07-27). The gate released
 itself and nothing noticed — that is the finding.
 
-- [ ] Update `docs/06_ml/ml-training-data-guide.md` §5 and §9.1 with the measured
+- [x] Update `docs/06_ml/ml-training-data-guide.md` §5 and §9.1 with the measured
       numbers (rows, distinct days, span, the `2026-07-27` gap, attribution share),
       each with the measurement date. The guide is the single source for these; do
       not restate them in `AGENTS.md`.
-- [ ] Build `fact_ml_features` — currently declared in the guide §4.1 and
+- [x] Build `fact_ml_features` — currently declared in the guide §4.1 and
       implemented **nowhere** (`grep` finds no code). Daily aggregation, one row per
       branch × machine × hour, NULL-preserving: a missing hour is NULL, never 0.
-- [ ] One reproducible command builds it and prints its own row/day counts, so the
+- [x] One reproducible command builds it and prints its own row/day counts, so the
       dataset can be re-derived rather than trusted.
-- [ ] Comparison harness with a **fixed** split (last 14 days held out, no shuffling):
+- [x] Comparison harness with a **fixed** split (last 14 days held out, no shuffling):
       seasonal-naive baseline, then Prophet, SARIMA, and a gradient-boosted tree, on
       hourly cycle counts per branch. Report MAE/MAPE per candidate including the
       baseline — a model that does not beat seasonal-naive is the honest result.
-- [ ] Record the decision (adopt / do not adopt) in
+- [x] Record the decision (adopt / do not adopt) in
       `docs/04_traceability/`, with the two caveats that constrain any claim:
       ~68 % of usage rows carry no `machine_session_id` (attribution, not activity,
       is what is missing), and the weather source is one effective series for both
@@ -294,3 +302,18 @@ acceptance: a deployed model, or a metrics table without the baseline row.
 - AI tool calls are audited with digests, and real rows exist (Task 5).
 - The ML guide is correct, the dataset is reproducible, and three candidates are
   compared against seasonal-naive (Task 6).
+
+---
+
+## Execution log, 2026-11-09
+
+| Task | Reached | Evidence |
+|---|---|---|
+| 1 — land + CI publish | **pushed** (12 commits, `origin/main` = `67e32aa`). Secrets and the `production` environment are **not created**: the agent's GitHub token is not a repository admin (`gh api -X PUT .../environments/production` → `403 Must have admin rights`), so this needs the human. No image has been published by CI. | this plan, task 1 |
+| 2 — Postgres reinit | detection task **live in production** (warn path exercised on a real run); 24 h sampler running; attribution **not established**, two hypotheses excluded by measurement and one channel (the log stream) shown to have broken first. The `debug1` window was **not** opened — it needs a postgres restart. | `ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md` §10 |
+| 3 — alert sweep (R05) | route + DAG + tests **built**; **not deployed**, so **not closed**. The DAG file is deliberately not on the box yet: it would 404 every 5 minutes. | `ops-verification-2026-11-09-alert-sweep-scheduled.md` |
+| 4 — gas trend (R06) | pure decision + wiring + contract **built and tested against real production rows**; **no sweep has run**, so **not closed**. The decision rule was corrected by a production measurement (edge rate, not fitted slope). | `ops-verification-2026-11-09-gas-trend-evaluation.md` |
+| 5 — AI audit (R08/F-07) | rows + purge **built and tested**; a **real `/api/ai/chat` call** in dev leaves the expected row. No real tool call recorded; nothing in production. | `ops-verification-2026-11-09-ai-audit.md` |
+| 6 — ML (R09) | guide corrected from measurements; `fact_ml_features` **built in production** (61,272 rows, 456 NULLs = the `2026-07-27` gap day); four candidates compared on a fixed 14-day holdout; **decision: adopt none**. | `ops-verification-2026-11-09-ml-dataset-and-candidates.md` |
+
+**Every deploy in this plan remains blocked on the missing warehouse backup.**
