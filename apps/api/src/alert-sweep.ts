@@ -159,45 +159,97 @@ ORDER BY recorded_at`,
  * and each failure is `unknown` rather than a default: an unreadable table is
  * not "all machines idle", and a missing temperature is not 20 °C.
  */
+export type GasContext = {
+  machineState: MachineStateLike;
+  temperatureC: number | null;
+  /**
+   * Why a value is missing, when it is. `undefined` means measured.
+   *
+   * These exist because the first production run of this sweep (2026-11-09)
+   * returned `unknown` for all three channels with the reason "temperature
+   * unknown", and the cause was not a missing sensor: the query asked
+   * `fact_temperature_sample` for a `recorded_at` column that does not exist
+   * (it is `occurred_at`), and `fact_machine_usage` for a `status` column that
+   * does not exist either. Both throws were swallowed by the catch blocks below,
+   * so a broken query and an empty window produced the same word. They must not.
+   */
+  reasons: { machine: string | null; temperature: string | null };
+};
+
 export async function queryGasContext(
   clickhouse: ClickHouseExecutor,
   window: { from: Date; to: Date }
-): Promise<{ machineState: MachineStateLike; temperatureC: number | null }> {
+): Promise<GasContext> {
   const params = {
     from: window.from.toISOString().slice(0, 19).replace("T", " "),
     to: window.to.toISOString().slice(0, 19).replace("T", " ")
   };
   let machineState: MachineStateLike = "unknown";
   let temperatureC: number | null = null;
+  const reasons: GasContext["reasons"] = { machine: null, temperature: null };
   try {
+    // `fact_machine_usage` has no `status` column. A machine is running when it
+    // has a usage row that started inside the window and has not finished —
+    // which is what the column set actually supports.
     const rows = await clickhouse<{ running: string | number }>(
-      `SELECT countIf(status = 'running') AS running
+      `SELECT countIf(finished_at IS NULL AND started_at IS NOT NULL) AS running
 FROM fact_machine_usage FINAL
 WHERE started_at >= {from:DateTime} AND started_at <= {to:DateTime}`,
       params
     );
-    machineState = Number(rows[0]?.running ?? 0) > 0 ? "running" : "idle";
-  } catch {
+    if (rows.length === 0) {
+      machineState = "unknown";
+      reasons.machine = "machine_no_rows";
+    } else {
+      machineState = Number(rows[0]?.running ?? 0) > 0 ? "running" : "idle";
+    }
+  } catch (error) {
     machineState = "unknown";
+    reasons.machine = `machine_source_unavailable:${error instanceof Error ? error.message : String(error)}`;
   }
   try {
+    // `occurred_at`, not `recorded_at` — this table is keyed on the sensor's own
+    // timestamp, and `recorded_at` has never existed in it.
     const rows = await clickhouse<{ avg_c: number | string | null }>(
       `SELECT avg(temperature_c) AS avg_c
 FROM fact_temperature_sample
-WHERE recorded_at >= {from:DateTime} AND recorded_at <= {to:DateTime} AND temperature_c IS NOT NULL`,
+WHERE occurred_at >= {from:DateTime} AND occurred_at <= {to:DateTime} AND temperature_c IS NOT NULL`,
       params
     );
     const value = rows[0]?.avg_c;
     temperatureC = value === null || value === undefined ? null : Number(value);
     if (temperatureC !== null && !Number.isFinite(temperatureC)) temperatureC = null;
-  } catch {
+    if (temperatureC === null) reasons.temperature = "temperature_no_data";
+  } catch (error) {
     temperatureC = null;
+    reasons.temperature = `temperature_source_unavailable:${error instanceof Error ? error.message : String(error)}`;
   }
-  return { machineState, temperatureC };
+  return { machineState, temperatureC, reasons };
 }
 
 function unavailableGas(reason: string): GasSweepSummary {
   return { state: "unavailable", reason, window: null, evaluated: 0, alertable: 0, channels: [], summary: null };
+}
+
+
+/**
+ * Name the cause, not the symptom.
+ *
+ * `evaluateGasTrend` can only say "the context was unknown"; the sweep knows
+ * whether that was an unreadable table or a genuinely empty one, and those send
+ * a reader to two different places.
+ */
+function specificReason(
+  decision: GasTrendDecision,
+  reasons: GasContext["reasons"]
+): string {
+  if (decision.suppression === "temperature_unknown") {
+    return reasons.temperature ?? decision.evidence.reason;
+  }
+  if (decision.suppression === "machine_state_unknown") {
+    return reasons.machine ?? decision.evidence.reason;
+  }
+  return decision.evidence.reason;
 }
 
 /**
@@ -215,7 +267,7 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
   }
 
   const branchId = deps.branchId ?? samples.find((sample) => sample.branchId)?.branchId ?? null;
-  const { machineState, temperatureC } = await queryGasContext(deps.clickhouse, window);
+  const { machineState, temperatureC, reasons } = await queryGasContext(deps.clickhouse, window);
   const hours = branchId ? await queryBranchHours(deps.clickhouse, branchId) : new Map();
   // Only a schedule that POSITIVELY says "shut" suppresses an alert; an absent
   // or unreadable schedule resolves `unknown` and suppresses nothing.
@@ -249,7 +301,7 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
       coveragePct: decision.evidence.coveragePct,
       sampleCount: decision.evidence.sampleCount,
       nullMinutes: decision.evidence.nullMinutes,
-      reason: decision.evidence.reason
+      reason: specificReason(decision, reasons)
     })),
     summary
   };

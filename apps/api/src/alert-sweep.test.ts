@@ -356,6 +356,71 @@ describe("performAlertSweep", () => {
     expect(summary.gas.channels[0]).toMatchObject({ channel: "gas_run_a_pressure", trend: "declining" });
   });
 
+  // THE COLUMNS. The first production run of this sweep (2026-11-09 10:42 UTC)
+  // answered 200 with `unknown` on all three channels and the reason
+  // "temperature_unknown" — not because a sensor was missing, but because the
+  // query named `fact_temperature_sample.recorded_at` (the column is
+  // `occurred_at`) and `fact_machine_usage.status` (no such column) and both
+  // throws were swallowed. A fake executor returns rows whatever the SQL says,
+  // so the tests that passed proved nothing about the query. These two assert
+  // the text instead, which is the only way a unit test can catch it.
+  it("asks both context tables for columns they actually have", async () => {
+    const sqls: string[] = [];
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const clickhouse = vi.fn(async (sql: string) => {
+      sqls.push(sql);
+      if (sql.includes("fact_gas_pressure_sample")) return gasRows(values);
+      if (sql.includes("fact_machine_usage")) return [{ running: "1" }];
+      if (sql.includes("fact_temperature_sample")) return [{ avg_c: "61.2" }];
+      if (sql.includes("dim_branch_hours")) throw new Error("Code: 60 UNKNOWN_TABLE");
+      return [];
+    }) as unknown as ClickHouseExecutor;
+
+    await performAlertSweep(alertDeps({ gas: { clickhouse } }));
+
+    const temperatureSql = sqls.find((sql) => sql.includes("fact_temperature_sample"));
+    const machineSql = sqls.find((sql) => sql.includes("fact_machine_usage"));
+    expect(temperatureSql).toBeDefined();
+    expect(temperatureSql).toContain("occurred_at");
+    expect(temperatureSql).not.toContain("recorded_at");
+    expect(machineSql).toBeDefined();
+    // "running" is derived from an open usage row; there is no `status` column.
+    expect(machineSql).toContain("finished_at IS NULL");
+    expect(machineSql).not.toMatch(/status\s*=/);
+  });
+
+  it("says a context table could not be read, not that the context was empty", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const clickhouse = vi.fn(async (sql: string) => {
+      if (sql.includes("fact_gas_pressure_sample")) return gasRows(values);
+      if (sql.includes("fact_machine_usage")) return [{ running: "1" }];
+      if (sql.includes("fact_temperature_sample")) throw new Error("Code: 47 UNKNOWN_IDENTIFIER");
+      if (sql.includes("dim_branch_hours")) throw new Error("Code: 60 UNKNOWN_TABLE");
+      return [];
+    }) as unknown as ClickHouseExecutor;
+
+    const result = await performAlertSweep(alertDeps({ gas: { clickhouse } }));
+    expect(result.gas.state).toBe("evaluated");
+    // The fixture only carries channel A, so only that one reaches the context
+    // guard; B and C say "no samples in window", which is the more specific fact.
+    expect(result.gas.channels[0].sampleCount).toBeGreaterThan(0);
+    expect(result.gas.channels[0].reason).toContain("temperature_source_unavailable");
+  });
+
+  it("distinguishes an empty machine window from an unreadable one", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const clickhouse = vi.fn(async (sql: string) => {
+      if (sql.includes("fact_gas_pressure_sample")) return gasRows(values);
+      if (sql.includes("fact_machine_usage")) return [];
+      if (sql.includes("fact_temperature_sample")) return [{ avg_c: "61.2" }];
+      if (sql.includes("dim_branch_hours")) throw new Error("Code: 60 UNKNOWN_TABLE");
+      return [];
+    }) as unknown as ClickHouseExecutor;
+
+    const result = await performAlertSweep(alertDeps({ gas: { clickhouse } }));
+    expect(result.gas.channels[0].reason).toContain("machine_no_rows");
+  });
+
   it("pushes a declining channel through the same engine with a gas. rule id", async () => {
     seedRecipient("owner");
     const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
