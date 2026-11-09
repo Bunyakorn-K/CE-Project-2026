@@ -503,7 +503,11 @@ marker. Record: `docs/04_traceability/ops-verification-2026-11-09-sign-out-holds
 **verified the LINE redirect leg** — one press → `/dashboard`, `/api/me` 200,
 `/privacy` and `/terms` stay on the document — in Android Chrome with a real LINE
 app, which is *not* the LIFF-browser press, and it established that LINE for PC
-cannot open a LIFF URL at all.
+cannot open a LIFF URL at all. The LIFF browser itself was then opened
+(2026-11-09): it **does** sign the user in without a press — the expected
+`liff.init()` exchange — but LINE answered every later open with its generic
+"An unknown error occurred", so the press and sign-out inside it stay unmeasured.
+See `docs/04_traceability/ops-verification-2026-11-09-liff-browser-leg.md`.
 
 **A blocked page must never be the only page, and an expired ID token is not a
 statement about the session.** The LIFF gate ran above `RouterProvider` and
