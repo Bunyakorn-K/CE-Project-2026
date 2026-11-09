@@ -63,7 +63,8 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
           userText: event.message.text,
           roleLabel: roleLabel(identity.principal),
           branchContext,
-          scope: identity.scope
+          scope: identity.scope,
+          actorUserId: identity.principal.user.id
         },
         { mcp, fetchImpl: deps.fetchImpl }
       );

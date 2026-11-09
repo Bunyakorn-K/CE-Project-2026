@@ -13,6 +13,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { resolveServerSecret } from "./auth";
 import { aiSettings, auditLog, chatMessage } from "./schema";
+import { resolveAuditActor } from "./ai-audit";
 import { mayManageAccess, type AccessGrant } from "./access-policy";
 
 export type AiSettingsPublic = {
@@ -105,6 +106,9 @@ export function getAiSettingsWithKey(): {
 export function updateAiSettings(input: AiSettingsInput, actorUserId: string): AiSettingsPublic {
   const existing = db.select().from(aiSettings).where(eq(aiSettings.id, "default")).get();
   const now = new Date();
+  // `updated_by_user_id` is a foreign key into `user(id)` too, so the same
+  // resolution applies to both columns (see resolveAuditActor).
+  const actor = resolveAuditActor(actorUserId);
 
   const next = {
     id: "default" as const,
@@ -118,7 +122,7 @@ export function updateAiSettings(input: AiSettingsInput, actorUserId: string): A
     model: input.model ?? existing?.model ?? DEFAULT_SETTINGS.model,
     systemPrompt: input.systemPrompt ?? existing?.systemPrompt ?? DEFAULT_SETTINGS.systemPrompt,
     temperature: input.temperature ?? existing?.temperature ?? DEFAULT_SETTINGS.temperature,
-    updatedByUserId: actorUserId,
+    updatedByUserId: actor.actorUserId,
     updatedAt: now,
     createdAt: existing?.createdAt ?? now
   };
@@ -128,14 +132,15 @@ export function updateAiSettings(input: AiSettingsInput, actorUserId: string): A
   db.insert(auditLog)
     .values({
       id: randomUUID(),
-      actorUserId,
+      actorUserId: actor.actorUserId,
       action: "ai_settings.update",
       target: "ai_settings:default",
       detail: JSON.stringify({
         baseUrl: next.baseUrl,
         model: next.model,
         temperature: next.temperature,
-        keyChanged: input.apiKey !== undefined && input.apiKey !== null && input.apiKey !== ""
+        keyChanged: input.apiKey !== undefined && input.apiKey !== null && input.apiKey !== "",
+        ...(actor.actorUnresolved ? { actorUnresolved: true } : {})
       }),
       createdAt: now
     })
@@ -190,9 +195,17 @@ export function listChatMessages(threadId: string, userId: string, limit = 100) 
     .all();
 }
 
-/** Purge messages older than the retention window. Returns deleted count. */
+/**
+ * Purge messages older than the retention window. Returns deleted count.
+ *
+ * The comparison binds `cutoff.getTime()`, an integer, not a `Date`: the column
+ * is `integer` in milliseconds mode, and better-sqlite3 rejects a `Date` param
+ * outright ("can only bind numbers, strings, bigints, buffers, and null"). The
+ * route answered 500 on its first exercised call — found by `ai-audit.test.ts`
+ * on 2026-11-09, not in production.
+ */
 export function purgeExpiredChatMessages(now = new Date()): number {
-  const cutoff = new Date(now.getTime() - CHAT_RETENTION_MS);
+  const cutoff = now.getTime() - CHAT_RETENTION_MS;
   const result = db.delete(chatMessage).where(sql`${chatMessage.createdAt} < ${cutoff}`).run();
   return result.changes ?? 0;
 }

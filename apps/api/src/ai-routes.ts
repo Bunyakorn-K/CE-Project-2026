@@ -12,9 +12,11 @@ import {
   getAiSettingsWithKey,
   listChatMessages,
   isOwner,
+  purgeExpiredChatMessages,
   updateAiSettings
 } from "./ai-settings";
 import { randomUUID } from "node:crypto";
+import { recordAiChat, resolveAuditActor } from "./ai-audit";
 import { plainChat } from "./llm-client";
 import { branchLabel, renderSystemPrompt } from "./llm-prompt";
 import { roleLabel, scopeForPrincipal } from "./bot/identity";
@@ -108,7 +110,16 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     }
 
     const threadId = parsed.data.threadId ?? randomUUID();
-    addChatMessage({ threadId, userId: owner.user.id, role: "user", content: parsed.data.message, model: settings.model });
+    // `chat_message.user_id` is NOT NULL *and* a foreign key into `user(id)`.
+    // The development bypass principal is deliberately not a persisted user
+    // (`index.test.ts` asserts that reading `/api/me` in bypass mode creates no
+    // user row), so its conversation cannot be stored: the request is still
+    // answered and still audited, and the history write is skipped. In
+    // production this branch never runs — every principal is a real user.
+    const actor = resolveAuditActor(owner.user.id);
+    if (!actor.actorUnresolved) {
+      addChatMessage({ threadId, userId: owner.user.id, role: "user", content: parsed.data.message, model: settings.model });
+    }
 
     try {
       // The console is a plain chat completion: it passes no tools to the SDK,
@@ -127,15 +138,36 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
         parsed.data.message,
         { temperature: settings.temperature }
       );
-      addChatMessage({
+      if (!actor.actorUnresolved) {
+        addChatMessage({
+          threadId,
+          userId: owner.user.id,
+          role: "assistant",
+          content: reply,
+          model: settings.model
+        });
+      }
+      // One row per chat request. `usedTools` is false by construction here —
+      // this route passes no tools to the model — and the agentic path records
+      // its own tool calls beside this.
+      recordAiChat({
+        actorUserId: owner.user.id,
+        model: settings.model,
         threadId,
-        userId: owner.user.id,
-        role: "assistant",
-        content: reply,
-        model: settings.model
+        messageCount: 1,
+        usedTools: false,
+        outcome: "ok"
       });
       return c.json({ threadId, reply });
     } catch (err) {
+      recordAiChat({
+        actorUserId: owner.user.id,
+        model: settings.model,
+        threadId,
+        messageCount: 1,
+        usedTools: false,
+        outcome: "error"
+      });
       return c.json({ error: { code: "gateway_unreachable", message: String(err) } }, 502);
     }
   });
@@ -157,11 +189,13 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     return c.json({ messages });
   });
 
-  // On-demand purge of messages older than the 30-day window.
+  // On-demand purge of conversation content older than the 30-day window.
+  // It clears chat_message only: audit_log rows are append-only and survive, so
+  // "the conversation was deleted" and "nothing was ever called" stay different
+  // facts.
   app.post("/api/ai/chat/purge", (c) => {
     const owner = requireOwner(c);
     if (!owner) return c.json({ error: { code: "forbidden", message: "Owner role required" } }, 403);
-    const { purgeExpiredChatMessages } = require("./ai-settings");
     const deleted = purgeExpiredChatMessages();
     return c.json({ deleted });
   });

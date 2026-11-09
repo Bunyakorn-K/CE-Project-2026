@@ -1,6 +1,7 @@
 import type { AccessScope } from "./identity";
 import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
+import { runAuditedToolCall } from "../ai-audit";
 import { agenticAnswer } from "../llm-client";
 import { branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
 
@@ -9,6 +10,11 @@ export type ConversationContext = {
   roleLabel: string;
   branchContext: string;
   scope: AccessScope;
+  /**
+   * The LINE-linked account behind the message. Null only when a caller cannot
+   * name one; the audit row records null rather than inventing an actor.
+   */
+  actorUserId?: string | null;
 };
 
 export type ConversationDeps = {
@@ -71,10 +77,21 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
       description: tool.description,
       parameters: tool.inputSchema as Record<string, unknown> | undefined
     })),
-    execute: async (name, args) => {
+    execute: async (name, args, meta) => {
       const toolArgs = { ...args };
       delete toolArgs.accessScope;
-      return toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope));
+      // Exactly one audit row per call, on success and on failure. The row
+      // carries a digest of the arguments, never the arguments: they hold branch
+      // ids and revenue scopes, and an audit table must not become a second copy
+      // of the data it audits.
+      return runAuditedToolCall({
+        tool: name,
+        toolCallId: meta?.toolCallId ?? null,
+        actorUserId: ctx.actorUserId ?? null,
+        model: settings.model,
+        args: toolArgs,
+        execute: async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope))
+      });
     },
     temperature: settings.temperature,
     // Single tool round-trip in v1 — enough for a branch-scoped question.

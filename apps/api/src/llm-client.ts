@@ -21,7 +21,8 @@ export type GatewayToolDef = {
 
 export type GatewayToolExecutor = (
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  meta?: { toolCallId?: string }
 ) => Promise<unknown>;
 
 function toJsonSchema(parameters: Record<string, unknown> | undefined) {
@@ -43,10 +44,10 @@ function toSdkTools(
     tools[def.name] = dynamicTool({
       description: def.description ?? "",
       inputSchema: toJsonSchema(def.parameters) as never,
-      execute: async (input: unknown) => {
+      execute: async (input: unknown, options?: { toolCallId?: string }) => {
         const args =
           input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-        const result = await execute(def.name, args);
+        const result = await execute(def.name, args, { toolCallId: options?.toolCallId });
         return typeof result === "string" ? result : JSON.stringify(result);
       }
     });
