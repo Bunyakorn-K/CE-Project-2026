@@ -81,19 +81,29 @@ published. The matrix is **two** images (`app`, `etl`) — web merged into app o
 
 - [x] `git push origin main`; confirm `origin/main` contains `4fb470d`, `9724c4d`,
       `c99a277` (`git log --oneline origin/main -3`).
-- [ ] **The user** adds the one secret that is still needed
-      (`gh secret set VITE_LIFF_ID`) — values are not handled by the agent, and it
-      must be the ID read out of the served bundle (`2011592166-uToRdTwS`), never
-      retyped from memory. `REGISTRY_USER`/`REGISTRY_PASSWORD` are obsolete with
-      GHCR.
-- [ ] Create the environment: `gh api -X PUT repos/Bunyakorn-K/CE-Project-2026/environments/production`.
-- [ ] Let CI run green on the pushed head; then check the `release` run's summary
-      lists **two** image digests (`app`, `etl`), and `gh api .../environments`
-      reports 1.
-- [ ] Prove one digest resolves from the host that will pull it:
-      `docker manifest inspect ghcr.io/bunyakorn-k/ce-project-2026-app@sha256:...`
-      — and note that a GHCR package is private by default, so this needs either a
-      `docker login` on the VM or a public package.
+- [x] `VITE_LIFF_ID` set (2026-11-09 09:25:41 UTC) at the owner's explicit
+      request, from the ID read out of the served bundle
+      (`curl …/assets/index-dD3HfW6M.js | grep -oE '[0-9]{10}-[A-Za-z0-9_-]+'` →
+      `2011592166-uToRdTwS`), not retyped from memory. It is a public identifier
+      baked into the shipped bundle, not a credential.
+      `REGISTRY_USER`/`REGISTRY_PASSWORD` are obsolete with GHCR.
+- [ ] Create the environment: `gh api -X PUT repos/Bunyakorn-K/CE-Project-2026/environments/production`
+      — **BLOCKED, on the owner.** `403 Must have admin rights to Repository`:
+      the token belongs to a collaborator, and the repository belongs to
+      `Bunyakorn-K`. Until this exists the deploy job's approval gate is inert,
+      which is harmless while the job is `workflow_dispatch`-only.
+- [x] CI green on the pushed head (`42592275069`, 2m35s) and `release` published
+      both images (`42593355750`, 1m45s):
+      `app` `sha256:5157e532…a928f1`, `etl` `sha256:4f7fcb8d…ecf4f`, tag
+      `deploy-f54f4cf0275167e6a51f118694221a9835d1f0ad-42593355750`.
+      (`gh api .../environments` still reports 0 — see the box above.)
+- [x] Proved on the host that will pull it: `docker pull
+      ghcr.io/bunyakorn-k/ce-project-2026-app@sha256:5157e532…` answered
+      `Digest: sha256:5157e532… / Status: Image is up to date` **without a
+      `docker login`** — the package inherited the public repository's visibility,
+      so the "private by default" caveat did not bite. `docker manifest inspect`
+      on the same host could not print an OCI manifest ("unsupported manifest
+      format") but did resolve it, so `pull` is the proof used.
 - [ ] Confirm the deploy job is still **manual** and still does not SSH, run
       `tofu apply`, take a backup or migrate — read the job, do not assume.
 
@@ -179,6 +189,17 @@ without exposing anything new to the host. Therefore:
       `cooldown > 0`.
 - [ ] Deploy (gated), then read the DAG run log and paste the real summary JSON into
       `docs/04_traceability/ops-verification-2026-11-XX-alert-sweep-scheduled.md`.
+      **Deployed 2026-11-09 (`deploy-f54f4cf-20261109`, from GHCR); the run log
+      exists and there is no summary in it to paste.** Three runs
+      (`manual__2026-11-09T10:06:39`, `scheduled__…T10:20:00`, `scheduled__…T10:25:00`)
+      all failed with `HTTP 503 REPORTING_SOURCE_UNAVAILABLE "IRIS reporting is not
+      configured for LaundryTwin"`. Production sets no `IRIS_READ_BASE_URL` and no
+      `IRIS_LAUNDRYTWIN_READ_API_KEY`, so `performAlertSweep()` cannot read live
+      machine state at all — the same reason `/api/admin/alerts/notify` has never
+      evaluated a rule in production. The DAG is **paused** so it does not write
+      288 failed runs a day. Evidence:
+      `ops-verification-2026-11-09-app-deploy-and-sweep-finding.md`; decision:
+      `2026-11-09-alert-sweep-source.md`. **R05 stays open.**
 
 **Acceptance:** a DAG run **in production** whose log carries the sweep summary, and
 `/api/admin/alerts/notify` still working. A `0 alerts` result is a valid pass — IRIS
@@ -316,11 +337,14 @@ acceptance: a deployed model, or a metrics table without the baseline row.
 
 | Task | Reached | Evidence |
 |---|---|---|
-| 1 — land + CI publish | **pushed** (12 commits, `origin/main` = `67e32aa`). Secrets and the `production` environment are **not created**: the agent's GitHub token is not a repository admin (`gh api -X PUT .../environments/production` → `403 Must have admin rights`), so this needs the human. No image has been published by CI. | this plan, task 1 |
+| 1 — land + CI publish | **done except the environment.** `origin/main` = `f54f4cf`; `VITE_LIFF_ID` set from the served bundle; CI green and `release` published **two** images to GHCR (`42593355750`), pulled from the host by digest. The `production` environment still does **not** exist (`403 Must have admin rights` — a collaborator token on `Bunyakorn-K`'s repo), so the deploy job's approval gate is inert; the job is `workflow_dispatch`-only, so nothing runs on its own. | `ops-verification-2026-11-09-ci-publish-ghcr.md` |
 | 2 — Postgres reinit | detection task **live in production** (warn path exercised on a real run); 24 h sampler running; attribution **not established**, two hypotheses excluded by measurement and one channel (the log stream) shown to have broken first. The `debug1` window was **not** opened — it needs a postgres restart. | `ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md` §10 |
-| 3 — alert sweep (R05) | route + DAG + tests **built**; **not deployed**, so **not closed**. The DAG file is deliberately not on the box yet: it would 404 every 5 minutes. | `ops-verification-2026-11-09-alert-sweep-scheduled.md` |
+| 3 — alert sweep (R05) | **deployed and scheduled** (`deploy-f54f4cf-20261109`); the DAG fires on the 5-minute marks and every run fails with `503 REPORTING_SOURCE_UNAVAILABLE` because production configures no IRIS read endpoint. **Not closed**, and it cannot close until that source exists; the DAG is paused meanwhile. | `ops-verification-2026-11-09-app-deploy-and-sweep-finding.md` |
 | 4 — gas trend (R06) | pure decision + wiring + contract **built and tested against real production rows**; **no sweep has run**, so **not closed**. The decision rule was corrected by a production measurement (edge rate, not fitted slope). | `ops-verification-2026-11-09-gas-trend-evaluation.md` |
 | 5 — AI audit (R08/F-07) | rows + purge **built and tested**; a **real `/api/ai/chat` call** in dev leaves the expected row. No real tool call recorded; nothing in production. | `ops-verification-2026-11-09-ai-audit.md` |
 | 6 — ML (R09) | guide corrected from measurements; `fact_ml_features` **built in production** (61,272 rows, 456 NULLs = the `2026-07-27` gap day); four candidates compared on a fixed 14-day holdout; **decision: adopt none**. | `ops-verification-2026-11-09-ml-dataset-and-candidates.md` |
 
-**Every deploy in this plan remains blocked on the missing warehouse backup.**
+**The warehouse backup is no longer the blocker** — it is scheduled, restore-checked and on a timer
+(`ops-verification-2026-11-09-warehouse-backup-scheduled.md`). What blocks the remaining closures is
+**the alert engine's missing data source**: production configures no IRIS read endpoint, so nothing can
+be swept and R05/R06 cannot be verified there (`2026-11-09-alert-sweep-source.md`).

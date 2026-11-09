@@ -83,6 +83,13 @@ services:
     volumes:
     - airflow-data:/opt/airflow
     - ./dags:/opt/airflow/dags
+    # The alert-sweep DAG calls the API at http://app:8787 and `app` is an alias
+    # on the laundrytwin compose network. Without this attachment the DAG fails
+    # DNS every five minutes — a permanent, silent fail that reads like the app
+    # being down instead of the scheduler being on the wrong network.
+    networks:
+    - default
+    - laundrytwin
   airflow-triggerer:
     command: triggerer
     mem_limit: 512m
@@ -312,3 +319,8 @@ volumes:
   # production warehouse, and its fix block runs
   # `docker run -v analytics_clickhouse-data:/data ... rm -f /data/status`, which
   # writes to this volume.
+
+networks:
+  laundrytwin:
+    external: true
+    name: laundrytwin_default
