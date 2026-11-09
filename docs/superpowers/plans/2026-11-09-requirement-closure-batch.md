@@ -71,26 +71,33 @@ verified locally" and says so.
 
 ## Task 1 — Land eleven commits and make the publish half of CI real
 
-**Why:** `release.yml` is wired but has never published an image; the renderer fails
-at `Log in to the internal registry` because `REGISTRY_USER`, `REGISTRY_PASSWORD`
-and `VITE_LIFF_ID` do not exist, and the `production` environment does not exist
-either, so the deploy job's approval gate is inert. Meanwhile 11 commits — the
-sign-out fix, typed LIFF errors, and every record written today — are unpushed.
+**Why:** `release.yml` is wired but has never published an image, and the
+`production` environment does not exist, so the deploy job's approval gate is
+inert. As of 2026-11-09 the workflow publishes to **GHCR** with its own
+`GITHUB_TOKEN`, so `REGISTRY_USER`/`REGISTRY_PASSWORD` are no longer needed;
+`VITE_LIFF_ID` still is, and a build without it is now refused rather than
+published. The matrix is **two** images (`app`, `etl`) — web merged into app on
+2026-10-01 — so the acceptance below reads two digests, not three.
 
 - [x] `git push origin main`; confirm `origin/main` contains `4fb470d`, `9724c4d`,
       `c99a277` (`git log --oneline origin/main -3`).
-- [ ] **The user** adds the three secrets (`gh secret set ...`) — values are not
-      handled by the agent, and `VITE_LIFF_ID` must be the ID read out of the
-      served bundle (`2011592166-uToRdTwS`), never retyped from memory.
+- [ ] **The user** adds the one secret that is still needed
+      (`gh secret set VITE_LIFF_ID`) — values are not handled by the agent, and it
+      must be the ID read out of the served bundle (`2011592166-uToRdTwS`), never
+      retyped from memory. `REGISTRY_USER`/`REGISTRY_PASSWORD` are obsolete with
+      GHCR.
 - [ ] Create the environment: `gh api -X PUT repos/Bunyakorn-K/CE-Project-2026/environments/production`.
 - [ ] Let CI run green on the pushed head; then check the `release` run's summary
-      lists **three** image digests, and `gh api .../environments` reports 1.
+      lists **two** image digests (`app`, `etl`), and `gh api .../environments`
+      reports 1.
 - [ ] Prove one digest resolves from the host that will pull it:
-      `docker manifest inspect <registry>/laundrytwin-api@sha256:...`.
+      `docker manifest inspect ghcr.io/bunyakorn-k/ce-project-2026-app@sha256:...`
+      — and note that a GHCR package is private by default, so this needs either a
+      `docker login` on the VM or a public package.
 - [ ] Confirm the deploy job is still **manual** and still does not SSH, run
       `tofu apply`, take a backup or migrate — read the job, do not assume.
 
-**Acceptance:** three digests published by CI from a CI-green commit, recorded in
+**Acceptance:** two digests published by CI from a CI-green commit, recorded in
 `docs/02_architecture/deploy-runbook.md`; deploy job still dry. **Not** acceptance:
 "CI is green" (it was green while publishing nothing).
 

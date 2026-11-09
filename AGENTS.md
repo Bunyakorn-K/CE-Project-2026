@@ -1109,20 +1109,28 @@ is exactly the WAL trap (`cp` of the SQLite main file yields a plausible 4 KB
 stub with zero rows). It renders the exact reviewed `tofu apply` lines and
 fails rather than name a tag this run did not publish.
 
-**As of 2026-10-01 the publish half is wired but not yet configured**, so no
-image has ever been published by CI and **no deployment has been automated or
-attempted.** The first real run of the chain behaved correctly: CI green
-fired the workflow, all three build jobs started, and each failed at
-`Log in to the internal registry` with `Username and password required`. The
-registry is reachable from a hosted runner — `https://registry.laundrytwin.duckdns.org/v2/`
-answers **401**, so auth is live — and all three images build `linux/amd64`
-from the repo root with `VITE_LIFF_ID` correctly baked in. What is missing is
-configuration only: the secrets `REGISTRY_USER`, `REGISTRY_PASSWORD` and
-`VITE_LIFF_ID`, and the `production` Environment, which does not exist yet
+**The publish half now targets GHCR, and is still unconfigured — for one secret,
+not three.** 2026-11-09: `.github/workflows/release.yml` logs in to `ghcr.io`
+with the run's own `GITHUB_TOKEN` (`packages: write`) and pushes
+`ghcr.io/bunyakorn-k/ce-project-2026-<service>`, so `REGISTRY_USER` and
+`REGISTRY_PASSWORD` are no longer needed at all — they were the internal
+registry's htpasswd credential, which exists only on the VM. What remains is
+`VITE_LIFF_ID` and the `production` environment. The matrix publishes **two**
+images, `app` and `etl`, not three: web and api merged into one image on
+2026-10-01.
+
+**A build with an empty `VITE_LIFF_ID` is now refused before it is pushed.** Such
+an image has every LINE LIFF branch compiled out of the SPA — the same reason the
+Playwright specs skip without it — so it could not sign anyone in with LINE while
+carrying a deploy tag that looks exactly like a good one. Measured on the run
+after the switch (`42592093695`, 2026-11-09 09:16:13 UTC): both build jobs failed
+at `Refuse to publish an image without the LIFF ID`, which is the correct
+outcome and not a registry problem. **No image has been published by CI**, and
+the `production` environment still does not exist
 (`gh api repos/Bunyakorn-K/CE-Project-2026/environments` returns
-`total_count: 0`) — so the deploy job's approval gate is currently inert.
-Until those exist, deploying remains a manual host-side step under the runbook
-gate, unchanged.
+`total_count: 0`), so the deploy job's approval gate is inert. Until
+`VITE_LIFF_ID` and the environment exist, deploying remains a manual host-side
+step under the runbook gate, unchanged.
 
 **The live machine page was asserting states its own cards disclaimed, measured
 in production on 2026-10-01 and fixed the same day.** `/machines` rendered

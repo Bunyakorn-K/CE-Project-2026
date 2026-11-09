@@ -331,6 +331,16 @@ until a real sign-in has landed on `/dashboard`.
   public duckdns IP (NAT loopback fails) — compose pulls use the internal
   `127.0.0.1:5000` (daemon.json allowlists it as insecure). The Mac pushes via
   `registry.laundrytwin.duckdns.org`.
+- **CI publishes to GHCR as of 2026-11-09, not to the internal registry.** The
+  workflow authenticates with its own `GITHUB_TOKEN`, so the internal registry's
+  htpasswd credential is no longer needed in GitHub at all. Images land as
+  `ghcr.io/bunyakorn-k/ce-project-2026-{app,etl}:deploy-<sha>-<runid>`; the
+  repository is public but a pushed package is **private by default**, so the VM
+  must either be given a `docker login ghcr.io` credential (a PAT with
+  `read:packages`) or the package must be made public in its GitHub settings —
+  otherwise `docker compose pull` on the host answers `unauthorized`. Images
+  built on the Mac and pushed to `registry.laundrytwin.duckdns.org` are
+  unaffected; the internal registry keeps working exactly as described above.
 - **Airflow is per-role services since 2026-09-13:** `airflow standalone`
   does not respawn a crashed scheduler; each role now runs as its own
   container with `restart: unless-stopped`. Health:
