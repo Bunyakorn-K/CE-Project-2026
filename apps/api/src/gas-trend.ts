@@ -66,6 +66,12 @@ export type GasTrendContext = {
   machineState: MachineStateLike;
   /** Mean/representative wash-phase temperature over the window, Celsius. */
   temperatureC: number | null;
+  /**
+   * How old that reading was, in hours, when it came from outside the window.
+   * The ETL ingests temperature behind a 24-hour lag, so a verdict built on a
+   * day-old ambient has to say so rather than implying it was live.
+   */
+  temperatureAgeHours?: number | null;
   /** Resolved from `dim_branch_hours` by the report path, never guessed. */
   branchOpenState: BranchOpenStateLike;
 };
@@ -93,6 +99,8 @@ export type GasTrendEvidence = {
   edgeRatePsiPerHour: number | null;
   machineState: MachineStateLike;
   temperatureC: number | null;
+  /** Age of the temperature reading, hours; null when read inside the window. */
+  temperatureAgeHours: number | null;
   branchOpenState: BranchOpenStateLike;
   thresholdVersion: string;
   thresholds: typeof GAS_TREND_THRESHOLDS;
@@ -201,6 +209,7 @@ function unknownDecision(
       edgeRatePsiPerHour: evidence.edgeRatePsiPerHour ?? null,
       machineState: evidence.machineState ?? "unknown",
       temperatureC: evidence.temperatureC ?? null,
+      temperatureAgeHours: evidence.temperatureAgeHours ?? null,
       branchOpenState: evidence.branchOpenState ?? "unknown",
       thresholdVersion: GAS_TREND_THRESHOLDS.version,
       thresholds: GAS_TREND_THRESHOLDS,
@@ -267,6 +276,7 @@ export function evaluateGasTrend(samples: GasSample[], context: GasTrendContext)
     nullMinutes,
     machineState: context.machineState,
     temperatureC: context.temperatureC,
+    temperatureAgeHours: context.temperatureAgeHours ?? null,
     branchOpenState: context.branchOpenState
   };
 
@@ -363,6 +373,19 @@ export function evaluateGasTrend(samples: GasSample[], context: GasTrendContext)
  * id and therefore one `alert_notification` row per recipient, while a later
  * hour is a new occurrence the cooldown, not the id, is there to bound.
  */
+
+/** One decimal place, or `?` — never a raw float and never a fabricated 0. */
+function fixed(value: number | null, digits: number): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "?";
+  return value.toFixed(digits);
+}
+
+/** Names the ambient's age when it came from the lagged temperature feed. */
+function ambientAge(hours: number | null | undefined): string {
+  if (hours === null || hours === undefined || !Number.isFinite(hours) || hours < 1) return "";
+  return ` (อ่านล่าสุด ${hours.toFixed(0)} ชม. ก่อน)`;
+}
+
 export function gasAlertFromDecision(
   decision: GasTrendDecision,
   options: { branchId: string | null; windowEnd: Date }
@@ -387,11 +410,16 @@ export function gasAlertFromDecision(
   if (!channel) return null;
   const hourBucket = options.windowEnd.toISOString().slice(0, 13); // YYYY-MM-DDTHH
   const evidence = decision.evidence;
+  // Every number is formatted here, not stringified. The first version of this
+  // line printed ClickHouse's raw average as `68.57309385055319 °C`, and quoted
+  // only the fitted slope, so a reader who saw -2.71 psi/h could not reproduce
+  // the -3.67 psi/h edge rate the rule actually fired on.
   const detail = [
     `ช่อง: ${channel}`,
-    `แรงดัน ${evidence.firstEdgePsi ?? "?"} → ${evidence.lastEdgePsi ?? "?"} psi`,
-    `ความชัน ${evidence.slopePsiPerHour ?? "?"} psi/ชม.`,
-    `สถานะเครื่อง: ${evidence.machineState} · อุณหภูมิ: ${evidence.temperatureC ?? "?"} °C`,
+    `แรงดัน ${fixed(evidence.firstEdgePsi, 0)} → ${fixed(evidence.lastEdgePsi, 0)} psi`,
+    `อัตราลดลง ${fixed(evidence.edgeRatePsiPerHour, 2)} psi/ชม. (ตัวที่ใช้ตัดสิน)`,
+    `ความชัน ${fixed(evidence.slopePsiPerHour, 2)} psi/ชม. (อ้างอิง)`,
+    `สถานะเครื่อง: ${evidence.machineState} · อุณหภูมิ: ${fixed(evidence.temperatureC, 1)} °C${ambientAge(evidence.temperatureAgeHours)}`,
     `หน้าต่าง: ${evidence.window.from} → ${evidence.window.to} (${evidence.spanMinutes} นาที, ครอบคลุม ${evidence.coveragePct}%)`,
     "เป็นการประเมินแนวโน้มร่วมกับสถานะเครื่องและอุณหภูมิ ไม่ใช่การตรวจจับแก๊สรั่ว"
   ].join(" · ");

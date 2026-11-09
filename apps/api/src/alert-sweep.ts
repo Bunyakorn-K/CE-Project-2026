@@ -344,7 +344,14 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
     : "unknown";
 
   const decisions = GAS_CHANNELS.map((channel) =>
-    evaluateGasTrend(samples, { channel, window, machineState, temperatureC, branchOpenState })
+    evaluateGasTrend(samples, {
+      channel,
+      window,
+      machineState,
+      temperatureC,
+      temperatureAgeHours,
+      branchOpenState
+    })
   );
 
   const alerts = decisions

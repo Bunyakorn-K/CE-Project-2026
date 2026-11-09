@@ -281,3 +281,34 @@ describe("gasAlertFromDecision", () => {
     expect(alert?.detail).toContain("ไม่ใช่การตรวจจับแก๊สรั่ว");
   });
 });
+
+describe("gasAlertFromDecision — the text a fallback client renders", () => {
+  it("rounds every number and names the rate that decided the alert", () => {
+    const values = Array.from({ length: 25 }, (_, index) => 80 - index * 0.8);
+    const decision = evaluateGasTrend(samplesAt(CHANNEL, values, 15), context({
+      temperatureC: 68.57309385055319,
+      temperatureAgeHours: 24
+    }));
+    const alert = gasAlertFromDecision(decision, { branchId: "b1", windowEnd: WINDOW_TO });
+    expect(alert).not.toBeNull();
+    const detail = alert!.detail;
+
+    // 68.57309385055319 °C was the production defect this asserts against.
+    expect(detail).not.toContain("68.57309385055319");
+    expect(detail).toContain("68.6 °C (อ่านล่าสุด 24 ชม. ก่อน)");
+    expect(detail).toContain("อัตราลดลง");
+    expect(detail).toContain("(ตัวที่ใช้ตัดสิน)");
+    expect(detail).toContain("(อ้างอิง)");
+    // Two decimals on both rates, no bare floats.
+    expect(detail).toMatch(/อัตราลดลง -?\d+\.\d{2} psi\/ชม\./);
+    expect(detail).toMatch(/ความชัน -?\d+\.\d{2} psi\/ชม\./);
+  });
+
+  it("omits the ambient's age when the reading was inside the window", () => {
+    const values = Array.from({ length: 25 }, (_, index) => 80 - index * 0.8);
+    const decision = evaluateGasTrend(samplesAt(CHANNEL, values, 15), context({ temperatureC: 62.5 }));
+    const alert = gasAlertFromDecision(decision, { branchId: "b1", windowEnd: WINDOW_TO });
+    expect(alert!.detail).toContain("62.5 °C");
+    expect(alert!.detail).not.toContain("อ่านล่าสุด");
+  });
+});

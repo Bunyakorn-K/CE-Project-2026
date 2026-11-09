@@ -142,6 +142,36 @@ describe("formatAlertMessage", () => {
 });
 
 describe("runAlertSweep", () => {
+  // The card is the same information in a readable shape, so it wins whenever the
+  // adapter can send one — and the text path must survive for adapters that cannot.
+  it("sends a card when the adapter supports one, and text when it does not", async () => {
+    seedRecipient({ role: "owner", branchId: null });
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const sendFlex = vi.fn().mockResolvedValue(undefined);
+
+    const cardSummary = await runAlertSweep(
+      [makeAlert({ severity: "warning" })],
+      deps({ adapter: { sendText, sendFlex } })
+    );
+    expect(cardSummary.sent).toBe(1);
+    expect(sendFlex).toHaveBeenCalledTimes(1);
+    expect(sendText).not.toHaveBeenCalled();
+    const [, altText, contents] = sendFlex.mock.calls[0];
+    expect(altText.length).toBeLessThanOrEqual(400);
+    expect((contents as { type?: string }).type).toBe("bubble");
+
+    // A different alert (so the cooldown and the claim do not interfere) through an
+    // adapter that only knows how to send text.
+    const textOnly = vi.fn().mockResolvedValue(undefined);
+    const textSummary = await runAlertSweep(
+      [makeAlert({ id: "alert-text-only", severity: "critical" })],
+      deps({ adapter: { sendText: textOnly } })
+    );
+    expect(textSummary.sent).toBe(1);
+    expect(textOnly).toHaveBeenCalledTimes(1);
+    expect(textOnly.mock.calls[0][1]).toContain("LaundryTwin");
+  });
+
   it("sends only to LINE-linked recipients whose role and branch match the alert", async () => {
     const ownerB1 = seedRecipient({ role: "owner", branchId: "B1" });
     const managerB1 = seedRecipient({ role: "manager", branchId: "B1" });

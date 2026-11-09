@@ -20,6 +20,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { buildAlertFlex } from "./alert-flex";
 import { db } from "./db";
 import { accessGrant, alertNotification, auditLog, liffIdentity } from "./schema";
 import type { Role } from "./access-policy";
@@ -33,8 +34,15 @@ export type LineRecipient = {
 };
 
 export type AlertEngineDeps = {
-  /** LINE push adapter; sendText must resolve only when LINE accepted the message. */
-  adapter: { sendText(userId: string, text: string): Promise<void> };
+  /**
+   * LINE push adapter. `sendText` must resolve only when LINE accepted the
+   * message; `sendFlex` is optional and, when present, is preferred — a card is
+   * the same information in a readable shape.
+   */
+  adapter: {
+    sendText(userId: string, text: string): Promise<void>;
+    sendFlex?(userId: string, altText: string, contents: Record<string, unknown>): Promise<void>;
+  };
   /** When false (no LINE_CHANNEL_ACCESS_TOKEN), attempts are recorded as failed instead of sent. */
   adapterAvailable?: boolean;
   now?: () => Date;
@@ -264,7 +272,12 @@ export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps):
         continue;
       }
       try {
-        await deps.adapter.sendText(recipient.lineUserId, formatAlertMessage(alert));
+        const card = buildAlertFlex(alert);
+        if (typeof deps.adapter.sendFlex === "function") {
+          await deps.adapter.sendFlex(recipient.lineUserId, card.altText, card.contents);
+        } else {
+          await deps.adapter.sendText(recipient.lineUserId, formatAlertMessage(alert));
+        }
         markOutcome(claim.rowId, now, "sent");
         summary.sent += 1;
       } catch (error) {

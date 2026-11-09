@@ -8,4 +8,10 @@ export interface PlatformAdapter {
   readonly platform: PlatformName;
   /** Push a text message to a user identified by the platform's userId. */
   sendText(userId: string, text: string): Promise<void>;
+  /**
+   * Push a rich card. Optional because the adapter interface predates cards and
+   * a second platform may not have an equivalent: a caller that cannot send one
+   * must fall back to `sendText` rather than silently sending nothing.
+   */
+  sendFlex?(userId: string, altText: string, contents: Record<string, unknown>): Promise<void>;
 }

@@ -17,4 +17,23 @@ export class LineAdapter implements PlatformAdapter {
     if (!this.client) return;
     await this.client.pushMessage({ to: userId, messages: [{ type: "text", text }] });
   }
+
+  /**
+   * `altText` is what LINE shows in the notification banner, on the lock screen
+   * and in clients that cannot render a flex message — so it is required, and
+   * LINE rejects anything over 400 characters.
+   */
+  async sendFlex(userId: string, altText: string, contents: Record<string, unknown>): Promise<void> {
+    if (!this.client) return;
+    await this.client.pushMessage({
+      to: userId,
+      messages: [
+        {
+          type: "flex",
+          altText: altText.slice(0, 400),
+          contents: contents as messagingApi.FlexContainer
+        }
+      ]
+    });
+  }
 }
