@@ -1,0 +1,110 @@
+# LINE delivery works: two real messages accepted by LINE, and the cooldown holds
+
+**Date:** 2026-11-09
+**Image:** `laundrytwin:deploy-1a5f728-20261109` (restarted onto the new credentials,
+not rebuilt — the code did not change)
+**Status: verified in production. The notification half of R05 is real; the IRIS
+half is still unsourced.**
+
+## What was missing, and where it came from
+
+Every prior sweep recorded `error = "LINE_CHANNEL_ACCESS_TOKEN is not configured"`
+with `delivered_at: null`, and `docker inspect … | awk` reported the token's
+**length as 0**. The same was true in `/opt/laundrytwin-rollback/env.bak-20261109-predeploy`
+and in `/opt/backups/pre-deploy-20260929/config/laundrytwin/.env` — so LINE push
+messaging had never been configured in this deployment; only LIFF login was.
+
+The owner supplied the Messaging API channel's token and secret. They were placed
+at `/opt/laundrytwin/.env` **on the Mac**, which is not the file the server reads
+(`/opt/laundrytwin/.env` on `10.10.0.117`, mtime unchanged at 09:36 UTC). The two
+values were transferred over the SSH channel into the host file with a script that
+reads them from stdin, inserts them by key, keeps the file at mode 600 and never
+puts a value on an argv or in a log. Neither value appears in this record, the
+repository, or any command output — only their lengths.
+
+```text
+LINE_CHANNEL_ACCESS_TOKEN len=172
+LINE_CHANNEL_SECRET       len=32
+```
+
+An `awk -F=` length check had earlier reported 171 because a channel access token
+can contain `=`, and `-F=` splits on all of them. The transport was right; the
+measurement was not.
+
+## Pre-flight: the token is valid, and it is the right bot
+
+```text
+GET https://api.line.me/v2/bot/info  → 200
+bot: {userId: U84751233744ec200051a34393af40e31, basicId: @307cpoja,
+      displayName: LaundryTwin, chatMode: bot}
+```
+
+That is a probe, not a send: it proves the credential without messaging anyone.
+
+## The send
+
+After `docker rm -f` + `compose up -d app` (the env file is only read at container
+create, so a restart is the deploy here), the container's own environment reports
+`LINE_CHANNEL_ACCESS_TOKEN` at length 172 and `GET /health` → 200.
+
+One sweep, `POST /api/internal/alerts/sweep` at 13:16:45 UTC:
+
+```json
+{"lineConfigured": true,
+ "gas": {"state": "evaluated", "alertable": 2,
+         "summary": {"scanned": 2, "recipients": 2, "sent": 2, "deduplicated": 0,
+                     "cooldown": 0, "noRecipients": 0, "failed": 0, "acknowledged": 0},
+         "window": {"from": "2026-11-09T07:16:45.921Z", "to": "2026-11-09T13:16:45.921Z"}},
+ "channels": [
+   {"channel": "gas_run_a_pressure", "trend": "declining",
+    "reason": "declining:edgeRate=-3.6697psi/h,drop=20psi,slope=-2.7048psi/h"},
+   {"channel": "gas_run_b_pressure", "trend": "declining",
+    "reason": "declining:edgeRate=-2.6168psi/h,drop=14psi,slope=-3.1042psi/h"},
+   {"channel": "changeover_filter_pressure", "trend": "steady",
+    "reason": "not_declining:edgeRate=-0.1829psi/h,drop=1psi,slope=-0.0206psi/h"}]}
+```
+
+Two rows written, both `sent`, both with `delivered_at` set and `error: null`:
+
+| `iris_alert_id` | status | delivered_at (epoch ms) |
+|---|---|---|
+| `gas:gas_run_b_pressure:declining:2026-11-09T13` | **sent** | 1794230205921 |
+| `gas:gas_run_a_pressure:declining:2026-11-09T13` | **sent** | 1794230205921 |
+
+Body as stored: `🔔 LaundryTwin แจ้งเตือน (WARNING)` / `แนวโน้มแรงดันแก๊สลดลงต่อเน…`.
+The four earlier rows keep `failed` with the token error, which is the honest
+history of the same rule before the credential existed.
+
+## The cooldown holds
+
+A second sweep run immediately after:
+
+```json
+{"alertable": 2, "recipients": 0, "sent": 0, "cooldown": 2, "failed": 0}
+```
+
+Row counts unchanged (`sent: 2, failed: 4`) — the same two alerts were recognised
+and suppressed, not re-sent. That is the "with cooldowns" half of R05 measured, not
+assumed.
+
+## What this does and does not close
+
+- **Delivered**: a scheduled, machine-triggered alert reached a real LINE user
+  twice, with the evidence and the window attached to the row.
+- **Not delivered, still**: anything sourced from IRIS. `iris.state: unavailable`
+  is in the same response, because production sets no `IRIS_READ_BASE_URL`. The
+  mechanism is proven; half of its inputs are not.
+- **Inbound** is still off: `LINE_CHANNEL_SECRET` was placed but the app only reads
+  it for webhook signature validation, and a secret that was empty at deploy time
+  is now present — that path needs its own test with a signed payload before it can
+  be called working.
+- **The Mac copy of the credentials** at `/opt/laundrytwin/.env` is `root:wheel`
+  mode 644 and is not read by anything. It should be removed or made 600; the
+  server has its own copy.
+
+## Provenance
+
+Owner placed the credentials and said so in chat; the token was validated against
+LINE before use; the message content, the row, and the cooldown are all the
+application's own output. No value from either credential appears anywhere in this
+record.

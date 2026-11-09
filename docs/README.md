@@ -86,6 +86,7 @@ Ops records, most recent first:
 
 | File | What it establishes |
 |---|---|
+| [`ops-verification-2026-11-09-line-delivery.md`](04_traceability/ops-verification-2026-11-09-line-delivery.md) | two real LINE messages accepted by LINE with `delivered_at` set, the cooldown proven by a second sweep (`cooldown: 2, sent: 0`), and the credential gap that preceded it |
 | [`ops-verification-2026-11-09-gas-trend-production.md`](04_traceability/ops-verification-2026-11-09-gas-trend-production.md) | **R06 closed**: the production DAG log that carries the gas verdict, the two bugs production found in code whose tests passed, and why R05 still cannot notify |
 | [`ops-verification-2026-11-09-app-deploy-and-sweep-finding.md`](04_traceability/ops-verification-2026-11-09-app-deploy-and-sweep-finding.md) | the first deploy of a CI-published image, the six-minute outage that came with it, and the **503 that proves the alert engine has no data source in production** |
 | [`ops-verification-2026-11-09-ci-publish-ghcr.md`](04_traceability/ops-verification-2026-11-09-ci-publish-ghcr.md) | the publish path moved to GHCR on the run's own token, one secret left (`VITE_LIFF_ID`), and the guard that refuses to publish an image with LINE compiled out |
