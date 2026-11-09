@@ -124,7 +124,8 @@ export function createApp(dependencies: AppDependencies = {}) {
       const result = await performAlertSweep({
         fetchAlerts: async (window) => (await iris.getAlerts(window)).alerts,
         adapter: new LineAdapter(lineToken),
-        adapterAvailable: Boolean(lineToken)
+        adapterAvailable: Boolean(lineToken),
+        gas: { clickhouse }
       });
       return c.json(result);
     } catch (error) {

@@ -320,6 +320,71 @@ The sensors have been reporting longer; the store does not keep it.
   rolls, the measured ratios above are the only record of that gap. They are
   already stale and will be unrecoverable.
 
+### Rule 4 — the trend evaluation, and what it may not claim
+
+R06's wording is conditional: *"pressure trends may support a low-gas estimate
+when evaluated with machine state and temperature"*. `apps/api/src/gas-trend.ts`
+is that evaluation and nothing more. It is a pure function
+(`evaluateGasTrend(samples, context)`) so every rule below is testable without a
+warehouse, and it returns `unknown` / `steady` / `declining` **with the evidence
+it used**, never a bare verdict.
+
+| Threshold | Value | Why |
+|---|---|---|
+| `minCoveragePct` | 80 | below this the window cannot speak |
+| `minSpanMinutes` | 180 | a trend needs ≥ 3 h |
+| `minSamples` | 12 | one point cannot be the whole story |
+| `declinePsiPerHour` | 0.5 | the **edge-median rate** must reach this (see below) |
+| `minDropPsi` | 1.0 | **and** the edge-to-edge drop must reach this |
+| `edgeSamples` | 3 | each edge is a median of 3, not one reading |
+| `version` | `2026-11-09.1` | carried in every verdict and every alert |
+
+**The rules, each enforced by a test:**
+
+1. **NULL is not 0.** A window that is mostly NULL is `unknown`, never a trend.
+   `nullMinutes` reports how much of the window had no value.
+2. **No machine state and no temperature ⇒ `unknown`.** A decline observed
+   while nothing ran is not attributable to consumption, and a missing
+   temperature is not 20 °C. Both are recorded in the evidence when present.
+3. **One dip is not a trend.** The drop is measured from the median of the first
+   three values to the median of the last three, so a single dropout-shaped
+   sample cannot clear `minDropPsi`; a single *edge* outlier cannot either, and
+   that case is the one a raw-endpoint comparison gets wrong.
+   **The rate gate is the same edge difference over the span, not a fitted
+   slope.** Measured on production on 2026-11-09, `gas_run_a_pressure` fell from
+   a first-edge median of 78 psi to a last-edge median of 66 psi over 5.3 h
+   (−2.27 psi/h) while the least-squares slope over the same 261 samples was
+   −0.30 psi/h: pressure oscillates as machines draw gas, so a regression
+   understates the direction the tank is moving, and a slope-gated rule called
+   that real 12 psi loss `steady`. The fitted slope is still reported in the
+   evidence beside the edge rate, so a reader can see both.
+4. **A positively closed branch is not reported.** `branchOpenState: "closed"`
+   keeps the measurement and withholds the alert. An **unknown** schedule
+   suppresses nothing — only a schedule that says "shut" may quieten an alarm.
+5. **`gas_detector_*` cannot be evaluated at all.** The channel is a typed
+   allow-list of the three pressure channels; anything else returns
+   `unknown` with `channel_not_evaluable:<name>`. The exclusion is structural,
+   not a filter somebody can delete.
+6. **`steady` means "no decline detected".** It carries the fitted slope, so a
+   rising series reads `steady` with a positive slope rather than inventing a
+   fourth state.
+
+**Wiring.** The evaluation runs inside the alert sweep
+(`apps/api/src/alert-sweep.ts`) over a **6-hour** window — inside the 7-day
+ceiling, because it is a short-window trend, not a seasonal model. An alertable
+verdict becomes an iris-shaped alert with `ruleId` prefixed **`gas.`**
+(`gas.<channel>.declining`) so its cooldown key cannot collide with an IRIS rule
+id, and it travels through the same `runAlertSweep`/`claimNotification` path.
+The message body ends with *"ไม่ใช่การตรวจจับแก๊สรั่ว"* — the negation is inside
+the message, not only in this document, because a reader who skims an alert must
+not walk away with a safety claim.
+
+**Status: not verified in production.** The sweep summary carries
+`gas: {state, window, evaluated, alertable, channels[]}` and `state` is
+`unavailable` with a reason when the source cannot be read — an unread
+warehouse is not "no gas finding". No production sweep has run with this code
+(the route is not in the deployed image), so R06 remains open.
+
 ---
 
 ## 🔴 The `gas_detector_*` entities are a heartbeat, not a detector

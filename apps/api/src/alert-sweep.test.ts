@@ -234,17 +234,17 @@ describe("POST /api/internal/alerts/sweep", () => {
     expect(body.scanned).toBe(1);
     expect(body.window).toMatchObject({ from: expect.any(String), to: expect.any(String) });
     expect(body.summary).toMatchObject({ scanned: 1 });
-    expect(body.gas).toMatchObject({ state: "unavailable", evaluated: 0 });
+    expect(body.gas).toMatchObject({ state: "evaluated", evaluated: 3 });
   });
 
   it("reports gas unavailable with a reason rather than failing the IRIS sweep", async () => {
     process.env.ALERT_SWEEP_TOKEN = "s3cret-token";
-    const { app: instance } = app();
+    const { app: instance } = app({ clickhouse: gasClickhouse({ gasThrows: true }) });
     const response = await sweep(instance, "s3cret-token");
     expect(response.status).toBe(200);
     const body = (await response.json()) as { gas: { state: string; reason: string }; summary: unknown };
     expect(body.gas.state).toBe("unavailable");
-    expect(body.gas.reason).toBe("gas_source_not_configured");
+    expect(body.gas.reason).toContain("gas_source_unavailable");
     expect(body.summary).toBeTruthy();
   });
 
@@ -261,7 +261,7 @@ describe("POST /api/internal/alerts/sweep", () => {
       await instance.request("/api/admin/alerts/notify", { method: "POST" })
     ).json()) as Record<string, unknown>;
     expect(Object.keys(manual).sort()).toEqual(Object.keys(internal).sort());
-    expect(manual.gas).toMatchObject({ state: "unavailable" });
+    expect(manual.gas).toMatchObject({ state: "evaluated" });
   });
 });
 
@@ -281,9 +281,50 @@ describe("performAlertSweep", () => {
     expect(notificationRows().filter((row) => row.lineUserId === lineUserId)).toHaveLength(1);
   });
 
+  it("evaluates gas over its own window and names it in the summary", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const summary = await performAlertSweep(
+      alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: gasRows(values) }) } })
+    );
+    expect(summary.gas.state).toBe("evaluated");
+    expect(summary.gas.evaluated).toBe(3);
+    expect(summary.gas.window).not.toBeNull();
+    expect(summary.gas.channels[0]).toMatchObject({ channel: "gas_run_a_pressure", trend: "declining" });
+  });
 
+  it("pushes a declining channel through the same engine with a gas. rule id", async () => {
+    seedRecipient("owner");
+    const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
+    const deps = alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: gasRows(values) }) } });
+    const result = await performAlertSweep(deps);
 
+    expect(result.gas.alertable).toBeGreaterThanOrEqual(1);
+    const gasRowsWritten = notificationRows().filter((row) => row.irisAlertId.startsWith("gas:"));
+    expect(gasRowsWritten.length).toBeGreaterThanOrEqual(1);
+    expect(gasRowsWritten[0]?.cooldownKey).toContain("gas.");
+    expect(gasRowsWritten[0]?.status).toBe("sent");
+  });
 
+  it("sends nothing for an all-NULL gas window and says the coverage failed", async () => {
+    const values = Array.from({ length: 17 }, () => null);
+    const result = await performAlertSweep(
+      alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: gasRows(values) }) } })
+    );
+    expect(result.gas.evaluated).toBe(3);
+    expect(result.gas.alertable).toBe(0);
+    expect(result.gas.channels.every((channel) => channel.trend === "unknown")).toBe(true);
+    expect(notificationRows()).toHaveLength(0);
+  });
+
+  it("never evaluates the gas_detector heartbeat, even when the warehouse returns it", async () => {
+    const values = Array.from({ length: 17 }, (_, index) => 50 - index);
+    const result = await performAlertSweep(
+      alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: gasRows(values, "gas_detector_a") }) } })
+    );
+    expect(result.gas.evaluated).toBe(3);
+    expect(result.gas.channels.every((channel) => channel.sampleCount === 0)).toBe(true);
+    expect(result.gas.alertable).toBe(0);
+  });
 
   it("reports gas as not configured when the sweep has no gas source", async () => {
     const result = await performAlertSweep(alertDeps());
@@ -292,6 +333,18 @@ describe("performAlertSweep", () => {
     expect(result.gas.evaluated).toBe(0);
   });
 
+  it("does not fail the IRIS sweep when the gas source throws", async () => {
+    const alert = makeAlert();
+    const result = await performAlertSweep(
+      alertDeps({
+        fetchAlerts: vi.fn(async () => [alert]),
+        gas: { clickhouse: gasClickhouse({ gasThrows: true }) }
+      })
+    );
+    expect(result.scanned).toBe(1);
+    expect(result.summary.scanned).toBe(1);
+    expect(result.gas.state).toBe("unavailable");
+  });
 
   it("audits a cooldown skip so a silent non-send is still recorded", async () => {
     seedRecipient("owner");
