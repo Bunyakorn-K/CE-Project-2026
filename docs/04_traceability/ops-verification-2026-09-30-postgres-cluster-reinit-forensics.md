@@ -296,3 +296,186 @@ be the same attribution error the original investigation avoided for OOM.
       (`disconnection: session time: ...`) rendering in the live log.
       Rollback: `ALTER SYSTEM RESET log_min_messages;
       SELECT pg_reload_conf();`
+- [x] Detect the next reinit in one DAG cycle instead of reading a log after the
+      fact — **done 2026-11-09**, `check_postgres_reinit` in production, see §10.6.
+- [x] Sample the container while it is healthy so the next crash has a baseline —
+      **running 2026-11-09 → 2026-11-10**, see §10.7.
+- [ ] **Decide the bounded `log_min_messages=debug1` window.** It needs a restart
+      of `analytics-postgres-1` (an outage in the 60–374 s class), so it is a
+      human decision, not an agent one. The revert must be part of the same
+      change; a postmaster left on `debug1` on a 250 MB cluster fills a host with
+      7.6 GB free.
+- [ ] Attribute the `exit code 2` itself. §10.4 shows the log stream broke
+      `2 m 26 s` before the 2026-11-09 crash, so `docker logs` cannot answer it;
+      the sampler (§10.7) plus a debug1 window is the only shape that can.
+
+## 10. Re-measured 2026-11-09: the failure is still unattributed, but the evidence channel is what failed
+
+This section re-measures the incident rather than restating §8. Every number
+below carries the command that produced it, and the counts are from the
+container that started on 2026-11-06 (`RestartCount=0`, so "since the
+container started" is well defined).
+
+```bash
+ssh -J notnotik-pve uunw@10.10.0.117
+sudo docker inspect analytics-postgres-1 --format '{{.State.StartedAt}} {{.RestartCount}}'
+sudo docker exec analytics-postgres-1 psql -U airflow -d airflow -tAc 'select pg_postmaster_start_time(), version()'
+sudo docker logs analytics-postgres-1 | grep -nE 'exited with exit code|all server processes terminated|database system was interrupted|redo starts|database system is ready'
+```
+
+| Measurement | Value |
+|---|---|
+| Container started | `2026-11-06T14:51:46.020934439Z`, `RestartCount=0` |
+| `pg_postmaster_start_time()` | `2026-11-06 14:52:01.576626+00:00` |
+| Reinit 1 | `2026-11-07 08:17:46.964` PID 50846 `exit code 2` → ready `08:18:50.495` = **63.5 s** |
+| Reinit 2 | `2026-11-09 04:06:26.143` PID 178442 `exit code 2` → ready `04:12:40.277` = **374 s** |
+| `memory.events` for the container's cgroup | `oom 0`, **`oom_kill 0`**, `oom_group_kill 0` |
+| `memory.peak` / `memory.max` | `251,744,256` B / `536,870,912` B (46.9 % of the limit) |
+
+**The plan's "recovery 81 s" was a mid-recovery counter, not the outage.** The
+`syncing data directory (fsync), elapsed time: 81.33 s` line at `04:07:59` is
+one sample of a counter that kept climbing to `288.02 s` at `04:11:25`; the
+cluster only answered at `04:12:40`. The honest pair is **63.5 s → 374 s**, a
+5.9× worsening in three days, which makes the item more urgent than the plan
+recorded, not less.
+
+### 10.1 H1 (memory pressure) — excluded by measurement
+
+`oom_kill 0` in the container's own cgroup is retroactive for the container's
+whole life, so the kernel did **not** kill anything inside this cgroup on either
+date, and peak usage never exceeded 47 % of the 512 MB cap. The host does run
+out of memory, but always inside a **different** cgroup:
+
+```text
+oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/docker-a6dcaad6….scope,
+task=npm exec @model
+Memory cgroup out of memory: Killed process … (npm exec @model)
+```
+
+That cgroup is `analytics-mcp-inspector-1`, which has **3462 restarts**,
+`State.OOMKilled=true`, `ExitCode=137`, and is currently restarting every
+~60–70 s (`sudo docker inspect analytics-mcp-inspector-1 --format
+'{{.RestartCount}} {{.State.OOMKilled}}'`). It is a recycling loop, not an
+idle neighbour.
+
+### 10.2 H2 (connection storm at the hour boundary) — excluded
+
+Connections per minute, parsed from the postmaster log for the 40 minutes
+preceding each crash, are flat: **4–9/min** with no hour-boundary peak
+(`2026-11-07 07:40–08:16` all 5–9; `2026-11-09 03:30–04:05` all 2–9). The only
+spike in either window is **after** the death — 32/min at `04:06` — and it
+consists of `pg_isready` retries being refused with `FATAL: the database system
+is in recovery mode`. A cause cannot be a consequence.
+
+### 10.3 H3 (a client vanishing mid-write) — the only `Broken pipe` lines are consequences
+
+The three `could not send data to client: Broken pipe` lines at
+`04:06:26.119`–`.137` belong to PIDs 178443/178444/178445, all
+`application_name=pg_isready`, and they appear **after** the postmaster had
+begun terminating (`terminating any other active server processes` at
+`.143`). No client connection is logged vanishing mid-write in either window.
+
+### 10.4 What the window actually shows: the log channel broke first
+
+At `2026-11-09 04:04:00` — **2 m 26 s before** the reinit — dockerd logged,
+for this container:
+
+```text
+level=warning msg="Health check for container 2a11610962… error: timed out starting health check"
+level=error   msg="stream copy error: reading from a closed fifo"
+```
+
+and the kernel logged soft lockups in a container init process stuck zeroing
+pages, plus an RCU stall:
+
+```text
+watchdog: BUG: soft lockup - CPU#3 stuck for 40s! [runc:[2:INIT]:2553731]
+RIP: clear_page_rep+0xb/0x20
+rcu: INFO: rcu_preempt detected stalls on CPUs/tasks: … t=5252 jiffies
+```
+
+Since the container started, `journalctl` holds **11 soft lockups, 120
+`stream copy error`s and 58 timed-out health checks**. The consequence for
+attribution is decisive: `docker logs` for this container **lost its stream
+before the crash**, which is why the dying backend (PID 178442) has no line of
+its own anywhere in 76,871 log lines — it neither logged a `FATAL`/`PANIC` nor
+a connection event. **`exit code 2` with no message is what a backend writes
+when it cannot write.**
+
+### 10.5 Attribution, stated as it stands
+
+- **Not attributed.** The trigger is still unknown. Two candidate mechanisms
+  survive and neither is falsified: (a) the host was in a page-zeroing/RCU
+  stall (`runc` in `clear_page_rep`) at the moment of death, which starves a
+  process trying to fault pages in; (b) the backend was signalled by the
+  postmaster's own crash handling (a `quickdie` exit is `_exit(2)`) after a
+  first child died in a line the broken stream swallowed.
+- **Excluded by measurement:** container-cgroup OOM (H1), connection storm (H2),
+  client vanishing mid-write (H3).
+- **Not excluded:** IO saturation during ClickHouse merges (H4). Nothing in the
+  window measures it; `iostat` was not sampled.
+- **Detection is now one DAG cycle**, not a retrospective log read — §10.6.
+
+### 10.6 Detection landed: `check_postgres_reinit` in production
+
+`check_postgres_reinit` runs first in `laundrytwin_warehouse_freshness`
+(`deploy/analytics/dags/laundrytwin_warehouse_freshness.py`), compares
+`pg_postmaster_start_time()` with the Airflow Variable
+`postgres_postmaster_start_time`, and **warns with both timestamps** when it
+moves. Deployed 2026-11-09 by copying the file to `/opt/analytics/dags/`
+(previous copy preserved at
+`/opt/laundrytwin-rollback/laundrytwin_warehouse_freshness.py.bak-20261109`;
+the deployed file was byte-identical to git `HEAD` before the change,
+`md5 b859204f3ead52cd61700f9db73f2d10`).
+
+Two shapes of the check failed in production and are recorded because they are
+the reason the shipped one looks the way it does:
+
+| Attempt | Result |
+|---|---|
+| `create_engine(os.environ['AIRFLOW__DATABASE__SQL_ALCHEMY_CONN'])` | **failed** `07:13:39`, `ArgumentError: Could not parse SQLAlchemy URL from given URL string` — Airflow 3 does not give a task its metadata DSN (the same code passes under `airflow tasks test`) |
+| `from airflow.settings import Session` | **failed** `07:15:48`, `RuntimeError: Direct database access via the ORM is not allowed in Airflow 3.0` |
+| `PostgresHook(postgres_conn_id='metadata_db')` with `AIRFLOW_CONN_METADATA_DB` on the scheduler | **success** `07:22:31` → `07:22:35` |
+
+`AIRFLOW_CONN_METADATA_DB` was added to the scheduler's environment in
+`deploy/analytics/compose.yaml`, interpolated from the same
+`AIRFLOW_DB_PASSWORD` the metadata DSN already uses (one credential, two
+consumers, nothing in git). The scheduler was recreated
+(`docker compose -f /opt/analytics/compose.yaml up -d --no-deps
+airflow-scheduler`, 07:19:33); the previous compose file is at
+`/opt/laundrytwin-rollback/analytics-compose.yaml.bak-20261109`.
+**Rollback:** restore that file, `up -d --no-deps airflow-scheduler`, and
+restore the `.bak-20261109` DAG — which removes the check entirely.
+
+The warn path was then exercised against the real cluster rather than asserted:
+the Variable was set to `2026-11-06 14:00:00+00:00`, a run was triggered, and
+the task log carries
+
+```text
+POSTGRES REINIT WARNING: the metadata cluster restarted. previous start
+2026-11-06 14:00:00+00:00, current start 2026-11-06 14:52:01.576626+00:00.
+Connections were refused during recovery. …
+```
+
+(`run_id=manual__2026-11-09T07:23:26.981370+00:00`, task `success`, log at
+`/opt/airflow/logs/dag_id=laundrytwin_warehouse_freshness/run_id=…/task_id=check_postgres_reinit/attempt=1.log`).
+The task rewrites the Variable on every run, so the falsified value was
+self-correcting.
+
+### 10.7 The bounded sampling harness, and what is still open
+
+`deploy/postgres-forensics.sh` samples every 30 s: `docker stats`, the
+cgroup's `memory.current`/`peak`/`max`/`events` (including `oom_kill`), the
+container's `RestartCount`/`OOMKilled`/`StartedAt`, `pg_postmaster_start_time`,
+backend and wait counts, the longest active query, `pg_stat_database` totals,
+and the last five `dmesg -T` lines. It writes one NDJSON line per sample under
+`/opt/laundrytwin/postgres-forensics/` with a 20 MB cap, and it restarts
+nothing. `--samples 2880 --interval-seconds 30` was started on the host at
+`2026-11-09 07:26:05 UTC` (PID 2706230, file
+`sample-20261109T072605Z.ndjson`) and runs until ~`2026-11-10 07:26 UTC`.
+
+**Not done, deliberately:** the `log_min_messages=debug1` window. Raising a
+postmaster's log level requires a **restart** of `analytics-postgres-1`, i.e.
+the very outage this record is about, and the plan requires the revert to be
+part of the same task. It is left as an explicit decision for a human — see
+§9.

@@ -151,6 +151,79 @@ def check_usage_continuity(**context):
     return unexpected
 
 
+# Postgres reinit detection (added 2026-11-09).
+#
+# WHY THIS EXISTS. The Airflow metadata Postgres cluster reinitialises itself
+# every so often: the postmaster logs `server process (PID n) exited with exit
+# code 2`, then `all server processes terminated; reinitializing`, and for 20-81
+# seconds every connection is refused with `FATAL: the database system is in
+# recovery mode`. Retrospectively reading `docker logs` twelve hours later was
+# the only detection that existed, and it cannot attribute the death: the dying
+# backend writes no line of its own, and at 2026-11-09 04:04 dockerd was already
+# reporting `timed out starting health check` and `stream copy error: reading
+# from a closed fifo` for this container, so the log channel itself was broken
+# two minutes before the reinit.
+#
+# Detection is one DAG cycle instead: compare the postmaster's start time to the
+# value this task last saw. A restart is a WARN, not a FAIL — a deliberate
+# `docker restart` during maintenance must not page anyone — but it names both
+# timestamps so the next reader does not have to reconstruct the moment from a
+# log window that may have rolled.
+POSTGRES_START_VARIABLE = 'postgres_postmaster_start_time'
+
+
+def check_postgres_reinit(**context):
+    """Warn when pg_postmaster_start_time() has moved since the last cycle.
+
+    WHY THIS USES A CONNECTION, NOT THE METADATA DSN. Two measured facts killed
+    the obvious shapes of this check on 2026-11-09:
+
+      * `create_engine(os.environ['AIRFLOW__DATABASE__SQL_ALCHEMY_CONN'])` fails
+        in a real task run with `ArgumentError: Could not parse SQLAlchemy URL`
+        (07:13:39) — Airflow 3 does not hand its metadata DSN to a task process,
+        while the same code passes under `airflow tasks test`.
+      * `from airflow.settings import Session` fails with `RuntimeError: Direct
+        database access via the ORM is not allowed in Airflow 3.0` (07:15:48).
+
+    So the check reads the value over a normal Postgres connection, resolved by
+    Airflow's own secrets backend: `AIRFLOW_CONN_METADATA_DB` in the scheduler's
+    environment points at the same database with the same credential the
+    deployment already holds. Nothing here parses a URL, and no password is
+    printed, logged or written to a file.
+    """
+    from airflow.models import Variable
+    from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+    hook = PostgresHook(postgres_conn_id='metadata_db')
+    connection = hook.get_conn()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('select pg_postmaster_start_time()')
+            current = cursor.fetchone()[0]
+    finally:
+        connection.close()
+    current_value = str(current)
+    previous_value = Variable.get(POSTGRES_START_VARIABLE, default_var=None)
+    Variable.set(POSTGRES_START_VARIABLE, current_value)
+
+    if previous_value is None:
+        print(f'postgres reinit check initialised: postmaster started {current_value}')
+    elif previous_value != current_value:
+        print(
+            f'POSTGRES REINIT WARNING: the metadata cluster restarted. '
+            f'previous start {previous_value}, current start {current_value}. '
+            f'Connections were refused during recovery. Check '
+            f'`docker logs analytics-postgres-1` for `server process ... exited with '
+            f'exit code 2` and the container-level memory events before attributing it '
+            f'to PostgreSQL itself: at 2026-11-09 04:06 the dying backend logged '
+            f'nothing at all. See '
+            f'docs/04_traceability/ops-verification-2026-09-30-postgres-cluster-reinit-forensics.md'
+        )
+    else:
+        print(f'postgres reinit check OK: postmaster started {current_value}, unchanged')
+    return {'previous': previous_value, 'current': current_value}
+
+
 def check_usage_freshness(**context):
     body = _query(
         "SELECT dateDiff('minute', max(extracted_at), now()) FROM fact_machine_usage"
@@ -219,7 +292,13 @@ with DAG(
         task_id='report_warehouse_volumes',
         python_callable=report_warehouse_volumes,
     )
+    reinit = PythonOperator(
+        task_id='check_postgres_reinit',
+        python_callable=check_postgres_reinit,
+    )
 
-    # continuity runs first so a warehouse-wide history hole is on the log
-    # above the freshness lines, which will still look green in that case.
-    chain(continuity_usage, freshness_usage, freshness_temperature, volumes)
+    # reinit runs first: a cluster restart explains a burst of everything below
+    # it, and its warning should sit at the top of the log rather than below
+    # four green lines. continuity then runs before freshness for the reason
+    # stated above.
+    chain(reinit, continuity_usage, freshness_usage, freshness_temperature, volumes)

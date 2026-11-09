@@ -63,6 +63,14 @@ services:
     environment:
       <<: *airflow-env
       AIRFLOW__API__BASE_URL: http://analytics-airflow-webserver-1:8080
+      # The metadata database, exposed as an Airflow connection because
+      # `check_postgres_reinit` needs it and Airflow 3 does not give a task its
+      # own DSN (measured 2026-11-09: create_engine on
+      # AIRFLOW__DATABASE__SQL_ALCHEMY_CONN fails inside a task run, and
+      # `airflow.settings.Session` raises "Direct database access via the ORM is
+      # not allowed in Airflow 3.0"). Same password variable as the DSN above —
+      # one credential, two consumers, never written into git.
+      AIRFLOW_CONN_METADATA_DB: postgresql://airflow:${AIRFLOW_DB_PASSWORD}@analytics-postgres-1:5432/airflow
     image: apache/airflow:3.3.1
     depends_on:
       airflow-init:
