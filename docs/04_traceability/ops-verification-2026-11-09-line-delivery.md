@@ -112,6 +112,40 @@ assumed.
   mode 644 and is not read by anything. It should be removed or made 600; the
   server has its own copy.
 
+## The card, delivered by the scheduler (`cfb12ed`)
+
+The alert is a Flex Message now: a coloured header by severity, one labelled row
+per fact, the gating rate marked as the gate and the fitted slope kept beside it,
+and the ambient's age disclosed because the temperature feed runs 24 hours behind.
+Before this, the text quoted ClickHouse's raw average as `68.57309385055319 °C`
+and showed only the slope, so a reader could not reproduce the verdict.
+
+Verification, in the order it happened:
+
+1. **LINE accepted the schema.** The payload was not hand-written — it was built
+   by `buildAlertFlex` from the stored evidence of a real alert and posted to
+   `POST https://api.line.me/v2/bot/message/validate/push`, which validates
+   without sending: `http=200 {}`.
+2. **The scheduler sent it.** No button was pressed. `scheduled__2026-11-09T14:20:00+00:00`
+   ran green and wrote two rows:
+
+   | `iris_alert_id` | status | delivered_at |
+   |---|---|---|
+   | `gas:gas_run_b_pressure:declining:2026-11-09T14` | **sent** | 1794234000848 (14:20:00.848Z) |
+   | `gas:gas_run_a_pressure:declining:2026-11-09T14` | **sent** | 1794234000848 |
+
+   Notification table afterwards: `sent: 4, failed: 4` — the four failures are the
+   pre-credential history, unchanged.
+3. **The cooldown still holds.** The 14:15 run was inside the hour that began at
+   13:16 and reported `cooldown: 2, sent: 0`; 14:20 was the first run allowed to
+   send, and did.
+
+What this record cannot claim on its own: that the delivered message was the card
+rather than the text fallback. The database stores the text body either way. The
+evidence for the card is the deployed image (`deploy-cfb12ed-20261109`), the tests
+that make the engine prefer `sendFlex` when the adapter has it, LINE's validation
+of that exact payload, and the message as the owner sees it.
+
 ## One scheduled run failed, and why
 
 `scheduled__2026-11-09T13:15:00+00:00` **failed** with
