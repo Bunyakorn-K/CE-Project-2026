@@ -61,13 +61,22 @@ function text(content: string, options: Record<string, unknown> = {}) {
 }
 
 function row(label: string, value: string, options: { strong?: boolean } = {}) {
+  // 16px values against 13px labels: the number is what the reader is looking for,
+  // and on a phone the old 13px/value split made both equally hard to scan.
   return {
     type: "box",
     layout: "horizontal",
-    spacing: "sm",
+    spacing: "md",
+    alignItems: "center",
     contents: [
       text(label, { size: "sm", color: "#6B7280", flex: 4 }),
-      text(value, { size: "sm", color: "#111827", flex: 6, align: "end", weight: options.strong ? "bold" : "regular" })
+      text(value, {
+        size: "md",
+        color: options.strong ? "#111827" : "#374151",
+        flex: 6,
+        align: "end",
+        weight: options.strong ? "bold" : "regular"
+      })
     ]
   };
 }
@@ -148,11 +157,27 @@ export function shortTime(value: string): string {
   return `${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}`;
 }
 
+
+/**
+ * The card carries four facts and a link; everything else lives on the detail
+ * page. A notification is read in a moving vehicle, and the previous version
+ * asked the reader to parse nine rows to find the two that matter.
+ */
+export function keyRows(alert: IrisAlert): Array<{ label: string; value: string; strong?: boolean }> {
+  const all = alertRows(alert);
+  const keep = new Set(["ช่องวัด", "แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
+  const rows = all.filter((row) => keep.has(row.label));
+  return rows.length > 0 ? rows : all.slice(0, 4);
+}
+
 /** The card. `bubble` is the only container type that works in a one-message push. */
-export function buildAlertFlex(alert: IrisAlert): { altText: string; contents: FlexContents } {
+export function buildAlertFlex(
+  alert: IrisAlert,
+  options: { detailUrl?: string | null } = {}
+): { altText: string; contents: FlexContents } {
   const severity = severityOf(alert);
   const style = severityStyle(severity);
-  const rows = alertRows(alert);
+  const rows = keyRows(alert);
   const disclaimer = typeof alert.detail === "string" && alert.detail.includes("ไม่ใช่การตรวจจับแก๊สรั่ว")
     ? "เป็นการประเมินแนวโน้มร่วมกับสถานะเครื่องและอุณหภูมิ ไม่ใช่การตรวจจับแก๊สรั่ว"
     : null;
@@ -171,8 +196,8 @@ export function buildAlertFlex(alert: IrisAlert): { altText: string; contents: F
       backgroundColor: style.color,
       paddingAll: "16px",
       contents: [
-        text(`🔔 LaundryTwin · ${style.label}`, { size: "xs", color: "#FFFFFF" }),
-        text(alert.title, { size: "lg", color: "#FFFFFF", weight: "bold" })
+        text(`🔔 LaundryTwin · ${style.label}`, { size: "sm", color: "#FFFFFF" }),
+        text(alert.title, { size: "xl", color: "#FFFFFF", weight: "bold" })
       ]
     },
     body: {
@@ -180,7 +205,10 @@ export function buildAlertFlex(alert: IrisAlert): { altText: string; contents: F
       layout: "vertical",
       spacing: "sm",
       paddingAll: "16px",
-      contents: rows.length > 0 ? rows.map((item) => row(item.label, item.value, { strong: item.strong })) : [text("ไม่มีรายละเอียดเพิ่มเติม", { size: "sm", color: "#6B7280" })]
+      contents:
+        rows.length > 0
+          ? rows.map((item) => row(item.label, item.value, { strong: item.strong }))
+          : [text("ไม่มีรายละเอียดเพิ่มเติม", { size: "sm", color: "#6B7280" })]
     },
     footer: {
       type: "box",
@@ -188,6 +216,20 @@ export function buildAlertFlex(alert: IrisAlert): { altText: string; contents: F
       spacing: "xs",
       paddingAll: "12px",
       contents: [
+        // The detail page, when the deployment knows its LIFF id. Without it the
+        // card still stands on its own; a button that goes nowhere would be worse
+        // than no button.
+        ...(options.detailUrl
+          ? [
+              {
+                type: "button",
+                style: "primary",
+                color: style.color,
+                height: "md",
+                action: { type: "uri", label: "ดูรายละเอียดทั้งหมด", uri: options.detailUrl }
+              }
+            ]
+          : []),
         ...(disclaimer ? [text(disclaimer, { size: "xs", color: "#6B7280" })] : []),
         ...(footerLines.length > 0 ? [text(footerLines.join(" · "), { size: "xs", color: "#9CA3AF" })] : [])
       ]

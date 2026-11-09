@@ -50,6 +50,7 @@ import { spaHandler } from "./spa";
 import { createBotHandler } from "./bot";
 import { LineAdapter } from "./bot/line-adapter";
 import { isAlertSweepTokenValid, performAlertSweep } from "./alert-sweep";
+import { lineUserIdForUser, readAlertRows, toPublicAlert } from "./alert-detail";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
@@ -540,6 +541,35 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
     acknowledgeAlert({ irisAlertId: c.req.param("id"), userId: principal.user.id, note: getString(body, "note") });
     return c.json({ ok: true });
+  });
+
+  /**
+   * One alert, as it was sent — the page a LINE card links to.
+   *
+   * Authorisation is deliberately narrow: the caller must have been a recipient
+   * of THIS alert, or hold branch access to the branch it names. A signed-in user
+   * from another branch cannot read it just because they know the id, and an
+   * unknown id is a 404 rather than an empty body, so a mistyped link says so.
+   */
+  app.get("/api/alerts/:id", (c) => {
+    const principal = requirePrincipal(c);
+    if (principal instanceof Response) return principal;
+
+    const rows = readAlertRows(c.req.param("id"));
+    if (rows.length === 0) {
+      return apiError(c, 404, "ALERT_NOT_FOUND", "No alert with that id was ever sent");
+    }
+
+    const lineUserId = lineUserIdForUser(principal.user.id);
+    const addressedToCaller = lineUserId ? rows.find((row) => row.lineUserId === lineUserId) : undefined;
+    const branchVisible = rows.find(
+      (row) => row.branchId === null || canAccessBranch(principal.grants, row.branchId)
+    );
+    const visible = addressedToCaller ?? branchVisible;
+    if (!visible) {
+      return apiError(c, 403, "ALERT_FORBIDDEN", "This alert was not sent to you and its branch is outside your access");
+    }
+    return c.json({ alert: toPublicAlert(visible) });
   });
 
   app.get("/api/admin/access-requests", (c) => {

@@ -32,6 +32,10 @@ const API_ERROR_COPY: Record<string, string> = {
   UNKNOWN_BRANCH: "ไม่พบสาขาที่เลือก",
   BRANCH_NOT_FOUND: "ไม่พบสาขาที่เลือกในระบบ",
   BRANCH_FORBIDDEN: "คุณไม่มีสิทธิ์ดูข้อมูลสาขานี้",
+  // The alert detail page: "not yours" and "never existed" are different
+  // problems, and a mistyped link must not read like a permission failure.
+  ALERT_NOT_FOUND: "ไม่พบการแจ้งเตือนนี้ อาจถูกลบหรือลิงก์ไม่ถูกต้อง",
+  ALERT_FORBIDDEN: "การแจ้งเตือนนี้ไม่ได้ส่งถึงคุณ และอยู่นอกสาขาที่คุณเข้าถึงได้",
   BRANCH_REQUIRED: "กรุณาเลือกสาขาก่อนดูรายงาน",
   AUTHENTICATION_REQUIRED: "กรุณาเข้าสู่ระบบเพื่อใช้งาน",
   UNAUTHORIZED: "กรุณาเข้าสู่ระบบเพื่อใช้งาน",

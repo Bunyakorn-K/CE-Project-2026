@@ -21,6 +21,7 @@ import { Route as AuthenticatedMachinesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedPlaygroundRouteImport } from './routes/_authenticated/playground'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAiRouteImport } from './routes/_authenticated/admin/ai'
+import { Route as AuthenticatedAlertsAlertIdRouteImport } from './routes/_authenticated/alerts.$alertId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -81,6 +82,12 @@ const AuthenticatedAdminAiRoute = AuthenticatedAdminAiRouteImport.update({
   path: '/ai',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const AuthenticatedAlertsAlertIdRoute =
+  AuthenticatedAlertsAlertIdRouteImport.update({
+    id: '/alerts/$alertId',
+    path: '/alerts/$alertId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/machines': typeof AuthenticatedMachinesRoute
   '/playground': typeof AuthenticatedPlaygroundRoute
   '/admin/ai': typeof AuthenticatedAdminAiRoute
+  '/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -105,6 +113,7 @@ export interface FileRoutesByTo {
   '/machines': typeof AuthenticatedMachinesRoute
   '/playground': typeof AuthenticatedPlaygroundRoute
   '/admin/ai': typeof AuthenticatedAdminAiRoute
+  '/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesById {
@@ -120,6 +129,7 @@ export interface FileRoutesById {
   '/_authenticated/machines': typeof AuthenticatedMachinesRoute
   '/_authenticated/playground': typeof AuthenticatedPlaygroundRoute
   '/_authenticated/admin/ai': typeof AuthenticatedAdminAiRoute
+  '/_authenticated/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/machines'
     | '/playground'
     | '/admin/ai'
+    | '/alerts/$alertId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/machines'
     | '/playground'
     | '/admin/ai'
+    | '/alerts/$alertId'
     | '/admin'
   id:
     | '__root__'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
     | '/_authenticated/machines'
     | '/_authenticated/playground'
     | '/_authenticated/admin/ai'
+    | '/_authenticated/alerts/$alertId'
     | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -258,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminAiRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/alerts/$alertId': {
+      id: '/_authenticated/alerts/$alertId'
+      path: '/alerts/$alertId'
+      fullPath: '/alerts/$alertId'
+      preLoaderRoute: typeof AuthenticatedAlertsAlertIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -280,6 +300,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedMachinesRoute: typeof AuthenticatedMachinesRoute
   AuthenticatedPlaygroundRoute: typeof AuthenticatedPlaygroundRoute
+  AuthenticatedAlertsAlertIdRoute: typeof AuthenticatedAlertsAlertIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -288,6 +309,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedMachinesRoute: AuthenticatedMachinesRoute,
   AuthenticatedPlaygroundRoute: AuthenticatedPlaygroundRoute,
+  AuthenticatedAlertsAlertIdRoute: AuthenticatedAlertsAlertIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

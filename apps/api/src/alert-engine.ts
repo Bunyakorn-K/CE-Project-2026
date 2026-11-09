@@ -83,6 +83,21 @@ export function cooldownKeyFor(alert: IrisAlert): string {
   return `${alert.branchId ?? "*"}:${alert.ruleId ?? "generic"}:${alert.severity.trim().toLowerCase()}`;
 }
 
+
+/**
+ * The LIFF deep link for one alert, or null when the deployment does not know its
+ * LIFF id.
+ *
+ * A card without a button still says everything that matters; a button pointing
+ * at Nothing would be worse, so the env var is required rather than guessed from
+ * the channel id (a Messaging API channel id is not a LIFF app id).
+ */
+export function alertDetailUrl(irisAlertId: string): string | null {
+  const liffId = process.env.LIFF_ID;
+  if (!liffId) return null;
+  return `https://liff.line.me/${liffId}/alerts/${encodeURIComponent(irisAlertId)}`;
+}
+
 export function formatAlertMessage(alert: IrisAlert): string {
   const lines = [`🔔 LaundryTwin แจ้งเตือน (${alert.severity.toUpperCase()})`, alert.title];
   if (alert.detail) lines.push(alert.detail);
@@ -272,7 +287,7 @@ export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps):
         continue;
       }
       try {
-        const card = buildAlertFlex(alert);
+        const card = buildAlertFlex(alert, { detailUrl: alertDetailUrl(alert.id) });
         if (typeof deps.adapter.sendFlex === "function") {
           await deps.adapter.sendFlex(recipient.lineUserId, card.altText, card.contents);
         } else {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALT_TEXT_LIMIT, alertRows, buildAlertFlex, num, shortTime } from "./alert-flex";
+import { ALT_TEXT_LIMIT, alertRows, buildAlertFlex, keyRows, num, shortTime } from "./alert-flex";
 import type { IrisAlert } from "./iris-read-client";
 
 const WINDOW = { from: "2026-11-09T07:00:00.600Z", to: "2026-11-09T13:00:00.600Z" };
@@ -104,9 +104,48 @@ describe("buildAlertFlex", () => {
     expect(header.backgroundColor).toBe("#D9822B"); // warning
     expect(header.contents.some((item) => item.text.includes("WARNING"))).toBe(true);
     const body = contents.body as { contents: unknown[] };
-    expect(body.contents.length).toBe(alertRows(gasAlert()).length);
+    // The card carries the four decisive facts; the other five rows live on the
+    // detail page the button opens.
+    expect(body.contents.length).toBe(keyRows(gasAlert()).length);
+    expect(alertRows(gasAlert()).length).toBeGreaterThan(keyRows(gasAlert()).length);
     const footer = contents.footer as { contents: Array<{ text: string }> };
     expect(footer.contents.some((item) => item.text.includes("ไม่ใช่การตรวจจับแก๊สรั่ว"))).toBe(true);
+  });
+
+  it("keeps only the four facts a reader needs, and the label that names the gate", () => {
+    const labels = keyRows(gasAlert()).map((row) => row.label);
+    expect(labels).toEqual(["ช่องวัด", "แรงดัน", "อัตราลดลง (ใช้ตัดสิน)", "สถานะเครื่อง"]);
+    // The detail rows still carry everything the page needs.
+    const detailLabels = alertRows(gasAlert()).map((row) => row.label);
+    expect(detailLabels).toContain("ความชัน (อ้างอิง)");
+    expect(detailLabels).toContain("อุณหภูมิ");
+    expect(detailLabels).toContain("ความครอบคลุม");
+  });
+
+  it("adds a link to the full alert only when a detail URL exists", () => {
+    const url = "https://liff.line.me/2011592166-uToRdTwS/alerts/gas%3Agas_run_a_pressure%3Adeclining%3A2026-11-09T14";
+    const withLink = buildAlertFlex(gasAlert(), { detailUrl: url });
+    const footer = withLink.contents.footer as { contents: Array<Record<string, unknown>> };
+    const button = footer.contents.find((item) => item.type === "button") as
+      | { action?: { type?: string; uri?: string; label?: string } }
+      | undefined;
+    expect(button?.action?.type).toBe("uri");
+    expect(button?.action?.uri).toBe(url);
+    expect(button?.action?.label).toBe("ดูรายละเอียดทั้งหมด");
+
+    const without = buildAlertFlex(gasAlert());
+    const plainFooter = without.contents.footer as { contents: Array<Record<string, unknown>> };
+    expect(plainFooter.contents.some((item) => item.type === "button")).toBe(false);
+  });
+
+  it("renders values larger than labels, so the number is what the eye lands on", () => {
+    const body = buildAlertFlex(gasAlert()).contents.body as {
+      contents: Array<{ contents: Array<{ size: string; weight?: string }> }>;
+    };
+    const [label, value] = body.contents[0].contents;
+    expect(label.size).toBe("sm");
+    expect(value.size).toBe("md");
+    expect(value.weight).toBe("bold");
   });
 
   it("uses the severity to pick the header colour", () => {
