@@ -108,6 +108,7 @@ Ops records, most recent first:
 | [`ops-verification-2026-09-06.md`](04_traceability/ops-verification-2026-09-06.md), [`-09-09.md`](04_traceability/ops-verification-2026-09-09.md) | early VM and infrastructure verification |
 | [`ops-verification-2026-11-10-dependabot-remediation.md`](04_traceability/ops-verification-2026-11-10-dependabot-remediation.md) | 76 Dependabot alerts to 0 (3 critical), and the zod pin Dependabot could not see because the runtime image installs outside the lockfile |
 | [`ops-verification-2026-11-10-collector-release-coverage.md`](04_traceability/ops-verification-2026-11-10-collector-release-coverage.md) | weather/gas had no update path (2 of 4 compose services were in the release matrix); both published and redeployed, and `.env` no longer records images four deploys behind |
+| [`ops-verification-2026-11-10-line-rich-menu-roles.md`](04_traceability/ops-verification-2026-11-10-line-rich-menu-roles.md) | four rich menus, one per role, linked on login; images rendered with Chrome because Pillow cannot shape Thai; the `api-data.line.me` 404 |
 
 ### `05_presentation/` — [`NOTES.md`](05_presentation/NOTES.md)
 
