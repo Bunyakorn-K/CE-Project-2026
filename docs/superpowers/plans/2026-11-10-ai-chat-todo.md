@@ -53,9 +53,40 @@ Legend: `[ ]` not started · `[x]` built and verified
 
 ## P4 — only if P1–P3 are used
 
-- [ ] daily digest as a chat message (one message, plain language) instead of only an alert card
+### P4 evidence (production, `a942749`)
+
+- default state, nothing configured: `POST /api/internal/digest/run` →
+  `{"state":"disabled","day":"2026-11-09"}`
+- temporarily enabled with nobody added → `{"state":"no-recipients"}`
+- temporarily enabled with one recipient, `?dryRun=1` → built the real message and sent
+  nothing:
+  ```
+  ☀️ สรุปวัน 9 พ.ย.
+  💰 รายได้ 4,880 บาท · 77 รอบซัก
+     • about you.wash & dry แม่โจ้ - หลิ่มมื่น: 4,880 บาท · 77 รอบ
+  🔔 แจ้งเตือน 8 ครั้ง · ยังไม่รับทราบ 8
+     • แรงดันแก๊ส ×8
+  ```
+  — the 8 alerts match the 2026-11-09 rows counted independently (`by rule: gas 8`)
+- restored to off / no recipients / no sent rows, `digest_settings` row deleted so the
+  console reads 07:00 from defaults; the endpoint answers `disabled` again
+- DAG `laundrytwin_daily_digest` parsed, unpaused, first scheduled run **success**
+  (16:50 UTC) with the feature off — the scheduler → app path works and does nothing
+
+### Still open in P4
+
+- remembered preference (a postback that stores "สาขาของฉัน"), still waiting for real use
+- language: answer Thai by default, mirror English questions — one line in the prompt
+
+- [x] daily digest as a chat message (one message, plain language) instead of only an alert card
+      — `digest.ts` + `digest_settings` / `digest_recipient` / `digest_sent`, DAG
+      `laundrytwin_daily_digest` every 5 minutes asking the app whether it is due
+- [x] admin sets the hour and the recipients — `/admin/alerts` → สรุปรายวัน card; **off by
+      default with nobody on the list**
 - [ ] remembered preference once set by postback
-- [ ] decision: is it worth one message a day out of 300?
+- [x] decision: is it worth one message a day out of 300? — yes: the gas rule alone sent
+      12 messages on 2026-11-10 and 8 on the 09th to one person, so one message that
+      replaces ~10 is the cheapest change available
 
 ## Open questions (from the plan)
 
