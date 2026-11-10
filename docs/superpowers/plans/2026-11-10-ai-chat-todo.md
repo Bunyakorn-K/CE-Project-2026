@@ -33,12 +33,23 @@ Legend: `[ ]` not started · `[x]` built and verified
 
 ## P3 — it cannot surprise us
 
-- [ ] answer shaping: ≤ 900 characters, ≤ 2 messages, split on paragraph boundaries, never mid-word
-- [ ] `chat_turn` records model / steps / tool_calls / latency_ms / chars / delivered / tokens and `/admin` shows today's totals
-- [ ] rate limit: 20 messages/hour/user, 300/day across users, refused in Thai with the reason
-- [ ] chat pushes counted against the same monthly LINE budget as alerts, shown beside it in `/admin/alerts`
-- [ ] `CHAT_ENABLED` switch (env or setting) that turns chat off without a deploy
-- [ ] tests: shaping at the boundaries, limiter arithmetic, budget counting, switch off
+- [x] answer shaping: ≤ 900 characters, ≤ 2 messages, split on paragraph boundaries, never mid-word — `bot/shape.ts`; both parts in one reply, so the split is still one message
+- [x] `chat_turn` records model / steps / tool_calls / latency_ms / delivered and `/admin/ai` shows today's totals, the reply/push split, this month's pushes and the limits (tokens: not yet — the client does not return them)
+- [x] rate limit: 20 messages/hour/user, 300/day across users, refused in Thai with the reason — `bot/limit.ts`, counted from `chat_turn`, Bangkok day boundary
+- [x] chat pushes counted against the same monthly LINE budget as alerts — `budgetState().breakdown` returns `{alerts, chat}`
+- [x] `CHAT_ENABLED` switch that turns chat off without a deploy, and is reported by `/api/ai/chat/stats`
+- [x] tests: shaping at the boundaries (7), limiter arithmetic (9), budget counting, switch off
+
+### P3 evidence (production, `85bd664`)
+
+- `GET /api/ai/chat/stats` → `{turnsToday: 7, repliesToday: 4, pushesToday: 3, pushesThisMonth: 3, limits: {hourly: 20, daily: 300, enabled: true}}`
+- `GET /api/admin/alert-settings` → `used 22 = alerts 19 + chat 3`, `remaining 178`
+- a real over-long answer (1,700 characters) shaped to **2 parts of 688 and 679**, `truncated: true`
+  — the third block did not fit the two-message cap and was cut with a visible marker plus the
+  "ask more narrowly" note. Raising `MAX_PARTS` to 3 is a one-line change if the summary matters
+  more than the length.
+- the answer took **79s** (3 steps, 4 tool calls) — a reply token expires at ~60s, so it went out
+  as a push. Model latency, not the bot: worth watching before more people use it.
 
 ## P4 — only if P1–P3 are used
 
