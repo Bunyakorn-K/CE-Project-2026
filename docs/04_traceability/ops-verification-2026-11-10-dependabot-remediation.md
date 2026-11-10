@@ -80,15 +80,88 @@ POST /api/auth/sign-in/email (junk creds)      401 {"code":"INVALID_EMAIL_OR_PAS
 GET /alerts/x                                  200 (SPA shell)
 ```
 
-## What is not verified
+## Verifying the three things that were left open
 
-- **Login as a real user.** `better-auth` went from 1.6 to 1.7, which touches
-  session cookies and the OAuth state handling that the critical advisory was
-  about. The endpoints behave (`get-session` 200, bad credentials 401 with the
-  normal error shape), but a successful sign-in with a real account has not been
-  performed since the upgrade. That is the one check left, and it needs a human.
-- **The ETL container.** Its image is built from the same lockfile, so the
-  transitive bumps apply, but no ETL image was rebuilt or deployed here.
-- Of the 76 alerts, most were never reachable in production: the runtime tree is
-  six packages plus what npm resolves for them. `zod` and `undici` were the two
-  that shipped; `undici` was already patched at build time (7.30.2), `zod` was not.
+### 1. A real sign-in on better-auth 1.7.19 — done, on production
+
+The upgrade crossed a minor that touches session cookies and OAuth state, so
+"the endpoints answer" was not enough. A throwaway account was created in the
+production database, signed in over HTTPS against the deployed bundle, and deleted
+again:
+
+```text
+POST /api/auth/sign-in/email  (origin: https://laundrytwin.duckdns.org)
+                              200, user.id=verify-login-20261110, token issued
+GET  /api/auth/get-session    200, session for that user, expiresAt 2026-11-17
+GET  /api/admin/alert-settings  200 (owner-only, so the grant resolved too)
+  -> {"settings":{"renotifyHours":12,"monthlyBudget":200,"source":"environment"},
+      "usage":{"month":2026-11","used":17,"cap":200,"remaining":183}}
+```
+
+The same chain was first run against the built bundle on this machine
+(`dist/index.mjs`, same lockfile) to separate a code problem from a production
+problem: 200 / 200 / 200 there as well.
+
+Cleanup was verified, not assumed: `sessions 1, account 1, grant 1, user 1`
+deleted, then `user 0, account 0, grant 0, session 0`, and the tables back to
+`5 users / 4 grants` — the counts they had before the test.
+
+Also learned: the first attempt returned `403 UNTRUSTED_ORIGIN`, because
+`trustedOrigins` comes from `CORS_ORIGIN` and defaults to `http://localhost:5173`.
+That is the guard working, not a bug, and it is worth knowing before anyone else
+tries to script a sign-in.
+
+### 2. The ETL image — rebuilt, deployed, and writing
+
+The ETL was still running an image built five weeks earlier from the internal
+registry. The current image (same lockfile as the fix) was pulled by digest,
+recreated, and observed:
+
+```text
+laundrytwin:etl-9ec6be2-20261110  sha256:90b6db30…  running, restarts=0
+ETL phase=schema ok · dim-branch ok · dim-machine ok · usage 1 row ·
+temperature 104 rows · "ETL complete" elapsed 299ms
+newest row in fact_temperature_sample = 2026-11-09 05:12:24.299
+  - exactly the cursor of the cycle that ran after the restart
+runtime deps: tsx 4.23.1 · pg 8.23.0 · date-fns 4.4.0 · date-fns-tz 3.2.0
+vulnerable packages present: none (checked zod, axios, undici, qs,
+  follow-redirects, seroval, fast-uri, ip-address, proxy-addr, shell-quote,
+  body-parser)
+```
+
+The zero temperature rows inside the last 30 minutes is correct and not a
+regression: `temperature_lag_hours=24`, so the cycle writes data timestamped a day
+earlier. The table's maximum being exactly the batch cursor is the proof that the
+write landed.
+
+### 3. Which alerts could actually reach production — measured
+
+Walking the whole runtime tree of the app container (51 packages, nested
+`node_modules` included) and intersecting it with the 22 packages named in the
+advisories:
+
+| | count |
+|---|---|
+| packages in the advisories | 22 |
+| present in the runtime image | **2** — `undici@7.30.2` and `zod@4.6.7`, both at or above the patched version |
+| absent from the runtime image | 20 — axios, qs, follow-redirects, seroval, fast-uri, ip-address, proxy-addr, shell-quote, body-parser, source-map-js, browserslist, baseline-browser-mapping, vite, vitest, @vitest/mocker, hono, @hono/node-server, @modelcontextprotocol/sdk, better-auth, @better-auth/* |
+
+So the honest summary is: 76 alerts, 2 packages that shipped, 1 of which (`zod`)
+was vulnerable until `cea1aa9`. The other 20 were build-time only — which is why
+the severity of that list overstated the risk, and why the blind spot was the part
+that mattered.
+
+`better-auth` and `hono` are absent from `node_modules` because esbuild bundles
+them into `dist/index.mjs`; they ship as code, at the version the lockfile
+resolved, which is what the sign-in test in §1 exercised.
+
+## Still open, found while verifying
+
+The release workflow publishes two images — `app` and `etl`. The `weather` and
+`gas` collectors are not in the matrix, so they cannot be updated by the pipeline
+at all: both are still running `10.10.0.117:5000/laundrytwin-{weather,gas}:latest`
+built five weeks ago. They share the ETL image's runtime stage, so their
+dependencies are the same clean set — but their code is stale, and nothing will
+refresh it. Adding two matrix entries with `target: weather` / `target: gas` is the
+fix; it was not done here because rolling out a collector that talks to Home
+Assistant and TMD deserves its own check.
