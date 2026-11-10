@@ -30,6 +30,7 @@ type ChatTrace = {
   latencyMs: number;
   scope: { branches: string; canViewRevenue: boolean };
   maxSteps: number;
+  promptVersion: string;
 };
 type FormState = { baseUrl: string; apiKey: string; model: string; systemPrompt: string; temperature: number; maxSteps: number };
 
@@ -220,7 +221,7 @@ function AiConsolePage() {
             {historyQuery.isLoading && <p className="state-message">กำลังโหลดประวัติสนทนา</p>}
             {historyQuery.isError && <p className="error-message">โหลดประวัติสนทนาไม่สำเร็จ: {historyQuery.error.message}</p>}
             {!historyQuery.isLoading && messages.length === 0 && <p className="state-message">ส่งข้อความเพื่อทดสอบ gateway ที่ตั้งค่าไว้</p>}
-            {messages.map((message, index) => <div key={`${message.role}-${message.createdAt ?? index}-${message.content.slice(0, 20)}`} className={`chat-message chat-message--${message.role}`}><strong>{message.role === "user" ? "คุณ" : message.role === "assistant" ? "ผู้ช่วย" : "ระบบ"}</strong><p>{message.content}</p>{message.trace ? (<small>{"ที่มาของคำตอบ: "}{message.trace.model}{" · "}{message.trace.steps}{" รอบ"}{" · "}{message.trace.toolCalls}{" tool calls"}{message.trace.tools.length > 0 ? ` (${message.trace.tools.join(", ")})` : ""}{" · "}{message.trace.latencyMs}{" ms"}{" · สาขา: "}{message.trace.scope.branches}{message.trace.scope.canViewRevenue ? "" : " · ไม่เห็นรายได้"}</small>) : message.model ? (<small>{message.model}</small>) : null}</div>)}
+            {messages.map((message, index) => <div key={`${message.role}-${message.createdAt ?? index}-${message.content.slice(0, 20)}`} className={`chat-message chat-message--${message.role}`}><strong>{message.role === "user" ? "คุณ" : message.role === "assistant" ? "ผู้ช่วย" : "ระบบ"}</strong><p>{message.content}</p>{message.trace ? (<small>{"ที่มาของคำตอบ: "}{message.trace.model}{" · "}{message.trace.steps}{" รอบ"}{" · "}{message.trace.toolCalls}{" tool calls"}{message.trace.tools.length > 0 ? ` (${message.trace.tools.join(", ")})` : ""}{" · "}{message.trace.latencyMs}{" ms"}{" · สาขา: "}{message.trace.scope.branches}{message.trace.scope.canViewRevenue ? "" : " · ไม่เห็นรายได้"}{" · prompt "}{message.trace.promptVersion}</small>) : message.model ? (<small>{message.model}</small>) : null}</div>)}
             {chatMutation.isPending && <p className="state-message" role="status">กำลังรอคำตอบ…</p>}
           </div>
           <form className="chat-form" onSubmit={(event) => { event.preventDefault(); if (chatInput.trim() && !chatMutation.isPending) chatMutation.mutate(chatInput.trim()); }}>

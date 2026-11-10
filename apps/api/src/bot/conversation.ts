@@ -3,7 +3,7 @@ import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
 import { runAuditedToolCall } from "../ai-audit";
 import { agenticAnswerWithMeta } from "../llm-client";
-import { branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
+import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
 import { recentTurns } from "./memory";
 
 export type ConversationContext = {
@@ -78,6 +78,8 @@ export type ConversationAnswer = {
   /** Which tools ran, in order. The console shows this; the chat log records it. */
   toolNames: string[];
   model: string;
+  /** The server-rules version that shaped the answer. */
+  promptVersion: string;
 };
 
 /**
@@ -124,7 +126,8 @@ export async function answerForMessage(
       steps: 0,
       toolCalls: 0,
       toolNames: [],
-      model: settings.model
+      model: settings.model,
+      promptVersion: ASSISTANT_PROMPT_VERSION
     };
   }
 
@@ -177,6 +180,7 @@ export async function answerForMessage(
     steps: result.steps,
     toolCalls: result.toolCalls,
     toolNames: result.toolNames,
-    model: settings.model
+    model: settings.model,
+    promptVersion: ASSISTANT_PROMPT_VERSION
   };
 }

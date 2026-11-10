@@ -200,7 +200,8 @@ export function registerAiRoutes(app: Hono<AppEnv>, deps: AiRouteDeps) {
           tools: answer.toolNames,
           latencyMs: Date.now() - startedAt,
           scope: { branches: branchLabel(scope.branchIds), canViewRevenue: scope.canViewRevenue },
-          maxSteps: settings.maxSteps
+          maxSteps: settings.maxSteps,
+          promptVersion: answer.promptVersion
         }
       });
     } catch (err) {

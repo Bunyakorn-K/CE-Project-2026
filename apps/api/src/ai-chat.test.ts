@@ -48,7 +48,8 @@ const answer = {
   steps: 2,
   toolCalls: 3,
   toolNames: ["get_dashboard", "get_dashboard", "get_machine_states"],
-  model: "test-model"
+  model: "test-model",
+  promptVersion: "test-version"
 };
 
 beforeEach(() => {
@@ -97,6 +98,7 @@ describe("POST /api/ai/chat — full system", () => {
         tools: string[];
         latencyMs: number;
         scope: { branches: string };
+        promptVersion: string;
       };
     };
 
@@ -108,6 +110,8 @@ describe("POST /api/ai/chat — full system", () => {
     expect(body.trace.latencyMs).toBeGreaterThanOrEqual(0);
     // The owner's scope, resolved server-side from grants — never from the request.
     expect(body.trace.scope.branches).toBe("ทุกสาขา");
+    // The trace names the server-rules version, so an answer can be traced to it.
+    expect(body.trace.promptVersion).toBe("test-version");
 
     const [context] = conversation.answerForMessage.mock.calls[0];
     expect(context.userText).toBe("ภาพรวมวันนี้");
