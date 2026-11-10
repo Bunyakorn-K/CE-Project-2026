@@ -364,7 +364,9 @@ describe("runAlertSweep", () => {
     const alert = makeAlert();
     const summary = await runAlertSweep([alert], deps({ adapter: { sendText: vi.fn() } }));
     expect(summary.noRecipients).toBe(1);
-    expect(notificationRows()).toHaveLength(0);
+    // Scoped to this alert: `notificationRows()` with no argument counts every row
+    // in the table, which another test file running in parallel also writes to.
+    expect(notificationRows(alert.id)).toHaveLength(0);
   });
 
   it("stores the triggering evidence for traceability", async () => {

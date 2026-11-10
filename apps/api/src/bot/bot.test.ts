@@ -22,7 +22,14 @@ const aiSettings = vi.hoisted(() => ({
   isOwner: vi.fn(() => true)
 }));
 
-vi.mock("../access-store", () => accessStore);
+// The real module plus stubbed identity lookups: `acknowledgeAlert` must be the
+// real one, because the postback test asserts the row it writes.
+vi.mock("../access-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../access-store")>()),
+  findLiffUser: accessStore.findLiffUser,
+  resolveUserPrincipal: accessStore.resolveUserPrincipal,
+  recordPendingLiffAccessRequest: accessStore.recordPendingLiffAccessRequest
+}));
 vi.mock("../ai-settings", () => aiSettings);
 
 import { db, initializeDatabase } from "../db";
@@ -30,10 +37,22 @@ import { resolveLineIdentity, roleLabel, scopeForPrincipal } from "./identity";
 import { answerForMessage, describeBotFailure } from "./conversation";
 import { createBotHandler } from "./index";
 import { allTurns } from "./memory";
+import { alertAcknowledgement, alertNotification, user as userTable } from "../schema";
+import { eq } from "drizzle-orm";
 
 // The handler now writes a chat_turn per answer, so the real schema has to exist
 // in the test database.
 initializeDatabase();
+
+/**
+ * The (recipient, text) pairs that were sent.
+ *
+ * Asserting whole call arguments couples every test to whether the message happened
+ * to carry quick replies; the text and the recipient are what the test is about.
+ */
+function sent(adapter: { sendText: { mock: { calls: unknown[][] } } }): unknown[][] {
+  return adapter.sendText.mock.calls.map((call) => [call[0], call[1]]);
+}
 
 const owner: Principal = {
   source: "liff",
@@ -204,7 +223,7 @@ describe("bot webhook handler", () => {
     expect(accessStore.recordPendingLiffAccessRequest).toHaveBeenCalledWith(
       expect.objectContaining({ lineUserId: "line-x" })
     );
-    expect(adapter.sendText).toHaveBeenCalledWith("line-x", expect.stringContaining("ยังไม่ได้รับสิทธิ์"));
+    expect(sent(adapter)).toContainEqual(["line-x", expect.stringContaining("ยังไม่ได้รับสิทธิ์")]);
   });
 
   it("answers a granted user by calling the LLM through the MCP tool loop", async () => {
@@ -240,7 +259,7 @@ describe("bot webhook handler", () => {
     });
     await handler.handleTextEvent(JSON.parse(body).events[0]);
 
-    expect(adapter.sendText).toHaveBeenCalledWith("line-2", "สาขา SYNTH-A มี 31 รอบ");
+    expect(sent(adapter)).toContainEqual(["line-2", "สาขา SYNTH-A มี 31 รอบ"]);
     expect(fetchImpl).toHaveBeenCalled();
   });
 
@@ -274,7 +293,9 @@ describe("bot webhook handler", () => {
       replyToken: "rt-abc"
     });
 
-    expect(adapter.sendText).toHaveBeenCalledWith("line-3", "สวัสดี", { replyToken: "rt-abc" });
+    expect(sent(adapter)).toContainEqual(["line-3", "สวัสดี"]);
+    // The token still reaches the adapter — that is what makes the answer free.
+    expect(adapter.sendText.mock.calls[0][2]).toEqual(expect.objectContaining({ replyToken: "rt-abc" }));
   });
 
   // P1: the typing indicator, the queue, the memory write, and history on the wire.
@@ -386,7 +407,7 @@ describe("bot webhook handler", () => {
     expect(to).toBe("line-card");
     expect(altText).toContain("ภาพรวมวันนี้");
     expect(JSON.stringify(contents)).toContain("1,240 บาท");
-    expect(options).toEqual({ replyToken: "rt-card" });
+    expect(options).toEqual(expect.objectContaining({ replyToken: "rt-card" }));
     expect(structured.adapter.sendText).not.toHaveBeenCalled();
 
     const plain = harness({ answer: "ครับ วันนี้ร้านเปิดปกติครับ" });
@@ -399,9 +420,8 @@ describe("bot webhook handler", () => {
     });
 
     expect(plain.adapter.sendFlex).not.toHaveBeenCalled();
-    expect(plain.adapter.sendText).toHaveBeenCalledWith("line-plain", "ครับ วันนี้ร้านเปิดปกติครับ", {
-      replyToken: "rt-plain"
-    });
+    expect(sent(plain.adapter)).toContainEqual(["line-plain", "ครับ วันนี้ร้านเปิดปกติครับ"]);
+    expect(plain.adapter.sendText.mock.calls[0][2]).toEqual(expect.objectContaining({ replyToken: "rt-plain" }));
   });
 
   it("falls back to text when the card itself cannot be sent", async () => {
@@ -418,9 +438,97 @@ describe("bot webhook handler", () => {
     });
 
     // The answer must still arrive, without the markdown the user complained about.
-    expect(adapter.sendText).toHaveBeenCalledWith("line-fallback", "หัวข้อ\nรายได้: 10 บาท", {
-      replyToken: "rt-fb"
+    expect(sent(adapter)).toContainEqual(["line-fallback", "หัวข้อ\nรายได้: 10 บาท"]);
+    expect(adapter.sendText.mock.calls[0][2]).toEqual(expect.objectContaining({ replyToken: "rt-fb" }));
+  });
+
+  it("welcomes a new follower with a free reply", async () => {
+    const { adapter, handler } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await handler.handleFollowEvent({ type: "follow", source: { userId: "line-follow" }, replyToken: "rt-f" });
+
+    expect(adapter.sendText).toHaveBeenCalledTimes(1);
+    const [to, text, options] = adapter.sendText.mock.calls[0];
+    expect(to).toBe("line-follow");
+    expect(text).toContain("ยินดีต้อนรับ");
+    expect(options).toEqual({ replyToken: "rt-f" });
+  });
+
+  it("acknowledges an alert from a postback, and refuses one it may not touch", async () => {
+    db.insert(userTable)
+      .values({ id: "u1", name: "Owner", email: "o@e.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date() })
+      .onConflictDoNothing()
+      .run();
+    const alertId = "gas:gas_run_a_pressure:declining:2026-11-09T14";
+    db.delete(alertNotification).where(eq(alertNotification.irisAlertId, alertId)).run();
+    db.delete(alertAcknowledgement).where(eq(alertAcknowledgement.irisAlertId, alertId)).run();
+    db.insert(alertNotification)
+      .values({
+        id: `${alertId}:U-ack`,
+        irisAlertId: alertId,
+        lineUserId: "U-ack",
+        branchId: "b1",
+        machineId: null,
+        severity: "warning",
+        title: "แรงดันตก",
+        message: "แรงดันลดลง",
+        evidence: "{}",
+        status: "sent",
+        attemptedAt: new Date(),
+        deliveredAt: new Date()
+      })
+      .onConflictDoNothing()
+      .run();
+
+    const { adapter, handler } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await handler.handlePostbackEvent({
+      type: "postback",
+      postback: { data: `ack:${alertId}` },
+      source: { userId: "U-ack" },
+      replyToken: "rt-ack"
     });
+
+    expect(db.select().from(alertAcknowledgement).where(eq(alertAcknowledgement.irisAlertId, alertId)).all()).toHaveLength(1);
+    expect(adapter.sendText.mock.calls[0][1]).toContain("รับทราบแล้ว");
+
+    // A postback from someone with no grant for that branch is refused, not obeyed.
+    accessStore.resolveUserPrincipal.mockReturnValue(technician);
+    await handler.handlePostbackEvent({
+      type: "postback",
+      postback: { data: `ack:${alertId}` },
+      source: { userId: "U-stranger" },
+      replyToken: "rt-no"
+    });
+    expect(adapter.sendText.mock.calls[1][1]).toContain("ไม่มีสิทธิ์");
+  });
+
+  it("offers quick replies on the first answer only", async () => {
+    const { adapter, handler } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "สวัสดี" },
+      source: { userId: "line-qr" },
+      replyToken: "rt-1"
+    });
+    const firstOptions = adapter.sendText.mock.calls[0][2] as { quickReplies?: unknown[] };
+    expect(firstOptions.quickReplies).toHaveLength(3);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ขอบคุณ" },
+      source: { userId: "line-qr" },
+      replyToken: "rt-2"
+    });
+    const secondOptions = adapter.sendText.mock.calls[1][2] as { quickReplies?: unknown[] };
+    expect(secondOptions.quickReplies).toBeUndefined();
   });
 
   it("tells the user the gateway is down instead of a generic apology", () => {

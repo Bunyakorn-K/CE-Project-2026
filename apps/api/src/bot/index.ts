@@ -6,7 +6,16 @@ import type { PlatformAdapter } from "./adapter";
 import type { AccessScope } from "./identity";
 import { resolveLineIdentity, roleLabel } from "./identity";
 import { answerForMessage, describeBotFailure } from "./conversation";
-import { appendTurn } from "./memory";
+import { appendTurn, turnCount } from "./memory";
+import {
+  acknowledgeFromChat,
+  acknowledgementReply,
+  helpText,
+  parsePostbackData,
+  refusalReply,
+  welcomeText
+} from "./actions";
+import { menuKeyForRoles, richMenuDefinitions } from "../rich-menu";
 import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
@@ -19,13 +28,32 @@ export type BotDeps = {
   fetchImpl?: typeof fetch;
 };
 
+type LineSource = { userId?: string; displayName?: string };
+
 type LineTextEvent = {
   type: "message";
   message: { type: "text"; text: string };
-  source?: { userId?: string; displayName?: string };
+  source?: LineSource;
   /** Free reply path; absent on events that are not a user message. */
   replyToken?: string;
 };
+
+/** A new follower. Carries a reply token, so the welcome is free. */
+type LineFollowEvent = {
+  type: "follow" | "unfollow";
+  source?: LineSource;
+  replyToken?: string;
+};
+
+/** A tap on a card button. `postback.data` is user-supplied, so it is a command. */
+type LinePostbackEvent = {
+  type: "postback";
+  postback: { data?: string };
+  source?: LineSource;
+  replyToken?: string;
+};
+
+type LineEvent = LineTextEvent | LineFollowEvent | LinePostbackEvent;
 
 async function branchContextFor(scope: AccessScope, clickhouse: ClickHouseExecutor): Promise<string> {
   try {
@@ -90,24 +118,35 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
    * own structure (a heading, `ชื่อ: ค่า` lines, bullets) and the plain text stays
    * as the fallback, so a failure to build one never loses the answer.
    */
-  async function deliver(userId: string, text: string, roleLabel: string, replyToken?: string) {
+  async function deliver(
+    userId: string,
+    text: string,
+    roleLabel: string,
+    replyToken?: string,
+    quickReplies?: { label: string; text?: string; uri?: string }[]
+  ) {
     const parsed = parseAnswer(text);
     const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel) });
     if (flex && adapter.sendFlex) {
       try {
-        return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken });
+        return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken, quickReplies });
       } catch {
         // fall through to the text path
       }
     }
-    return reply(userId, stripMarkdown(text), replyToken);
+    return reply(userId, stripMarkdown(text), replyToken, quickReplies);
   }
 
-  async function reply(userId: string, text: string, replyToken?: string) {
+  async function reply(
+    userId: string,
+    text: string,
+    replyToken?: string,
+    quickReplies?: { label: string; text?: string; uri?: string }[]
+  ) {
     if (replyToken) {
-      return adapter.sendText(userId, text, { replyToken });
+      return adapter.sendText(userId, text, { replyToken, ...(quickReplies ? { quickReplies } : {}) });
     }
-    return adapter.sendText(userId, text);
+    return adapter.sendText(userId, text, quickReplies ? { quickReplies } : {});
   }
 
   async function answerOne(event: LineTextEvent): Promise<void> {
@@ -147,7 +186,16 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         },
         { mcp, fetchImpl: deps.fetchImpl }
       );
-      const delivered = await deliver(userId, answer.text, roleLabel(identity.principal), event.replyToken);
+      // Suggestions on the first answer only: after that the person knows what to
+      // type, and a keyboard full of chips on every message is noise.
+      const quickReplies = turnCount(userId) === 0 ? FIRST_TURN_REPLIES : undefined;
+      const delivered = await deliver(
+        userId,
+        answer.text,
+        roleLabel(identity.principal),
+        event.replyToken,
+        quickReplies
+      );
 
       // The turn is the bot's memory and its record: without this row a follow-up
       // question has nothing to refer to, and nobody can see what the bot said.
@@ -173,6 +221,71 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     }
   }
 
+  /** The three questions a first-time user is most likely to want. */
+  const FIRST_TURN_REPLIES = [
+    { label: "ภาพรวมวันนี้", text: "ภาพรวมวันนี้เป็นยังไง" },
+    { label: "เมื่อวาน", text: "แล้วเมื่อวานล่ะ" },
+    { label: "เครื่องที่มีปัญหา", text: "เครื่องไหนมีปัญหาบ้าง" }
+  ];
+
+  /** Menu labels for this role, from the same definitions the rich menu uploads. */
+  function menuLabelsFor(principal: Parameters<typeof roleLabel>[0]): string[] {
+    const liffId = process.env.LIFF_ID;
+    if (!liffId) return [];
+    const roles = principal.grants.map((grant) => grant.role);
+    const menu = richMenuDefinitions(liffId).find((definition) => definition.key === menuKeyForRoles(roles));
+    return menu ? menu.labels : [];
+  }
+
+  /** A new follower: greet, and say what the bot can do. The reply token is free. */
+  async function handleFollowEvent(event: LineFollowEvent): Promise<void> {
+    const userId = event.source?.userId;
+    if (!userId) return;
+    const identity = resolveLineIdentity(userId);
+    const branches = identity.ok
+      ? identity.scope.branchIds.includes("*")
+        ? ["ทุกสาขา"]
+        : identity.scope.branchIds
+      : [];
+    await reply(userId, welcomeText(branches), event.replyToken);
+  }
+
+  /**
+   * A tap on a postback button.
+   *
+   * The payload is user-supplied, so it is parsed as a command and authorised from
+   * scratch — the alert id in `ack:<id>` proves nothing about who may acknowledge it.
+   */
+  async function handlePostbackEvent(event: LinePostbackEvent): Promise<void> {
+    const userId = event.source?.userId;
+    if (!userId) return;
+    const command = parsePostbackData(event.postback.data);
+    const identity = resolveLineIdentity(userId);
+
+    if (!identity.ok) {
+      await reply(
+        userId,
+        "บัญชี LINE นี้ยังไม่ได้รับสิทธิ์ใช้งาน LaundryTwin กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์",
+        event.replyToken
+      );
+      return;
+    }
+
+    if (command.kind === "ack") {
+      const outcome = acknowledgeFromChat({
+        alertId: command.alertId,
+        principal: identity.principal,
+        lineUserId: userId
+      });
+      await reply(userId, outcome.ok ? acknowledgementReply(outcome) : refusalReply(outcome), event.replyToken);
+      return;
+    }
+
+    // help, and anything we do not recognise
+    const branches = identity.scope.branchIds.includes("*") ? ["ทุกสาขา"] : identity.scope.branchIds;
+    await reply(userId, helpText(branches, menuLabelsFor(identity.principal)), event.replyToken);
+  }
+
   /** Queue the answer for this user; the webhook returns before it runs. */
   function handleTextEvent(event: LineTextEvent): Promise<void> {
     const userId = event.source?.userId;
@@ -187,12 +300,20 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         headers: { "content-type": "application/json" }
       });
     }
-    const payload = JSON.parse(rawBody) as { events: LineTextEvent[] };
+    const payload = JSON.parse(rawBody) as { events: LineEvent[] };
     for (const event of payload.events) {
+      // Ack the webhook immediately; answers are pushed async because the
+      // LLM + tool loop can exceed LINE's 60s reply window.
       if (event.type === "message" && event.message.type === "text") {
-        // Ack the webhook immediately; answers are pushed async because the
-        // LLM + tool loop can exceed LINE's 60s reply window.
         void handleTextEvent(event);
+      } else if (event.type === "follow") {
+        void handleFollowEvent(event);
+      } else if (event.type === "postback") {
+        void handlePostbackEvent(event);
+      } else if (event.type === "unfollow") {
+        // Nothing to say: the user left. Recorded by the absence of a reply,
+        // which is the only thing the platform gives us.
+        continue;
       }
     }
     return new Response(JSON.stringify({ ok: true }), {
@@ -201,5 +322,5 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     });
   }
 
-  return { handle, handleTextEvent };
+  return { handle, handleTextEvent, handleFollowEvent, handlePostbackEvent };
 }

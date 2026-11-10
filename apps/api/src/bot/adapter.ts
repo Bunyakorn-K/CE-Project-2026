@@ -11,6 +11,9 @@ export type PlatformName = "line" | "telegram";
  */
 export type DeliveryKind = "reply" | "push" | "unknown";
 
+/** A tappable suggestion above the keyboard. Free — it rides on the message. */
+export type QuickReply = { label: string; text?: string; uri?: string };
+
 export interface PlatformAdapter {
   readonly platform: PlatformName;
   /**
@@ -21,7 +24,11 @@ export interface PlatformAdapter {
    * alerts. The token is short-lived and single-use, so an implementation must
    * fall back to a push when it is missing or rejected.
    */
-  sendText(userId: string, text: string, options?: { replyToken?: string }): Promise<DeliveryKind>;
+  sendText(
+    userId: string,
+    text: string,
+    options?: { replyToken?: string; quickReplies?: QuickReply[] }
+  ): Promise<DeliveryKind>;
   /**
    * Typing indicator while the model works. Free, and the only signal the user
    * gets between "sent" and "answered" — without it a 6-second tool loop looks
@@ -37,6 +44,6 @@ export interface PlatformAdapter {
     userId: string,
     altText: string,
     contents: Record<string, unknown>,
-    options?: { replyToken?: string }
+    options?: { replyToken?: string; quickReplies?: QuickReply[] }
   ): Promise<DeliveryKind>;
 }

@@ -1,5 +1,20 @@
 import { messagingApi } from "@line/bot-sdk";
-import type { DeliveryKind, PlatformAdapter } from "./adapter";
+import type { DeliveryKind, PlatformAdapter, QuickReply } from "./adapter";
+
+const MAX_QUICK_REPLIES = 13;
+
+/** LINE's quick reply: max 13 items, labels are capped at 20 characters. */
+function quickReplyObject(items: QuickReply[] | undefined) {
+  if (!items || items.length === 0) return undefined;
+  return {
+    items: items.slice(0, MAX_QUICK_REPLIES).map((item) => ({
+      type: "action" as const,
+      action: item.uri
+        ? { type: "uri" as const, label: item.label.slice(0, 20), uri: item.uri }
+        : { type: "message" as const, label: item.label.slice(0, 20), text: item.text ?? item.label }
+    }))
+  };
+}
 
 export class LineAdapter implements PlatformAdapter {
   readonly platform = "line" as const;
@@ -13,9 +28,14 @@ export class LineAdapter implements PlatformAdapter {
       : null;
   }
 
-  async sendText(userId: string, text: string, options: { replyToken?: string } = {}): Promise<DeliveryKind> {
+  async sendText(
+    userId: string,
+    text: string,
+    options: { replyToken?: string; quickReplies?: QuickReply[] } = {}
+  ): Promise<DeliveryKind> {
     if (!this.client) return "unknown";
-    const messages = [{ type: "text" as const, text }];
+    const quickReply = quickReplyObject(options.quickReplies);
+    const messages = [{ type: "text" as const, text, ...(quickReply ? { quickReply } : {}) }];
 
     // A reply is free and does not touch the monthly push allowance; a push is
     // charged. The token expires about a minute after the user's message and can
@@ -52,14 +72,16 @@ export class LineAdapter implements PlatformAdapter {
     userId: string,
     altText: string,
     contents: Record<string, unknown>,
-    options: { replyToken?: string } = {}
+    options: { replyToken?: string; quickReplies?: QuickReply[] } = {}
   ): Promise<DeliveryKind> {
     if (!this.client) return "unknown";
+    const quickReply = quickReplyObject(options.quickReplies);
     const messages = [
       {
         type: "flex" as const,
         altText: altText.slice(0, 400),
-        contents: contents as messagingApi.FlexContainer
+        contents: contents as messagingApi.FlexContainer,
+        ...(quickReply ? { quickReply } : {})
       }
     ];
 
