@@ -137,6 +137,14 @@ export function initializeDatabase() {
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS alert_settings (
+      id text PRIMARY KEY NOT NULL DEFAULT 'default',
+      renotify_hours integer NOT NULL DEFAULT 12,
+      monthly_budget integer NOT NULL DEFAULT 200,
+      updated_by_user_id text REFERENCES user(id) ON DELETE SET NULL,
+      updated_at integer NOT NULL,
+      created_at integer NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS chat_message (
       id text PRIMARY KEY NOT NULL,
       thread_id text NOT NULL,

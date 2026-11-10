@@ -51,6 +51,8 @@ import { createBotHandler } from "./bot";
 import { LineAdapter } from "./bot/line-adapter";
 import { isAlertSweepTokenValid, performAlertSweep } from "./alert-sweep";
 import { lineUserIdForUser, readAlertRows, toPublicAlert } from "./alert-detail";
+import { readAlertSettings, saveAlertSettings } from "./alert-settings";
+import { budgetState } from "./alert-budget";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
@@ -572,6 +574,39 @@ export function createApp(dependencies: AppDependencies = {}) {
     return c.json({ alert: toPublicAlert(visible) });
   });
 
+  /**
+   * Alert delivery settings — the re-notify floor and the monthly message cap.
+   *
+   * Owner-only, and returned with the month's usage beside them: a cap is only
+   * meaningful next to how much of it is already spent, and the person deciding
+   * whether 12 hours is too slow is the same person who can see 17 of 200 used.
+   */
+  app.get("/api/admin/alert-settings", (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const settings = readAlertSettings();
+    return c.json({ settings, usage: budgetState(new Date(), settings.monthlyBudget) });
+  });
+
+  app.put("/api/admin/alert-settings", async (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const body = await readJson(c);
+    const renotifyHours = getNumber(body, "renotifyHours");
+    const monthlyBudget = getNumber(body, "monthlyBudget");
+    if (renotifyHours === null && monthlyBudget === null) {
+      return apiError(c, 400, "INVALID_INPUT", "Send renotifyHours and/or monthlyBudget as numbers");
+    }
+    const settings = saveAlertSettings(
+      {
+        ...(renotifyHours !== null ? { renotifyHours } : {}),
+        ...(monthlyBudget !== null ? { monthlyBudget } : {})
+      },
+      principal.user.id
+    );
+    return c.json({ settings, usage: budgetState(new Date(), settings.monthlyBudget) });
+  });
+
   app.get("/api/admin/access-requests", (c) => {
     const principal = requireOwner(c);
     if (principal instanceof Response) return principal;
@@ -1063,6 +1098,17 @@ async function readJson(c: Context) {
 function getString(value: Record<string, unknown>, key: string) {
   const candidate = value[key];
   return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
+/** A finite number from the body, or null — never NaN, never a string. */
+function getNumber(value: Record<string, unknown>, key: string): number | null {
+  const candidate = value[key];
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  if (typeof candidate === "string" && candidate.trim() !== "") {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function getNullableString(value: Record<string, unknown>, key: string) {

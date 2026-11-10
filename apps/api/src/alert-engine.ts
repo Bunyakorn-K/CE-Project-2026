@@ -21,7 +21,8 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { buildAlertFlex } from "./alert-flex";
-import { budgetState, configuredBudget, configuredRenotifyMs } from "./alert-budget";
+import { budgetState } from "./alert-budget";
+import { effectiveMonthlyBudget, effectiveRenotifyMs } from "./alert-settings";
 import { db } from "./db";
 import { accessGrant, alertNotification, auditLog, liffIdentity } from "./schema";
 import type { Role } from "./access-policy";
@@ -71,10 +72,11 @@ export type AlertSweepSummary = {
 };
 
 /**
- * The re-notify floor. Twelve hours, not one: an hourly alert on two channels is
- * 1,440 messages a month against a 300-message allowance. See `alert-budget.ts`.
+ * The re-notify floor is read per sweep, not captured at import: an owner can
+ * change it in the backoffice and the next sweep must honour it without a
+ * redeploy. Twelve hours by default — an hourly alert on two channels is 1,440
+ * messages a month against a 300-message allowance.
  */
-const DEFAULT_COOLDOWN_MS = configuredRenotifyMs();
 const DEFAULT_STALE_SENDING_MS = 5 * 60 * 1000; // in-flight claim older than this is retried
 
 const DEFAULT_SEVERITY_ROLES: Record<string, Role[]> = {
@@ -261,7 +263,7 @@ function locallyAcknowledgedIds(alertIds: string[]): Set<string> {
 
 export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps): Promise<AlertSweepSummary> {
   const now = (deps.now ?? (() => new Date()))();
-  const cooldownMs = deps.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+  const cooldownMs = deps.cooldownMs ?? effectiveRenotifyMs();
   const staleSendingMs = deps.staleSendingMs ?? DEFAULT_STALE_SENDING_MS;
   const adapterAvailable = deps.adapterAvailable ?? true;
   const allRecipients = listLineRecipients();
@@ -303,7 +305,7 @@ export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps):
     // The month's allowance, checked after the cooldown so a suppressed alert is
     // never counted twice, and recorded rather than dropped: an alert that was
     // not sent because the budget ran out is a fact someone has to see.
-    const budget = budgetState(now, configuredBudget());
+    const budget = budgetState(now, effectiveMonthlyBudget());
     if (budget.remaining <= 0) {
       summary.suppressedBudget += 1;
       recordBudgetSkip(alert, key, budget);

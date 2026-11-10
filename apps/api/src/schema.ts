@@ -154,6 +154,22 @@ export const aiSettings = sqliteTable("ai_settings", {
 });
 
 // Chat history for the AI playground (30-day retention; purge job in ai.ts).
+// Alert delivery settings, editable by an owner in the backoffice.
+//
+// These were environment variables first, which meant changing the re-notify
+// floor or the monthly cap required a redeploy — for a number that depends on
+// how noisy the shop is this week, not on how the code is built.
+export const alertSettings = sqliteTable("alert_settings", {
+  id: text("id").primaryKey().default("default"),
+  /** Hours before the same rule may notify again. */
+  renotifyHours: integer("renotify_hours").notNull().default(12),
+  /** Messages allowed per calendar month, across all rules and recipients. */
+  monthlyBudget: integer("monthly_budget").notNull().default(200),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
 export const chatMessage = sqliteTable("chat_message", {
   id: text("id").primaryKey(),
   threadId: text("thread_id").notNull(),
@@ -179,5 +195,6 @@ export const schema = {
   auditLog,
   alertNotification,
   aiSettings,
+  alertSettings,
   chatMessage
 };

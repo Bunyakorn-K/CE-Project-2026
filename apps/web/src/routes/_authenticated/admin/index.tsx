@@ -229,6 +229,14 @@ export function AdminHome() {
           <Link to="/admin/ai" className="secondary-button mt-4 w-fit">เปิด AI Settings</Link>
         </Card.Content>
       </Card>
+
+      <Card variant="transparent" className="surface-card admin-section">
+        <Card.Content>
+          <div className="section-heading"><h2>การแจ้งเตือน LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
+          <p>กำหนดความถี่ในการแจ้งซ้ำและเพดานข้อความต่อเดือน พร้อมดูโควตาที่ใช้ไปแล้ว</p>
+          <Link to="/admin/alerts" className="secondary-button mt-4 w-fit">เปิดการตั้งค่าการแจ้งเตือน</Link>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
