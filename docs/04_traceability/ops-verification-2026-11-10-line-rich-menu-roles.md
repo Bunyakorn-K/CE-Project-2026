@@ -107,3 +107,44 @@ uploaded to the richmenu"`, which is what settled it.
   defaulted but have never been linked to a person.
 - **The `default` menu for an unlinked account.** It is the OA-wide fallback; an
   account with no grant that opens chat should see ขอสิทธิ์ใช้งาน, unobserved so far.
+
+## Update: tiles with icons, and a conversation starter (v2)
+
+The v1 panels were text on a dark bar. The owner sent a reference image of LINE's
+own tiled style and asked for that, plus a button that starts a conversation.
+
+- **Icons and colours per tile.** Each area carries an icon name and a hex colour;
+  the renderer draws the glyph as inline SVG. The icons are the ones the web app
+  uses in its own navigation (grid, chart, washer, shield), so the panel and the app
+  read as one product — with the washer redrawn as a drum in a cabinet, because the
+  app's line-panel icon does not say "washing machine" at 280px.
+- **Every menu can open a conversation.** The `แชทกับ AI` tile is a `message`
+  action that sends `สวัสดี` as the user. That is the difference between "the panel
+  links to the web app" and "the panel can start a chat with the assistant", and
+  because it is a message the user sends, the answer is a free reply — it costs
+  nothing against the 300-a-month allowance. The technician's `แจ้งซ่อม` uses the
+  same mechanism with a different opener.
+- Owner now has five tiles (the backoffice earns its own), manager and technician
+  four, the fallback two.
+- Names moved to `:v2`. LINE cannot edit a menu, so the old four were created as new
+  objects and the v1 ones deleted in the same sync.
+
+Verified after the sync (`ef85be1`, image `sha256:58143383…`):
+
+```text
+POST /api/admin/rich-menus/sync   200 · created 4 · deleted 4 · linked 1 · failed 0
+GET  /v2/bot/richmenu/list        4 menus, v2 only:
+     owner       5 areas  [uri, uri, uri, uri, message]
+     manager     4 areas  [uri, uri, uri, message]
+     technician  4 areas  [uri, uri, message, message]
+     default     2 areas  [message, message]
+GET  /v2/bot/richmenu/{owner}     last action: message -> "สวัสดี"
+GET  /v2/bot/user/{user}/richmenu richmenu-8de855f7…  (owner v2)
+GET  /v2/bot/user/all/richmenu    richmenu-62103122…  (default v2)
+GET  (api-data) .../content       owner 83741 · manager 82499 ·
+                                  technician 83771 · default 55317 bytes
+                                  — identical to the committed PNGs
+```
+
+Still not seen: the panel rendered on a phone. The pixels are confirmed present and
+correct; how the labels read at LINE's display size is the owner's call.
