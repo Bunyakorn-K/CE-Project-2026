@@ -63,14 +63,24 @@ WORKDIR /app
 # transitive CJS (@vercel/oidc) does dynamic require() that breaks when
 # inlined into the ESM bundle, so Node resolves it natively at runtime.
 # zod stays external too — the SDK validates tool schemas against it at runtime.
+# These versions are the LOCKFILE's, copied by hand because the runtime stage has
+# no package manager to read it. That is a Dependabot blind spot: the scanner reads
+# pnpm-lock.yaml, so a vulnerable version pinned only here ships silently — which is
+# what zod@4.4.3 was doing (memory exhaustion while validating oversized constrained
+# collections, patched in 4.6.6). Keep them equal to the resolved versions, and let
+# runtime-deps.test.ts fail the build when a pin falls below a patched floor.
 RUN npm install --no-save --omit=dev \
       better-sqlite3@12.11.1 \
       dotenv@17.4.2 \
       ai@7.0.97 \
       @ai-sdk/openai-compatible@3.0.47 \
       @vercel/oidc@3.2.0 \
-      zod@4.4.3 \
+      zod@4.6.7 \
   && npm cache clean --force
+
+# Fail the build rather than ship a tree someone cannot audit: the pinned versions
+# above are the whole runtime dependency set, so this is a complete check.
+RUN node -e "const r=p=>require('/app/node_modules/'+p+'/package.json').version,v=s=>s.split('.').map(Number),lt=(a,b)=>{const A=v(a),B=v(b);for(let i=0;i<3;i++){if(A[i]!==B[i])return A[i]<B[i]}return false};const floors={zod:'4.6.6'};let bad=false;for(const[p,min]of Object.entries(floors)){const got=r(p);if(lt(got,min)){console.error(p+'@'+got+' is below the patched '+min);bad=true}}if(bad)process.exit(1)"
 
 COPY --from=build /app/apps/api/dist /app/dist
 COPY --from=build /app/apps/web/dist /app/public
