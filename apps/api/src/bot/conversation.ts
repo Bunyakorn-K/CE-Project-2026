@@ -10,6 +10,8 @@ export type ConversationContext = {
   userText: string;
   /** The LINE account asking — the memory is scoped to this, not to the account. */
   lineUserId: string;
+  /** When the question arrived; the prompt says "today" from this. */
+  now?: Date;
   roleLabel: string;
   branchContext: string;
   scope: AccessScope;
@@ -36,7 +38,8 @@ function buildSystemPrompt(ctx: ConversationContext, ownerPrompt: string, toolNa
     roleLabel: ctx.roleLabel,
     branches,
     toolNames,
-    canViewRevenue: ctx.scope.canViewRevenue
+    canViewRevenue: ctx.scope.canViewRevenue,
+    now: ctx.now ?? new Date()
   });
 }
 

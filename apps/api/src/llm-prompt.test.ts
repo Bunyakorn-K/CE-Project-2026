@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { NO_TOOLS_LABEL, branchLabel, buildAssistantSystemPrompt, renderSystemPrompt } from "./llm-prompt";
+import {
+  NO_TOOLS_LABEL,
+  branchLabel,
+  buildAssistantSystemPrompt,
+  nextDay,
+  renderSystemPrompt,
+  shopDate
+} from "./llm-prompt";
 
 const ctx = {
   roleLabel: "manager",
@@ -103,5 +110,51 @@ describe("buildAssistantSystemPrompt", () => {
     const out = buildAssistantSystemPrompt({ ...base, ownerPrompt: "   \n  " });
     expect(out.trim().length).toBeGreaterThan(0);
     expect(out).toContain("ผู้ใช้มีสิทธิ์: manager");
+  });
+});
+
+describe("the date the model is told", () => {
+  // Asked "how was today", the assistant answered about 2026-07-01 — a date it
+  // invented, because nothing in the prompt said what today was. These pin the
+  // fix: the date is derived server-side, in the shop's timezone.
+  it("uses the Bangkok date, not the UTC one", () => {
+    // 18:30 UTC is already the next day in Bangkok (UTC+7).
+    expect(shopDate(new Date("2026-11-09T18:30:00Z"))).toBe("2026-11-10");
+    expect(shopDate(new Date("2026-11-09T16:59:00Z"))).toBe("2026-11-09");
+  });
+
+  it("computes the exclusive end date across month and year boundaries", () => {
+    expect(nextDay("2026-11-10")).toBe("2026-11-11");
+    expect(nextDay("2026-11-30")).toBe("2026-12-01");
+    expect(nextDay("2026-12-31")).toBe("2027-01-01");
+    expect(nextDay("2028-02-28")).toBe("2028-02-29");
+  });
+
+  it("puts today and the default range in the system prompt", () => {
+    const prompt = buildAssistantSystemPrompt({
+      ownerPrompt: "",
+      roleLabel: "owner",
+      branches: "ทุกสาขา",
+      toolNames: ["get_dashboard"],
+      canViewRevenue: true,
+      now: new Date("2026-11-09T18:30:00Z")
+    });
+    expect(prompt).toContain("วันนี้คือ 2026-11-10");
+    expect(prompt).toContain("from=2026-11-10");
+    expect(prompt).toContain("to=2026-11-11");
+    expect(prompt).toContain("ห้ามเดาหรือสมมติวันที่เอง");
+  });
+
+  it("tells the model not to re-ask for a branch it was already given", () => {
+    const prompt = buildAssistantSystemPrompt({
+      ownerPrompt: "",
+      roleLabel: "owner",
+      branches: "ทุกสาขา",
+      toolNames: [],
+      canViewRevenue: true,
+      now: new Date("2026-11-10T03:00:00Z")
+    });
+    expect(prompt).toContain("โดยไม่ต้องถามซ้ำ");
+    expect(prompt).toContain("สาขาที่เข้าถึงได้: ทุกสาขา");
   });
 });

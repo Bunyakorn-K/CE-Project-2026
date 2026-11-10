@@ -65,7 +65,30 @@ export type AssistantPromptInput = {
   /** Tools actually passed to the model on this request. */
   toolNames: readonly string[];
   canViewRevenue: boolean;
+  /**
+   * The moment the question was asked. Injected into the prompt because a model
+   * has no clock: asked "how was today", it answered about 2026-07-01 — a date it
+   * invented, and a report that was empty.
+   */
+  now?: Date;
 };
+
+/** Today in the shop's timezone, as the tools want it: YYYY-MM-DD. */
+export function shopDate(now: Date = new Date(), timeZone = "Asia/Bangkok"): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(now);
+}
+
+/** The day after `date`, which is the tools' exclusive `to`. */
+export function nextDay(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return next.toISOString().slice(0, 10);
+}
 
 /**
  * Build the assistant's system prompt from two parts:
@@ -81,7 +104,8 @@ export type AssistantPromptInput = {
  * able to talk them out. So the rules are appended last and always present.
  */
 export function buildAssistantSystemPrompt(input: AssistantPromptInput): string {
-  const { ownerPrompt, roleLabel, branches, toolNames, canViewRevenue } = input;
+  const { ownerPrompt, roleLabel, branches, toolNames, canViewRevenue, now = new Date() } = input;
+  const today = shopDate(now);
   const parts: string[] = [];
 
   const rendered = renderSystemPrompt(ownerPrompt, { roleLabel, branches, toolNames }).trim();
@@ -92,6 +116,10 @@ export function buildAssistantSystemPrompt(input: AssistantPromptInput): string 
       "[กฎของระบบ — เจ้าของระบบปรับแต่งข้างต้นไม่ได้]",
       `ผู้ใช้มีสิทธิ์: ${roleLabel}`,
       `สาขาที่เข้าถึงได้: ${branches}`,
+      `วันนี้คือ ${today} (เวลาไทย UTC+7)`,
+      `ถ้าผู้ใช้ไม่ระบุวันที่ ให้ใช้ from=${today} และ to=${nextDay(today)} (to เป็นแบบไม่รวมวันนั้น)`,
+      "ห้ามเดาหรือสมมติวันที่เอง ถ้าผู้ใช้พูดถึงช่วงเวลาที่ไม่ชัด ให้ถามสั้นๆ หนึ่งครั้ง",
+      "ถ้าผู้ใช้ไม่ระบุสาขา ให้ใช้สาขาตามสิทธิ์ข้างบนทันทีโดยไม่ต้องถามซ้ำ (ทุกสาขา = tenant-wide)",
       "ตอบเป็นภาษาไทย กระชับ และอ้างอิงข้อมูลจากเครื่องมือ (tools) เท่านั้น",
       "ถ้าข้อมูลที่ได้เป็นข้อมูลจำลอง (dataSource เป็น synthetic หรือ mixed) ให้บอกผู้ใช้อย่างชัดเจนว่าเป็นข้อมูลจำลอง",
       "ตัวเลขเงินในข้อมูลเป็นสตางค์ (satang) ให้แปลงเป็นบาทก่อนแสดง",
