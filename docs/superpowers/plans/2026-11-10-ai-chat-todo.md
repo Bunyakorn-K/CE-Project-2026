@@ -8,15 +8,16 @@ Legend: `[ ]` not started · `[x]` built and verified
 
 ## P1 — a conversation instead of a question
 
-- [ ] `chat_turn` table (schema, DDL, index on `(line_user_id, created_at)`)
-- [ ] `bot/memory.ts`: `appendTurn`, `recentTurns(limit=8)`, `purgeExpiredChatTurns` (30 days, same window as `chat_message`)
-- [ ] `llm-client.agenticAnswer` accepts prior `messages`, not only `input`
-- [ ] `conversation.ts` feeds the last 8 turns and asks for the current question only
-- [ ] `showLoadingAnimation` on receipt — adapter method, LINE implementation, called before MCP/LLM work
-- [ ] one-slot queue per LINE user replaces the `busy` Set (a second message waits, it is not dropped)
-- [ ] `max_steps` in `ai_settings` (default 4), used by the bot, editable in `/admin/ai`
-- [ ] tests: memory, history plumbing, queue order, loading called, settings range
+- [x] `chat_turn` table (schema, DDL, index on `(line_user_id, created_at)`)
+- [x] `bot/memory.ts`: `appendTurn`, `recentTurns(limit=8)`, `purgeExpiredChatTurns` (30 days, same window as `chat_message`)
+- [x] `llm-client.agenticAnswer` accepts prior `messages`, not only `input`
+- [x] `conversation.ts` feeds the last 8 turns and asks for the current question only
+- [x] `showLoadingAnimation` on receipt — adapter method, LINE implementation, called before MCP/LLM work
+- [x] one-slot queue per LINE user replaces the `busy` Set (a second message waits, it is not dropped)
+- [x] `max_steps` in `ai_settings` (default 4), used by the bot, editable in `/admin/ai`
+- [x] tests: memory, history plumbing, queue order, loading called, settings range
 - [ ] deployed and observed: follow-up question answered in context; two quick messages both answered; typing indicator seen
+      — deployed `eeb5b82`; schema migrated (chat_turn + max_steps=4 verified in production); waiting on a real two-message conversation in LINE
 
 ## P2 — the bot can be talked to, not just asked
 
