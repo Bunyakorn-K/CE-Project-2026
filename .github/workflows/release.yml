@@ -93,6 +93,22 @@ jobs:
             dockerfile: apps/api/Dockerfile
           - service: etl
             dockerfile: apps/etl/Dockerfile
+          # The two collectors build from the same Dockerfile as the etl image, as
+          # different targets. Leaving them out meant this pipeline could never
+          # update them at all: both were still running images built by hand on
+          # 2026-10-06 into the internal registry, five weeks behind the code,
+          # with nothing in the process that would ever refresh them.
+          #
+          # `target` is stated for these two rather than left to the default
+          # last-stage rule, because the etl Dockerfile only keeps `etl` last by
+          # convention (a comment asks the next editor to preserve it). Naming the
+          # target means a reordering cannot silently publish the wrong command.
+          - service: weather
+            dockerfile: apps/etl/Dockerfile
+            target: weather
+          - service: gas
+            dockerfile: apps/etl/Dockerfile
+            target: gas
 
     steps:
       # The ref is pinned to the commit CI tested, and this is load-bearing.
@@ -157,6 +173,10 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          # Empty for app and etl (there the default last stage is the right one);
+          # explicit for the collectors. An undefined matrix key renders empty
+          # rather than failing, which is exactly what those two rows want.
+          target: ${{ matrix.target || '' }}
           platforms: linux/amd64
           push: true
           provenance: false
@@ -251,7 +271,7 @@ jobs:
           # exist — or worse, an older image that does.
           for svc in $(echo "${{ inputs.services }}" | tr ',' ' '); do
             case "$svc" in
-              app|etl) ;;
-              *) echo "::error::unknown service '$svc'; expected app or etl"; exit 1 ;;
+              app|etl|weather|gas) ;;
+              *) echo "::error::unknown service '$svc'; expected one of app, etl, weather, gas"; exit 1 ;;
             esac
           done

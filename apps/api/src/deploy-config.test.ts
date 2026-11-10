@@ -534,3 +534,61 @@ describe("no secret in a committed or hand-created file", () => {
     }
   });
 });
+
+// The release workflow publishes one image per matrix entry. A service in
+// compose.yaml that is not in that matrix has no update path at all — which is
+// what happened to `weather` and `gas`: both ran images built by hand five weeks
+// earlier, and nothing in CI would ever have refreshed them. The failure is
+// silent by construction (the containers stay `healthy` on old code), so it is
+// exactly the kind of thing that needs a file-derived guard rather than a
+// remembered checklist.
+describe("release matrix coverage", () => {
+  const compose = read("compose.yaml");
+  const release = read(".github/workflows/release.yml");
+
+  /** Service names under `services:` in compose.yaml, without a YAML parser. */
+  const composeServices = (): string[] => {
+    const lines = compose.split("\n");
+    const start = lines.findIndex((line) => line.trim() === "services:");
+    expect(start).toBeGreaterThan(-1);
+    const found: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (/^\S/.test(line)) break; // left the services block
+      const match = line.match(/^ {2}([a-z][a-z0-9_-]*):$/);
+      if (match) found.push(match[1]);
+    }
+    return found;
+  };
+
+  /** `- service: <name>` entries in the build matrix. */
+  const publishedServices = (): string[] =>
+    [...release.matchAll(/^\s{10}- service: ([a-z][a-z0-9_-]*)$/gm)].map((match) => match[1]);
+
+  it("publishes an image for every service compose runs", () => {
+    const services = composeServices();
+    expect(services.length).toBeGreaterThanOrEqual(4);
+    const published = publishedServices();
+    for (const service of services) {
+      expect(published, `${service} is in compose.yaml but not in the release matrix`).toContain(service);
+    }
+  });
+
+  it("names a build target for services that are not the Dockerfile's last stage", () => {
+    // etl keeps `etl` last by convention; weather and gas sit before it. A matrix
+    // row for either without an explicit target would publish the etl command
+    // under the weather tag — a container that starts, does the wrong thing, and
+    // looks healthy.
+    for (const service of ["weather", "gas"]) {
+      const row = new RegExp(`- service: ${service}\\n\\s+dockerfile: (\\S+)\\n\\s+target: (\\S+)`).exec(release);
+      expect(row, `${service} has no explicit target`).not.toBeNull();
+      expect(row?.[2]).toBe(service);
+    }
+  });
+
+  it("accepts those services in the manual rollout allowlist", () => {
+    for (const service of composeServices()) {
+      expect(release, `rollout allowlist rejects ${service}`).toContain(service);
+    }
+    expect(release).toContain("app|etl|weather|gas");
+  });
+});
