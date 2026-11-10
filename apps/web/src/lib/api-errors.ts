@@ -40,6 +40,11 @@ const API_ERROR_COPY: Record<string, string> = {
   AUTHENTICATION_REQUIRED: "กรุณาเข้าสู่ระบบเพื่อใช้งาน",
   UNAUTHORIZED: "กรุณาเข้าสู่ระบบเพื่อใช้งาน",
   ACCESS_NOT_GRANTED: "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งาน",
+  // Digest recipients: the picker only offers linked accounts, so these mean the
+  // form was stale or someone typed a value into a request by hand.
+  LINE_USER_REQUIRED: "ต้องระบุบัญชี LINE ที่จะเพิ่มเป็นผู้รับ",
+  NOT_LINKED: "บัญชีนี้ยังไม่ได้ผูกกับ LINE จึงยังรับข้อความไม่ได้",
+  NO_ACCESS: "บัญชีนี้ไม่มีสิทธิ์ใช้งาน จึงยังเพิ่มเป็นผู้รับไม่ได้",
   ACCESS_PENDING: "คำขอสิทธิ์ยังอยู่ระหว่างการอนุมัติ",
   OWNER_ROLE_REQUIRED: "หน้านี้ใช้ได้เฉพาะเจ้าของระบบ",
   // A permission denial, not a load failure. Rendering the generic sentence here

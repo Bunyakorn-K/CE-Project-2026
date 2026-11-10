@@ -161,6 +161,44 @@ export const aiSettings = sqliteTable("ai_settings", {
 // These were environment variables first, which meant changing the re-notify
 // floor or the monthly cap required a redeploy — for a number that depends on
 // how noisy the shop is this week, not on how the code is built.
+/**
+ * The daily digest: one message a day, if — and only if — an owner turns it on and
+ * names who receives it. Off by default, with no recipients, because a bot that
+ * starts talking on its own is a decision for the shop, not for a deploy.
+ */
+export const digestSettings = sqliteTable("digest_settings", {
+  id: text("id").primaryKey().default("default"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  /** Bangkok time of day, 0-23 / 0-59. */
+  sendHour: integer("send_hour").notNull().default(7),
+  sendMinute: integer("send_minute").notNull().default(0),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+/** Who receives the digest. Added by hand; an empty table means nobody. */
+export const digestRecipient = sqliteTable("digest_recipient", {
+  lineUserId: text("line_user_id").primaryKey(),
+  addedByUserId: text("added_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  addedAt: integer("added_at", { mode: "timestamp_ms" }).notNull()
+});
+
+/**
+ * One row per recipient per day, which is what makes the digest idempotent: a DAG
+ * that retries five minutes later, or a redeploy that re-runs the check, sends
+ * nothing the second time.
+ */
+export const digestSent = sqliteTable("digest_sent", {
+  id: text("id").primaryKey(),
+  /** `YYYY-MM-DD`, the shop's day. */
+  day: text("day").notNull(),
+  lineUserId: text("line_user_id").notNull(),
+  status: text("status").notNull(),
+  detail: text("detail"),
+  sentAt: integer("sent_at", { mode: "timestamp_ms" }).notNull()
+});
+
 export const alertSettings = sqliteTable("alert_settings", {
   id: text("id").primaryKey().default("default"),
   /** Hours before the same rule may notify again. */

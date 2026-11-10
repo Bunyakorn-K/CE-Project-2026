@@ -34,6 +34,16 @@ import { buildOpenApiDocument } from "./analytics/openapi";
 import { isCalendarDate } from "./calendar-date";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { parseAnalyticsRange } from "./analytics/scope";
+import {
+  addDigestRecipient,
+  listDigestRecipients,
+  listLineUsers,
+  readDigestSettings,
+  removeDigestRecipient,
+  runDigest,
+  saveDigestSettings,
+  digestSentToday
+} from "./digest";
 import { auth, resolveTrustedOrigins } from "./auth";
 import { initializeDatabase } from "./db";
 import {
@@ -785,6 +795,85 @@ export function createApp(dependencies: AppDependencies = {}) {
       return apiError(c, 401, "UNAUTHORIZED", "A valid alert sweep token is required");
     }
     return sweepResponse(c);
+  });
+
+  /**
+   * The daily digest, as an owner sees it: the switch, the time, and who receives it.
+   * Everything is off and empty until someone saves it — a bot that starts messaging
+   * on its own is the shop's decision, not a deploy's.
+   */
+  app.get("/api/admin/digest", (c) => {
+    const owner = requireOwner(c);
+    if (owner instanceof Response) return owner;
+    return c.json({
+      settings: readDigestSettings(),
+      recipients: listDigestRecipients(),
+      candidates: listLineUsers(),
+      sentToday: digestSentToday()
+    });
+  });
+
+  app.put("/api/admin/digest", async (c) => {
+    const owner = requireOwner(c);
+    if (owner instanceof Response) return owner;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      enabled?: boolean;
+      sendHour?: number;
+      sendMinute?: number;
+    };
+    const settings = saveDigestSettings(
+      {
+        enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+        sendHour: typeof body.sendHour === "number" ? body.sendHour : undefined,
+        sendMinute: typeof body.sendMinute === "number" ? body.sendMinute : undefined
+      },
+      owner.user.id
+    );
+    return c.json({ settings });
+  });
+
+  app.post("/api/admin/digest/recipients", async (c) => {
+    const owner = requireOwner(c);
+    if (owner instanceof Response) return owner;
+    const body = (await c.req.json().catch(() => ({}))) as { lineUserId?: string };
+    if (!body.lineUserId) return apiError(c, 400, "LINE_USER_REQUIRED", "lineUserId is required");
+    const result = addDigestRecipient(body.lineUserId, owner.user.id);
+    if (!result.ok) {
+      return result.reason === "not-linked"
+        ? apiError(c, 404, "NOT_LINKED", "No LINE account is linked to that user")
+        : apiError(c, 409, "NO_ACCESS", "That account has no role, so it may not receive revenue");
+    }
+    return c.json({ recipients: listDigestRecipients() });
+  });
+
+  app.delete("/api/admin/digest/recipients/:lineUserId", (c) => {
+    const owner = requireOwner(c);
+    if (owner instanceof Response) return owner;
+    removeDigestRecipient(c.req.param("lineUserId"));
+    return c.json({ recipients: listDigestRecipients() });
+  });
+
+  /**
+   * The clock. A cron job cannot resolve "07:00 Bangkok" the way an owner means it,
+   * so the DAG wakes up every five minutes and this route decides whether it is time
+   * — which also means changing the hour in the console takes effect immediately,
+   * with no workflow edit and no redeploy.
+   *
+   * `?dryRun=1` builds the message and sends nothing, which is how the digest can be
+   * read before anyone's phone buzzes. Idempotent by `digest_sent`.
+   */
+  app.post("/api/internal/digest/run", async (c) => {
+    if (!isAlertSweepTokenValid(c.req.header("x-alert-sweep-token"), process.env.ALERT_SWEEP_TOKEN)) {
+      return apiError(c, 401, "UNAUTHORIZED", "A valid alert sweep token is required");
+    }
+    const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const summary = await runDigest({
+      adapter: new LineAdapter(lineToken),
+      clickhouse,
+      dryRun: c.req.query("dryRun") === "1",
+      force: c.req.query("force") === "1"
+    });
+    return c.json({ digest: summary });
   });
 
   app.post("/webhooks/line", async (c) => {

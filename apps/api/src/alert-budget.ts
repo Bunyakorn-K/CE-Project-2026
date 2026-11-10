@@ -25,7 +25,7 @@
 
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "./db";
-import { alertNotification, chatTurn } from "./schema";
+import { alertNotification, chatTurn, digestSent } from "./schema";
 
 export const DEFAULT_MONTHLY_BUDGET = 200;
 
@@ -36,7 +36,7 @@ export type BudgetState = {
   cap: number;
   remaining: number;
   /** Which half of `used` is which — alerts and chat pushes share one allowance. */
-  breakdown: { alerts: number; chat: number };
+  breakdown: { alerts: number; chat: number; digest: number };
 };
 
 export function monthStart(now: Date): Date {
@@ -80,23 +80,34 @@ export function monthlyChatPushes(now: Date): number {
   return rows.length;
 }
 
+/** Digest messages sent this month: one a day at most, but still out of the 300. */
+export function monthlyDigestCount(now: Date): number {
+  const rows = db
+    .select({ id: digestSent.id })
+    .from(digestSent)
+    .where(and(eq(digestSent.status, "sent"), gte(digestSent.sentAt, monthStart(now))))
+    .all();
+  return rows.length;
+}
+
 export function budgetState(
   now: Date,
   cap: number = DEFAULT_MONTHLY_BUDGET,
   /** Injectable so a test can state its own chat usage instead of inheriting rows
    *  another test file wrote to the same table in parallel. */
-  chatPushes: number = monthlyChatPushes(now)
+  chatPushes: number = monthlyChatPushes(now),
+  digestPushes: number = monthlyDigestCount(now)
 ): BudgetState {
   const alerts = monthlySentCount(now);
   const chat = chatPushes;
-  const used = alerts + chat;
+  const used = alerts + chat + digestPushes;
   return {
     month: monthKey(now),
     used,
     cap,
     remaining: Math.max(0, cap - used),
     /** Split out so the owner can see which half is growing. */
-    breakdown: { alerts, chat }
+    breakdown: { alerts, chat, digest: digestPushes }
   };
 }
 

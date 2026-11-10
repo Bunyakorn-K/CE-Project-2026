@@ -164,6 +164,29 @@ export function initializeDatabase() {
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS digest_settings (
+      id text PRIMARY KEY NOT NULL DEFAULT 'default',
+      enabled integer NOT NULL DEFAULT 0,
+      send_hour integer NOT NULL DEFAULT 7,
+      send_minute integer NOT NULL DEFAULT 0,
+      updated_by_user_id text REFERENCES user(id) ON DELETE SET NULL,
+      updated_at integer NOT NULL,
+      created_at integer NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS digest_recipient (
+      line_user_id text PRIMARY KEY NOT NULL,
+      added_by_user_id text REFERENCES user(id) ON DELETE SET NULL,
+      added_at integer NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS digest_sent (
+      id text PRIMARY KEY NOT NULL,
+      day text NOT NULL,
+      line_user_id text NOT NULL,
+      status text NOT NULL,
+      detail text,
+      sent_at integer NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS digest_sent_day_idx ON digest_sent(day);
     CREATE TABLE IF NOT EXISTS chat_message (
       id text PRIMARY KEY NOT NULL,
       thread_id text NOT NULL,

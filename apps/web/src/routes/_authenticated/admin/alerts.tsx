@@ -193,6 +193,235 @@ function AlertSettingsPage() {
         ค่าปัจจุบันมาจาก{settings.source === "stored" ? "การตั้งค่าที่บันทึกไว้" : "ค่าเริ่มต้นของระบบ (ยังไม่เคยบันทึก)"}
         {settings.updatedAt ? ` · แก้ไขล่าสุด ${new Date(settings.updatedAt).toLocaleString("th-TH")}` : ""}
       </p>
+
+      <DigestCard />
     </div>
+  );
+}
+
+/**
+ * The daily digest.
+ *
+ * Off by default, with nobody on the list: a bot that starts messaging on its own is
+ * the shop's decision. The hour is Bangkok's, and the server decides whether it is
+ * time, so changing it here takes effect on the next five-minute check.
+ */
+type DigestSettings = {
+  enabled: boolean;
+  sendHour: number;
+  sendMinute: number;
+  updatedAt: number | null;
+  source: "stored" | "default";
+};
+
+type DigestPerson = { lineUserId: string; displayName: string | null; roles: string[] };
+
+type DigestPayload = {
+  settings: DigestSettings;
+  recipients: DigestPerson[];
+  candidates: DigestPerson[];
+  sentToday: { lineUserId: string; status: string; sentAt: number }[];
+};
+
+function DigestCard() {
+  const queryClient = useQueryClient();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [hour, setHour] = useState("7");
+  const [minute, setMinute] = useState("0");
+  const [pick, setPick] = useState("");
+
+  const query = useQuery({
+    queryKey: ["digest"],
+    queryFn: () => fetchJson<DigestPayload>("/api/admin/digest", "ไม่สามารถโหลดการตั้งค่าสรุปรายวันได้")
+  });
+
+  useEffect(() => {
+    if (!query.data) return;
+    setHour(String(query.data.settings.sendHour));
+    setMinute(String(query.data.settings.sendMinute));
+  }, [query.data]);
+
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: ["digest"] });
+
+  const save = useMutation({
+    mutationFn: async (body: { enabled?: boolean; sendHour?: number; sendMinute?: number }) => {
+      const response = await fetch(apiUrl("/api/admin/digest"), {
+        method: "PUT",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response, "บันทึกไม่สำเร็จ"));
+    },
+    onSuccess: () => {
+      setNotice("บันทึกแล้ว — รอบตรวจถัดไป (ทุก 5 นาที) จะใช้ค่าใหม่");
+      refresh();
+    },
+    onError: (error) => setNotice(error instanceof Error ? error.message : "บันทึกไม่สำเร็จ")
+  });
+
+  const add = useMutation({
+    mutationFn: async (lineUserId: string) => {
+      const response = await fetch(apiUrl("/api/admin/digest/recipients"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lineUserId })
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response, "เพิ่มผู้รับไม่สำเร็จ"));
+    },
+    onSuccess: () => {
+      setPick("");
+      setNotice("เพิ่มผู้รับแล้ว");
+      refresh();
+    },
+    onError: (error) => setNotice(error instanceof Error ? error.message : "เพิ่มผู้รับไม่สำเร็จ")
+  });
+
+  const remove = useMutation({
+    mutationFn: async (lineUserId: string) => {
+      const response = await fetch(apiUrl(`/api/admin/digest/recipients/${encodeURIComponent(lineUserId)}`), {
+        method: "DELETE",
+        credentials: "include"
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response, "ลบผู้รับไม่สำเร็จ"));
+    },
+    onSuccess: () => {
+      setNotice("ลบผู้รับแล้ว");
+      refresh();
+    },
+    onError: (error) => setNotice(error instanceof Error ? error.message : "ลบผู้รับไม่สำเร็จ")
+  });
+
+  if (query.isLoading) return <p className="mt-6 text-default-500">กำลังโหลดสรุปรายวัน…</p>;
+  if (query.isError || !query.data) return null;
+
+  const { settings, recipients, candidates, sentToday } = query.data;
+  const busy = save.isPending || add.isPending || remove.isPending;
+  const remaining = candidates.filter(
+    (person) => !recipients.some((row) => row.lineUserId === person.lineUserId)
+  );
+
+  return (
+    <section className="mt-8 rounded-large border border-default-200 p-4">
+      <h2 className="text-base font-bold">สรุปรายวัน (digest)</h2>
+      <p className="mt-1 text-tiny text-default-500">
+        ข้อความเดียวสรุปเมื่อวาน — รายได้ จำนวนรอบซัก และการแจ้งเตือน ค่าเริ่มต้นคือ<strong>ปิด</strong>
+        และยังไม่มีผู้รับ ต้องเปิดและเพิ่มผู้รับเอง · 1 ข้อความ/วัน นับรวมโควตาเดียวกับการแจ้งเตือน
+      </p>
+
+      <label className="mt-4 flex items-center gap-2 text-small">
+        <input
+          type="checkbox"
+          checked={settings.enabled}
+          onChange={(event) => save.mutate({ enabled: event.target.checked })}
+          disabled={busy}
+        />
+        เปิดส่งสรุปรายวัน
+      </label>
+
+      <div className="mt-3 flex items-end gap-2">
+        <div>
+          <label className="block text-tiny text-default-500" htmlFor="digest-hour">
+            เวลา (ชั่วโมง)
+          </label>
+          <input
+            id="digest-hour"
+            type="number"
+            min={0}
+            max={23}
+            value={hour}
+            onChange={(event) => setHour(event.target.value)}
+            className="mt-1 w-24 rounded-medium border border-default-300 px-3 py-2 text-small"
+          />
+        </div>
+        <div>
+          <label className="block text-tiny text-default-500" htmlFor="digest-minute">
+            นาที
+          </label>
+          <input
+            id="digest-minute"
+            type="number"
+            min={0}
+            max={59}
+            value={minute}
+            onChange={(event) => setMinute(event.target.value)}
+            className="mt-1 w-24 rounded-medium border border-default-300 px-3 py-2 text-small"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            save.mutate({ sendHour: Number(hour), sendMinute: Number(minute) })
+          }
+          disabled={busy}
+          className="rounded-medium bg-primary px-4 py-2 text-small font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          บันทึกเวลา
+        </button>
+        <span className="text-tiny text-default-500">เวลาไทย (UTC+7)</span>
+      </div>
+
+      <div className="mt-4">
+        <h3 className="text-small font-semibold text-default-600">ผู้รับ ({recipients.length})</h3>
+        {recipients.length === 0 ? (
+          <p className="mt-1 text-tiny text-default-500">ยังไม่มีผู้รับ — ระบบจะไม่ส่งอะไรเลย</p>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {recipients.map((person) => (
+              <li key={person.lineUserId} className="flex items-center gap-2 text-small">
+                <span>{person.displayName ?? person.lineUserId}</span>
+                <span className="text-tiny text-default-500">{person.roles.join(", ") || "ไม่มีสิทธิ์แล้ว"}</span>
+                <button
+                  type="button"
+                  onClick={() => remove.mutate(person.lineUserId)}
+                  disabled={busy}
+                  className="text-tiny text-danger underline"
+                >
+                  ลบ
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-3 flex items-center gap-2">
+          <select
+            value={pick}
+            onChange={(event) => setPick(event.target.value)}
+            className="rounded-medium border border-default-300 px-3 py-2 text-small"
+          >
+            <option value="">— เลือกบัญชีที่ผูก LINE แล้ว —</option>
+            {remaining.map((person) => (
+              <option key={person.lineUserId} value={person.lineUserId}>
+                {(person.displayName ?? person.lineUserId) +
+                  (person.roles.length > 0 ? ` (${person.roles.join(", ")})` : " (ไม่มีสิทธิ์)")}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => pick && add.mutate(pick)}
+            disabled={busy || !pick}
+            className="rounded-medium border border-default-300 px-3 py-2 text-small disabled:opacity-60"
+          >
+            เพิ่มผู้รับ
+          </button>
+        </div>
+      </div>
+
+      {sentToday.length > 0 ? (
+        <p className="mt-3 text-tiny text-default-600">
+          วันนี้: {sentToday.map((row) => `${row.status} ${new Date(row.sentAt).toLocaleTimeString("th-TH")}`).join(" · ")}
+        </p>
+      ) : null}
+
+      {notice ? <p className="mt-3 text-tiny text-default-600">{notice}</p> : null}
+      <p className="mt-2 text-tiny text-default-500">
+        {settings.source === "stored"
+          ? `แก้ไขล่าสุด ${settings.updatedAt ? new Date(settings.updatedAt).toLocaleString("th-TH") : "-"}`
+          : "ยังไม่เคยตั้งค่า — ค่าเริ่มต้น 07:00 และปิดอยู่"}
+      </p>
+    </section>
   );
 }
