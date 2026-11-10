@@ -133,10 +133,24 @@ export function initializeDatabase() {
       model text NOT NULL,
       system_prompt text NOT NULL,
       temperature integer NOT NULL DEFAULT 70,
+      max_steps integer NOT NULL DEFAULT 4,
       updated_by_user_id text REFERENCES user(id) ON DELETE SET NULL,
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS chat_turn (
+      id text PRIMARY KEY NOT NULL,
+      line_user_id text NOT NULL,
+      user_text text NOT NULL,
+      answer_text text NOT NULL,
+      model text NOT NULL DEFAULT '',
+      steps integer NOT NULL DEFAULT 0,
+      tool_calls integer NOT NULL DEFAULT 0,
+      latency_ms integer NOT NULL DEFAULT 0,
+      delivered text NOT NULL DEFAULT 'reply',
+      created_at integer NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS chat_turn_user_idx ON chat_turn(line_user_id, created_at);
     CREATE TABLE IF NOT EXISTS rich_menu (
       key text PRIMARY KEY NOT NULL,
       rich_menu_id text NOT NULL,
@@ -162,4 +176,17 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS chat_message_thread_idx ON chat_message(thread_id, created_at);
     CREATE INDEX IF NOT EXISTS chat_message_purge_idx ON chat_message(created_at);
   `);
+
+  // CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
+  // column added later has to be added explicitly. Production has run this schema
+  // since September; without the ALTER, the first SELECT would fail with
+  // "no such column: max_steps" and the whole API would stop.
+  ensureColumn("ai_settings", "max_steps", "integer NOT NULL DEFAULT 4");
+}
+
+/** Add a column only if the table does not have it yet. Idempotent by design. */
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (columns.some((entry) => entry.name === column)) return;
+  sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

@@ -11,9 +11,9 @@ export const Route = createFileRoute("/_authenticated/admin/ai")({
   component: AiConsolePage
 });
 
-type AiSettings = { baseUrl: string; model: string; systemPrompt: string; temperature: number; hasApiKey: boolean; updatedAt: number | null };
+type AiSettings = { baseUrl: string; model: string; systemPrompt: string; temperature: number; maxSteps: number; hasApiKey: boolean; updatedAt: number | null };
 type ChatMsg = { role: "user" | "assistant" | "system"; content: string; model: string | null; createdAt?: number };
-type FormState = { baseUrl: string; apiKey: string; model: string; systemPrompt: string; temperature: number };
+type FormState = { baseUrl: string; apiKey: string; model: string; systemPrompt: string; temperature: number; maxSteps: number };
 
 async function fetchJson<T>(path: string, fallback: string): Promise<T> {
   const response = await fetch(apiUrl(path), { credentials: "include" });
@@ -21,7 +21,7 @@ async function fetchJson<T>(path: string, fallback: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-const EMPTY_FORM: FormState = { baseUrl: "", apiKey: "", model: "", systemPrompt: "", temperature: 0 };
+const EMPTY_FORM: FormState = { baseUrl: "", apiKey: "", model: "", systemPrompt: "", temperature: 0, maxSteps: 4 };
 
 function AiConsolePage() {
   const [user] = useAtom(authAtom);
@@ -47,7 +47,8 @@ function AiConsolePage() {
       apiKey: "",
       model: settings.model,
       systemPrompt: settings.systemPrompt,
-      temperature: settings.temperature
+      temperature: settings.temperature,
+      maxSteps: settings.maxSteps
     });
     setHydrated(true);
   }, [hydrated, settingsQuery.data]);
@@ -148,7 +149,8 @@ function AiConsolePage() {
                   baseUrl: form.baseUrl,
                   model: form.model,
                   systemPrompt: form.systemPrompt,
-                  temperature: form.temperature
+                  temperature: form.temperature,
+                  maxSteps: form.maxSteps
                 };
                 if (form.apiKey.trim()) payload.apiKey = form.apiKey.trim();
                 saveMutation.mutate(payload);
@@ -158,6 +160,7 @@ function AiConsolePage() {
               <label className="field-control" htmlFor="ai-api-key"><span>API key {hasApiKey ? "· มี key ที่บันทึกไว้แล้ว เว้นว่างเพื่อคงเดิม" : "· ยังไม่ได้ตั้งค่า"}</span><input id="ai-api-key" type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={hasApiKey ? "คงค่าเดิม" : "ใส่ API key"} /></label>
               <label className="field-control" htmlFor="ai-model"><span>โมเดลเริ่มต้น</span><select id="ai-model" required value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}>{modelOptions.length === 0 && <option value="">ยังไม่มีโมเดลที่ค้นพบ</option>}{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>
               <label className="field-control" htmlFor="ai-temperature"><span>Temperature ({form.temperature}/100)</span><input id="ai-temperature" type="range" min={0} max={100} value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value) }))} /></label>
+                <label className="field-control" htmlFor="ai-max-steps"><span>จำนวนรอบเรียกเครื่องมือต่อคำตอบ ({form.maxSteps})</span><input id="ai-max-steps" type="number" min={1} max={6} value={form.maxSteps} onChange={(event) => setForm((current) => ({ ...current, maxSteps: Number(event.target.value) }))} /><span className="text-tiny text-default-500">1 = ตอบได้แต่ไม่เรียกข้อมูล · 4 = พอสำหรับเทียบสองสาขา</span></label>
               <div className="form-actions">
                 <Button type="submit" className="primary-button" isDisabled={saveMutation.isPending}>{saveMutation.isPending ? "กำลังบันทึก…" : "บันทึกการตั้งค่า"}</Button>
                 <Button type="button" className="secondary-button" onPress={() => void queryClient.invalidateQueries({ queryKey: ["ai", "models"] })} isDisabled={!hasApiKey || modelsQuery.isFetching}>{modelsQuery.isFetching ? "กำลังโหลดโมเดล…" : "รีเฟรชโมเดล"}</Button>

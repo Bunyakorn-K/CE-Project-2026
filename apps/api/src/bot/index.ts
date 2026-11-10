@@ -6,6 +6,7 @@ import type { PlatformAdapter } from "./adapter";
 import type { AccessScope } from "./identity";
 import { resolveLineIdentity, roleLabel } from "./identity";
 import { answerForMessage } from "./conversation";
+import { appendTurn } from "./memory";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
 
@@ -40,26 +41,44 @@ async function branchContextFor(scope: AccessScope, clickhouse: ClickHouseExecut
 export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapter, mcpOverride?: McpClientLike) {
   const adapter = adapterOverride ?? new LineAdapter(deps.lineChannelAccessToken);
   const mcp = mcpOverride ?? new McpClient(deps.mcpUrl, deps.mcpToken);
-  const busy = new Set<string>();
+  /**
+   * One answer at a time per LINE user, in order.
+   *
+   * This was a `Set`: a second message that arrived while the first was in flight
+   * was silently dropped, so a user who typed twice got one answer and no reason.
+   * A queue is the honest behaviour — the second message waits, then answers, and
+   * the conversation reads as a conversation.
+   */
+  const inFlight = new Map<string, Promise<void>>();
+
+  function enqueue(userId: string, task: () => Promise<void>): Promise<void> {
+    const previous = inFlight.get(userId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(task)
+      .finally(() => {
+        if (inFlight.get(userId) === next) inFlight.delete(userId);
+      });
+    inFlight.set(userId, next);
+    return next;
+  }
 
   /**
    * Answer with a free reply when the event carried a token, and a charged push
    * otherwise. Written as two calls rather than one with `undefined`, so a caller
    * that has no token sends exactly what it sent before this existed.
    */
-  async function reply(userId: string, text: string, replyToken?: string): Promise<void> {
+  async function reply(userId: string, text: string, replyToken?: string) {
     if (replyToken) {
-      await adapter.sendText(userId, text, { replyToken });
-      return;
+      return adapter.sendText(userId, text, { replyToken });
     }
-    await adapter.sendText(userId, text);
+    return adapter.sendText(userId, text);
   }
 
-  async function handleTextEvent(event: LineTextEvent): Promise<void> {
+  async function answerOne(event: LineTextEvent): Promise<void> {
     const userId = event.source?.userId;
     if (!userId) return;
-    if (busy.has(userId)) return; // drop overlap; the user already has an answer in flight
-    busy.add(userId);
+    const startedAt = Date.now();
     try {
       const identity = resolveLineIdentity(userId);
       if (!identity.ok) {
@@ -76,10 +95,15 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         );
         return;
       }
+      // Typing indicator first: the model plus a tool call takes seconds, and
+      // silence reads as "broken". Free, and it covers the whole answer.
+      void adapter.showLoading?.(userId);
+
       const branchContext = await branchContextFor(identity.scope, deps.clickhouse);
       const answer = await answerForMessage(
         {
           userText: event.message.text,
+          lineUserId: userId,
           roleLabel: roleLabel(identity.principal),
           branchContext,
           scope: identity.scope,
@@ -87,7 +111,20 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         },
         { mcp, fetchImpl: deps.fetchImpl }
       );
-      await reply(userId, answer, event.replyToken);
+      const delivered = await reply(userId, answer.text, event.replyToken);
+
+      // The turn is the bot's memory and its record: without this row a follow-up
+      // question has nothing to refer to, and nobody can see what the bot said.
+      appendTurn({
+        lineUserId: userId,
+        userText: event.message.text,
+        answerText: answer.text,
+        model: answer.model,
+        steps: answer.steps,
+        toolCalls: answer.toolCalls,
+        latencyMs: Date.now() - startedAt,
+        delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
+      });
     } catch (error) {
       console.error("LaundryTwin bot error", error);
       try {
@@ -95,9 +132,14 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       } catch {
         // reply is best-effort; never let a reply failure crash the webhook
       }
-    } finally {
-      busy.delete(userId);
     }
+  }
+
+  /** Queue the answer for this user; the webhook returns before it runs. */
+  function handleTextEvent(event: LineTextEvent): Promise<void> {
+    const userId = event.source?.userId;
+    if (!userId) return Promise.resolve();
+    return enqueue(userId, () => answerOne(event));
   }
 
   async function handle(rawBody: string, signature: string | undefined): Promise<Response> {

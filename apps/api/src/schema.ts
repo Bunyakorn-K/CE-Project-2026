@@ -148,6 +148,8 @@ export const aiSettings = sqliteTable("ai_settings", {
   model: text("model").notNull(),
   systemPrompt: text("system_prompt").notNull(),
   temperature: integer("temperature").notNull().default(70), // 0-100, /100 at call time
+  /** Tool round-trips one answer may take. 2 meant a single call; 4 allows a follow-up. */
+  maxSteps: integer("max_steps").notNull().default(4),
   updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
@@ -167,6 +169,28 @@ export const alertSettings = sqliteTable("alert_settings", {
   monthlyBudget: integer("monthly_budget").notNull().default(200),
   updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+// One row per answered message in LINE: what was asked, what was said, and how
+// it was produced. It is the bot's memory (the last few turns are fed back as
+// context) and its observability (latency, steps, reply-vs-push) in one place.
+//
+// Separate from `chat_message`, which belongs to the backoffice playground: the
+// playground has threads and a user who is sitting in a browser, the bot has one
+// ongoing conversation per LINE account and no thread id.
+export const chatTurn = sqliteTable("chat_turn", {
+  id: text("id").primaryKey(),
+  lineUserId: text("line_user_id").notNull(),
+  userText: text("user_text").notNull(),
+  answerText: text("answer_text").notNull(),
+  model: text("model").notNull().default(""),
+  /** Tool round-trips the model actually used. */
+  steps: integer("steps").notNull().default(0),
+  toolCalls: integer("tool_calls").notNull().default(0),
+  latencyMs: integer("latency_ms").notNull().default(0),
+  /** "reply" is free; "push" spends one of the 300 a month. */
+  delivered: text("delivered").notNull().default("reply"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
 });
 
@@ -208,6 +232,7 @@ export const schema = {
   alertNotification,
   aiSettings,
   alertSettings,
+  chatTurn,
   richMenu,
   chatMessage
 };

@@ -2,11 +2,14 @@ import type { AccessScope } from "./identity";
 import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
 import { runAuditedToolCall } from "../ai-audit";
-import { agenticAnswer } from "../llm-client";
+import { agenticAnswerWithMeta } from "../llm-client";
 import { branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
+import { recentTurns } from "./memory";
 
 export type ConversationContext = {
   userText: string;
+  /** The LINE account asking — the memory is scoped to this, not to the account. */
+  lineUserId: string;
   roleLabel: string;
   branchContext: string;
   scope: AccessScope;
@@ -58,20 +61,41 @@ function toolResultText(result: McpCallResultLike): string {
   return JSON.stringify(result);
 }
 
-export async function answerForMessage(ctx: ConversationContext, deps: ConversationDeps): Promise<string> {
+export type ConversationAnswer = {
+  text: string;
+  /** Model turns taken, and tool calls made inside them — recorded per turn. */
+  steps: number;
+  toolCalls: number;
+  model: string;
+};
+
+export async function answerForMessage(
+  ctx: ConversationContext,
+  deps: ConversationDeps
+): Promise<ConversationAnswer> {
   // The gateway config is now DB-driven (ai_settings) — the bot reads the
   // same baseURL/apiKey/model/prompt that the backoffice AI console manages.
   const settings = getAiSettingsWithKey();
   if (!settings.apiKey) {
-    return "ขออภัย ยังไม่ได้ตั้งค่า API key ของผู้ช่วย กรุณาให้ผู้ดูแลระบบตั้งค่าในหน้า AI Console";
+    return {
+      text: "ขออภัย ยังไม่ได้ตั้งค่า API key ของผู้ช่วย กรุณาให้ผู้ดูแลระบบตั้งค่าในหน้า AI Console",
+      steps: 0,
+      toolCalls: 0,
+      model: settings.model
+    };
   }
 
   const tools = await deps.mcp.listTools(ctx.scope);
+  // The last few turns, so a follow-up can refer to what came before. Read per
+  // message, not cached: the container restarts on deploy and the conversation
+  // must survive that.
+  const history = recentTurns(ctx.lineUserId);
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
-  return agenticAnswer(settings.baseUrl, settings.apiKey, settings.model, {
+  const result = await agenticAnswerWithMeta(settings.baseUrl, settings.apiKey, settings.model, {
     instructions: buildSystemPrompt(ctx, settings.systemPrompt, tools.map((tool) => tool.name)),
     input: ctx.userText,
+    messages: history,
     tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -94,8 +118,11 @@ export async function answerForMessage(ctx: ConversationContext, deps: Conversat
       });
     },
     temperature: settings.temperature,
-    // Single tool round-trip in v1 — enough for a branch-scoped question.
-    maxSteps: 2,
+    // Bounded by the owner's setting: 2 was a single tool round-trip, which cannot
+    // answer "compare branch A with B". The loop is bounded so cost stays predictable.
+    maxSteps: settings.maxSteps,
     fetchImpl: deps.fetchImpl
   });
+
+  return { text: result.text, steps: result.steps, toolCalls: result.toolCalls, model: settings.model };
 }

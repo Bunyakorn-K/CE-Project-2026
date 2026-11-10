@@ -1,5 +1,5 @@
 import { messagingApi } from "@line/bot-sdk";
-import type { PlatformAdapter } from "./adapter";
+import type { DeliveryKind, PlatformAdapter } from "./adapter";
 
 export class LineAdapter implements PlatformAdapter {
   readonly platform = "line" as const;
@@ -13,8 +13,8 @@ export class LineAdapter implements PlatformAdapter {
       : null;
   }
 
-  async sendText(userId: string, text: string, options: { replyToken?: string } = {}): Promise<void> {
-    if (!this.client) return;
+  async sendText(userId: string, text: string, options: { replyToken?: string } = {}): Promise<DeliveryKind> {
+    if (!this.client) return "unknown";
     const messages = [{ type: "text" as const, text }];
 
     // A reply is free and does not touch the monthly push allowance; a push is
@@ -24,12 +24,23 @@ export class LineAdapter implements PlatformAdapter {
     if (options.replyToken) {
       try {
         await this.client.replyMessage({ replyToken: options.replyToken, messages });
-        return;
+        return "reply";
       } catch {
         // fall through to push
       }
     }
     await this.client.pushMessage({ to: userId, messages });
+    return "push";
+  }
+
+  /** Best effort: a failed indicator must never fail the answer. */
+  async showLoading(userId: string, seconds = 20): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.showLoadingAnimation({ chatId: userId, loadingSeconds: seconds });
+    } catch {
+      // cosmetic only
+    }
   }
 
   /**

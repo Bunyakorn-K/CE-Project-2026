@@ -25,9 +25,15 @@ const aiSettings = vi.hoisted(() => ({
 vi.mock("../access-store", () => accessStore);
 vi.mock("../ai-settings", () => aiSettings);
 
+import { db, initializeDatabase } from "../db";
 import { resolveLineIdentity, roleLabel, scopeForPrincipal } from "./identity";
 import { answerForMessage } from "./conversation";
 import { createBotHandler } from "./index";
+import { allTurns } from "./memory";
+
+// The handler now writes a chat_turn per answer, so the real schema has to exist
+// in the test database.
+initializeDatabase();
 
 const owner: Principal = {
   source: "liff",
@@ -95,11 +101,17 @@ describe("bot conversation loop", () => {
     );
 
     const answer = await answerForMessage(
-      { userText: "รายได้เท่าไหร่", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
+      {
+        userText: "รายได้เท่าไหร่",
+        lineUserId: "line-2",
+        roleLabel: "manager",
+        branchContext: "SYNTH-A (b1)",
+        scope: { branchIds: ["b1"], canViewRevenue: true }
+      },
       { mcp, fetchImpl }
     );
 
-    expect(answer).toBe("รายได้รวม 184,000 บาท");
+    expect(answer.text).toBe("รายได้รวม 184,000 บาท");
     expect(mcp.callTool).not.toHaveBeenCalled();
   });
 
@@ -126,11 +138,17 @@ describe("bot conversation loop", () => {
       );
 
     const answer = await answerForMessage(
-      { userText: "รอบซักวันนี้กี่รอบ", roleLabel: "manager", branchContext: "SYNTH-A (b1)", scope: { branchIds: ["b1"], canViewRevenue: true } },
+      {
+        userText: "รอบซักวันนี้กี่รอบ",
+        lineUserId: "line-2",
+        roleLabel: "manager",
+        branchContext: "SYNTH-A (b1)",
+        scope: { branchIds: ["b1"], canViewRevenue: true }
+      },
       { mcp, fetchImpl }
     );
 
-    expect(answer).toBe("มีรอบการซัก 31 รอบ");
+    expect(answer.text).toBe("มีรอบการซัก 31 รอบ");
     expect(mcp.callTool).toHaveBeenCalledWith(
       "get_cycles_daily",
       expect.objectContaining({ branchId: "b1" }),
@@ -146,6 +164,10 @@ describe("bot conversation loop", () => {
 describe("bot webhook handler", () => {
   beforeEach(() => {
     process.env.LINE_CHANNEL_SECRET = "test-secret";
+    // The bot now writes chat_turn rows, and the test database is a file that
+    // survives between runs: without this, a second run sees the first run's
+    // conversation and the history assertion counts turns from the previous test.
+    db.$client.prepare("DELETE FROM chat_turn").run();
     vi.clearAllMocks();
   });
 
@@ -253,5 +275,120 @@ describe("bot webhook handler", () => {
     });
 
     expect(adapter.sendText).toHaveBeenCalledWith("line-3", "สวัสดี", { replyToken: "rt-abc" });
+  });
+
+  // P1: the typing indicator, the queue, the memory write, and history on the wire.
+  function harness(options: { delayMs?: number } = {}) {
+    const adapter = {
+      platform: "line" as const,
+      sendText: vi.fn().mockResolvedValue("reply" as const),
+      showLoading: vi.fn().mockResolvedValue(undefined)
+    };
+    const mcp = { listTools: vi.fn().mockResolvedValue([]), callTool: vi.fn() };
+    const fetchImpl = vi.fn(async (_url: unknown, _init?: RequestInit): Promise<Response> => {
+      if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+      return new Response(
+        `data: {"choices":[{"delta":{"content":"ตอบแล้ว"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      );
+    });
+    const handler = createBotHandler(
+      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn().mockResolvedValue([]), fetchImpl },
+      adapter,
+      mcp
+    );
+    return { adapter, handler, fetchImpl };
+  }
+
+  it("shows a typing indicator before it starts thinking", async () => {
+    const { adapter, handler } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "สวัสดี" },
+      source: { userId: "line-loading" },
+      replyToken: "rt-1"
+    });
+
+    expect(adapter.showLoading).toHaveBeenCalledWith("line-loading");
+  });
+
+  it("answers two quick messages in order instead of dropping the second", async () => {
+    const { adapter, handler } = harness({ delayMs: 25 });
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    const first = handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "คำถามแรก" },
+      source: { userId: "line-queue" },
+      replyToken: "rt-a"
+    });
+    const second = handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "คำถามสอง" },
+      source: { userId: "line-queue" },
+      replyToken: "rt-b"
+    });
+    await Promise.all([first, second]);
+
+    const sent = adapter.sendText.mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["ตอบแล้ว", "ตอบแล้ว"]);
+    // Both reached the model — the second message was queued, not discarded.
+    expect(adapter.sendText).toHaveBeenCalledTimes(2);
+  });
+
+  it("records the turn, so the next question has something to refer to", async () => {
+    const { handler } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "รอบซักวันนี้" },
+      source: { userId: "line-memory" },
+      replyToken: "rt-m"
+    });
+
+    const [row] = allTurns("line-memory");
+    expect(row).toMatchObject({
+      lineUserId: "line-memory",
+      userText: "รอบซักวันนี้",
+      answerText: "ตอบแล้ว",
+      delivered: "reply"
+    });
+    expect(row.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("sends the previous turns as messages, not as one pasted prompt", async () => {
+    const { handler, fetchImpl } = harness();
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+    const userId = "line-history";
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ภาพรวมวันนี้" },
+      source: { userId },
+      replyToken: "rt-1"
+    });
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "แล้วเมื่อวานล่ะ" },
+      source: { userId },
+      replyToken: "rt-2"
+    });
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[1][1]?.body)) as {
+      messages: { role: string; content: string }[];
+    };
+    // The SDK puts the system prompt in the same array; the conversation is what
+    // follows it, and it must alternate user/assistant ending on the new question.
+    const conversation = body.messages.filter((message) => message.role !== "system");
+    expect(conversation.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(conversation[0].content).toBe("ภาพรวมวันนี้");
+    expect(conversation[2].content).toBe("แล้วเมื่อวานล่ะ");
   });
 });

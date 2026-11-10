@@ -4,6 +4,13 @@
 
 export type PlatformName = "line" | "telegram";
 
+/**
+ * How a message actually left: a reply costs nothing, a push spends one of the
+ * monthly allowance, and "unknown" is an honest third answer for an adapter that
+ * cannot say — it must never be recorded as free when it might have cost.
+ */
+export type DeliveryKind = "reply" | "push" | "unknown";
+
 export interface PlatformAdapter {
   readonly platform: PlatformName;
   /**
@@ -14,7 +21,13 @@ export interface PlatformAdapter {
    * alerts. The token is short-lived and single-use, so an implementation must
    * fall back to a push when it is missing or rejected.
    */
-  sendText(userId: string, text: string, options?: { replyToken?: string }): Promise<void>;
+  sendText(userId: string, text: string, options?: { replyToken?: string }): Promise<DeliveryKind>;
+  /**
+   * Typing indicator while the model works. Free, and the only signal the user
+   * gets between "sent" and "answered" — without it a 6-second tool loop looks
+   * like a bot that is broken.
+   */
+  showLoading?(userId: string, seconds?: number): Promise<void>;
   /**
    * Push a rich card. Optional because the adapter interface predates cards and
    * a second platform may not have an equivalent: a caller that cannot send one

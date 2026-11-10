@@ -15,6 +15,7 @@ import {
   purgeExpiredChatMessages,
   updateAiSettings
 } from "./ai-settings";
+import { purgeExpiredChatTurns } from "./bot/memory";
 import { randomUUID } from "node:crypto";
 import { recordAiChat, resolveAuditActor } from "./ai-audit";
 import { plainChat } from "./llm-client";
@@ -28,7 +29,10 @@ const settingsSchema = z.object({
   apiKey: z.string().min(1).optional().nullable(),
   model: z.string().min(1).optional(),
   systemPrompt: z.string().optional(),
-  temperature: z.number().int().min(0).max(100).optional()
+  temperature: z.number().int().min(0).max(100).optional(),
+  // Tool round-trips per answer. 1 cannot answer with a tool, 6 is a loop rather
+  // than an answer, so the range is narrow on purpose.
+  maxSteps: z.number().int().min(1).max(6).optional()
 });
 
 const chatSchema = z.object({
@@ -190,13 +194,14 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
   });
 
   // On-demand purge of conversation content older than the 30-day window.
-  // It clears chat_message only: audit_log rows are append-only and survive, so
-  // "the conversation was deleted" and "nothing was ever called" stay different
-  // facts.
+  // It clears chat_message and the LINE bot's chat_turn: audit_log rows are
+  // append-only and survive, so "the conversation was deleted" and "nothing was
+  // ever called" stay different facts.
   app.post("/api/ai/chat/purge", (c) => {
     const owner = requireOwner(c);
     if (!owner) return c.json({ error: { code: "forbidden", message: "Owner role required" } }, 403);
     const deleted = purgeExpiredChatMessages();
-    return c.json({ deleted });
+    const deletedTurns = purgeExpiredChatTurns();
+    return c.json({ deleted, deletedTurns });
   });
 }

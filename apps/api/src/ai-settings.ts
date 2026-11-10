@@ -21,6 +21,8 @@ export type AiSettingsPublic = {
   model: string;
   systemPrompt: string;
   temperature: number;
+  /** Tool round-trips one answer may take in the LINE bot. */
+  maxSteps: number;
   hasApiKey: boolean;
   updatedAt: number | null;
 };
@@ -31,7 +33,16 @@ export type AiSettingsInput = {
   model?: string;
   systemPrompt?: string;
   temperature?: number;
+  maxSteps?: number;
 };
+
+/** 1 round-trip answers nothing with a tool; 6 is a loop, not an answer. */
+export const MAX_STEPS_MIN = 1;
+export const MAX_STEPS_MAX = 6;
+
+export function clampMaxSteps(value: number): number {
+  return Math.min(MAX_STEPS_MAX, Math.max(MAX_STEPS_MIN, Math.round(value)));
+}
 
 export const DEFAULT_SETTINGS: Omit<AiSettingsPublic, "updatedAt"> = {
   baseUrl: "https://llm.kovaspire.com",
@@ -42,6 +53,7 @@ export const DEFAULT_SETTINGS: Omit<AiSettingsPublic, "updatedAt"> = {
     "ถ้าข้อมูลเป็นข้อมูลจำลอง (synthetic หรือ mixed) ให้บอกผู้ใช้อย่างชัดเจน\n" +
     "ตัวเลขเงินเป็นสตางค์ (satang) ให้แปลงเป็นบาทก่อนแสดง",
   temperature: 70,
+  maxSteps: 4,
   hasApiKey: false
 };
 
@@ -78,6 +90,7 @@ export function getAiSettings(): AiSettingsPublic {
     model: row.model,
     systemPrompt: row.systemPrompt,
     temperature: row.temperature,
+    maxSteps: row.maxSteps,
     hasApiKey: Boolean(row.apiKeyEncrypted),
     updatedAt: row.updatedAt.getTime()
   };
@@ -90,6 +103,7 @@ export function getAiSettingsWithKey(): {
   model: string;
   systemPrompt: string;
   temperature: number;
+  maxSteps: number;
 } {
   const row = db.select().from(aiSettings).where(eq(aiSettings.id, "default")).get();
   const base = row ?? null;
@@ -98,7 +112,8 @@ export function getAiSettingsWithKey(): {
     apiKey: base?.apiKeyEncrypted ? decryptApiKey(base.apiKeyEncrypted) : null,
     model: base?.model ?? DEFAULT_SETTINGS.model,
     systemPrompt: base?.systemPrompt ?? DEFAULT_SETTINGS.systemPrompt,
-    temperature: base?.temperature ?? DEFAULT_SETTINGS.temperature
+    temperature: base?.temperature ?? DEFAULT_SETTINGS.temperature,
+    maxSteps: base?.maxSteps ?? DEFAULT_SETTINGS.maxSteps
   };
 }
 
@@ -122,6 +137,9 @@ export function updateAiSettings(input: AiSettingsInput, actorUserId: string): A
     model: input.model ?? existing?.model ?? DEFAULT_SETTINGS.model,
     systemPrompt: input.systemPrompt ?? existing?.systemPrompt ?? DEFAULT_SETTINGS.systemPrompt,
     temperature: input.temperature ?? existing?.temperature ?? DEFAULT_SETTINGS.temperature,
+    maxSteps: input.maxSteps === undefined
+      ? (existing?.maxSteps ?? DEFAULT_SETTINGS.maxSteps)
+      : clampMaxSteps(input.maxSteps),
     updatedByUserId: actor.actorUserId,
     updatedAt: now,
     createdAt: existing?.createdAt ?? now
@@ -139,6 +157,7 @@ export function updateAiSettings(input: AiSettingsInput, actorUserId: string): A
         baseUrl: next.baseUrl,
         model: next.model,
         temperature: next.temperature,
+        maxSteps: next.maxSteps,
         keyChanged: input.apiKey !== undefined && input.apiKey !== null && input.apiKey !== "",
         ...(actor.actorUnresolved ? { actorUnresolved: true } : {})
       }),
@@ -151,6 +170,7 @@ export function updateAiSettings(input: AiSettingsInput, actorUserId: string): A
     model: next.model,
     systemPrompt: next.systemPrompt,
     temperature: next.temperature,
+    maxSteps: next.maxSteps,
     hasApiKey: Boolean(next.apiKeyEncrypted),
     updatedAt: now.getTime()
   };

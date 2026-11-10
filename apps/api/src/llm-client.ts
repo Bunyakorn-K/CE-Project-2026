@@ -72,9 +72,17 @@ export function createGatewayModel(
   return provider.chatModel(model);
 }
 
+export type PriorMessage = { role: "user" | "assistant"; content: string };
+
 export type AgenticAnswerOptions = {
   instructions: string;
   input: string;
+  /**
+   * Earlier turns, oldest first. Sent as chat messages rather than folded into the
+   * prompt: the model needs to see the alternation to resolve "and yesterday?", and
+   * a transcript pasted into one user message reads as a document to summarise.
+   */
+  messages?: PriorMessage[];
   tools: GatewayToolDef[];
   execute: GatewayToolExecutor;
   temperature?: number;
@@ -89,15 +97,23 @@ export type AgenticAnswerOptions = {
  * SDK feeds results back automatically (bounded by maxSteps), and we return
  * the final text.
  */
-export async function agenticAnswer(
+export type AgenticAnswerResult = {
+  text: string;
+  /** How many model turns ran, including the one that produced the answer. */
+  steps: number;
+  toolCalls: number;
+};
+
+export async function agenticAnswerWithMeta(
   baseUrl: string,
   apiKey: string,
   model: string,
   options: AgenticAnswerOptions
-): Promise<string> {
+): Promise<AgenticAnswerResult> {
   const {
     instructions,
     input,
+    messages,
     tools,
     execute,
     temperature = 70,
@@ -111,14 +127,29 @@ export async function agenticAnswer(
   const result = streamText({
     model: createGatewayModel(baseUrl, apiKey, model, fetchImpl),
     system: instructions,
-    prompt: input,
+    // The SDK takes messages OR a prompt; with history the current question is the
+    // last message so the alternation stays valid.
+    ...(messages?.length
+      ? { messages: [...messages, { role: "user" as const, content: input }] }
+      : { prompt: input }),
     tools: toSdkTools(tools, execute),
     stopWhen: stepCountIs(maxSteps),
     temperature: temperature / 100,
     ...(maxTokens !== undefined ? { maxTokens } : {})
   });
-  const text = await result.text;
-  return text || "ขออภัย ไม่สามารถหาคำตอบได้";
+  const [text, steps] = await Promise.all([result.text, result.steps]);
+  const toolCalls = steps.reduce((total, step) => total + (step.toolCalls?.length ?? 0), 0);
+  return { text: text || "ขออภัย ไม่สามารถหาคำตอบได้", steps: steps.length, toolCalls };
+}
+
+/** Text only, for callers that do not record how the answer was produced. */
+export async function agenticAnswer(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  options: AgenticAnswerOptions
+): Promise<string> {
+  return (await agenticAnswerWithMeta(baseUrl, apiKey, model, options)).text;
 }
 
 export type PlainChatOptions = {
