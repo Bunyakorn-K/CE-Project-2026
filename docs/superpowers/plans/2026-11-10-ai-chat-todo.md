@@ -21,12 +21,15 @@ Legend: `[ ]` not started · `[x]` built and verified
 
 ## P2 — the bot can be talked to, not just asked
 
-- [ ] postback handler with typed payloads (`ack:<alertId>`, `branch:<id>`, `help`)
-- [ ] `รับทราบ` via postback writes `alert_acknowledgement`, re-checks scope server-side, replies with what changed
-- [ ] quick replies on the first message of a thread (ภาพรวมวันนี้ / เครื่องที่มีปัญหา / แจ้งซ่อม)
-- [ ] follow event → welcome message (carries a reply token, so free) naming what the bot can answer
-- [ ] `help` answer with three role-appropriate example questions, from the same definitions the rich menu uses
-- [ ] tests: postback scope rejection, ack idempotence, quick-reply payloads, follow handling
+- [x] postback handler with typed payloads (`ack:<alertId>`, `branch:<id>`, `help`) — `branch:` is parsed as unknown on purpose; branch selection stays in the app
+- [x] `รับทราบ` via postback writes `alert_acknowledgement`, re-checks scope server-side, replies with what changed
+- [x] quick replies on the first message of a thread (ภาพรวมวันนี้ / เมื่อวาน / เครื่องที่มีปัญหา)
+- [x] follow event → welcome message (carries a reply token, so free) naming what the bot can answer
+- [x] `help` answer with role-appropriate examples and the menu labels, from the same definitions the rich menu uses
+- [x] tests: postback scope rejection, ack idempotence, quick-reply payloads, follow handling
+- [x] verified in production (`25382d2`): follow, `help` and `ack:<alert>` each accepted
+      (webhook 200); the ack wrote `alert_acknowledgement` for the real LINE user with
+      note "acknowledged in LINE chat" and an `alert.acknowledged` audit row
 
 ## P3 — it cannot surprise us
 
