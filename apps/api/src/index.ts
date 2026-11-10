@@ -52,6 +52,9 @@ import { LineAdapter } from "./bot/line-adapter";
 import { isAlertSweepTokenValid, performAlertSweep } from "./alert-sweep";
 import { lineUserIdForUser, readAlertRows, toPublicAlert } from "./alert-detail";
 import { readAlertSettings, saveAlertSettings } from "./alert-settings";
+import { linkMenuForUser, richMenuDefinitions, type RichMenuApi, type RichMenuKey } from "./rich-menu";
+import { createRichMenuApi, syncAndLinkUsers } from "./rich-menu-service";
+import { readMenuIds, readMenuSyncTime } from "./rich-menu-store";
 import { budgetState } from "./alert-budget";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
@@ -216,6 +219,22 @@ export function createApp(dependencies: AppDependencies = {}) {
       const principal = resolveUserPrincipal(knownUser, "liff");
       if (principal.grants.length === 0) {
         return apiError(c, 403, "ACCESS_NOT_GRANTED", "Your access has been revoked or has not been granted");
+      }
+
+      // Point the panel at the menu for this role. Rich menus are not messages,
+      // so this costs nothing against the 300-a-month allowance, and doing it on
+      // login is what makes a role change take effect without a bulk sync. A
+      // failure here must never fail the login: the panel is cosmetic, the
+      // session is not.
+      const menuApi = richMenuClient();
+      const menuIds = readMenuIds();
+      if (menuApi && menuIds.owner && menuIds.manager && menuIds.technician && menuIds.default) {
+        void linkMenuForUser(
+          menuApi,
+          profile.userId,
+          distinctRoles(principal),
+          menuIds as Record<RichMenuKey, string>
+        ).catch(() => undefined);
       }
 
       const session = createLiffSession(knownUser.id);
@@ -572,6 +591,61 @@ export function createApp(dependencies: AppDependencies = {}) {
       return apiError(c, 403, "ALERT_FORBIDDEN", "This alert was not sent to you and its branch is outside your access");
     }
     return c.json({ alert: toPublicAlert(visible) });
+  });
+
+  /**
+   * The rich menus this deployment owns, and when they were last synced.
+   *
+   * Owner-only: a sync replaces the panel for every user, which is a decision
+   * about what the whole shop sees.
+   */
+  app.get("/api/admin/rich-menus", (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const liffId = process.env.LIFF_ID ?? "";
+    return c.json({
+      liffConfigured: Boolean(liffId),
+      lineConfigured: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+      syncedAt: readMenuSyncTime(),
+      ids: readMenuIds(),
+      menus: liffId
+        ? richMenuDefinitions(liffId).map((definition) => ({
+            key: definition.key,
+            name: definition.name,
+            chatBarText: definition.chatBarText,
+            labels: definition.labels,
+            areas: definition.areas
+          }))
+        : []
+    });
+  });
+
+  /**
+   * Create the menus, upload the images, set the fallback, and link every known
+   * user. LINE cannot edit a menu, so this creates new ones and deletes the old.
+   */
+  app.post("/api/admin/rich-menus/sync", async (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const api = richMenuClient();
+    if (!api) {
+      return apiError(c, 503, "LINE_NOT_CONFIGURED", "LINE_CHANNEL_ACCESS_TOKEN is not configured");
+    }
+    const liffId = process.env.LIFF_ID;
+    if (!liffId) {
+      return apiError(c, 503, "LIFF_NOT_CONFIGURED", "LIFF_ID is not configured, so the menu buttons would go nowhere");
+    }
+    try {
+      const result = await syncAndLinkUsers(api, { liffId });
+      return c.json(result);
+    } catch (error) {
+      return apiError(
+        c,
+        502,
+        "RICH_MENU_SYNC_FAILED",
+        error instanceof Error ? error.message : "rich menu sync failed"
+      );
+    }
   });
 
   /**
@@ -1119,6 +1193,20 @@ function getNullableString(value: Record<string, unknown>, key: string) {
 function getRole(value: Record<string, unknown>, key: string): Role | null {
   const role = getString(value, key);
   return role === "owner" || role === "manager" || role === "technician" ? role : null;
+}
+
+/**
+ * One LINE client for rich menus, created on first use.
+ *
+ * The login path links a menu on every sign-in; building a client per request
+ * would be a new HTTP agent each time for a call that is free but not instant.
+ */
+let richMenuApi: RichMenuApi | null = null;
+function richMenuClient(): RichMenuApi | null {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) return null;
+  richMenuApi ??= createRichMenuApi(token);
+  return richMenuApi;
 }
 
 function distinctRoles(principal: Principal) {

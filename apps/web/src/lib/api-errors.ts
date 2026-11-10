@@ -61,7 +61,10 @@ const API_ERROR_COPY: Record<string, string> = {
   INVALID_LIFF_TOKEN: "ข้อมูลการเข้าสู่ระบบจาก LINE ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่",
   LIFF_TOKEN_REJECTED: "เซสชัน LINE หมดอายุ กรุณาเข้าสู่ระบบใหม่",
   LIFF_VERIFICATION_FAILED: "ยืนยันตัวตนจาก LINE ไม่สำเร็จ กรุณาเข้าสู่ระบบใหม่",
-  UNTRUSTED_ORIGIN: "คำขอมาจากแหล่งที่ไม่ได้รับความเชื่อถือ"
+  UNTRUSTED_ORIGIN: "คำขอมาจากแหล่งที่ไม่ได้รับความเชื่อถือ",
+  LINE_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่าช่องทาง LINE ของระบบ",
+  LIFF_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่า LIFF ไอดี ปุ่มในเมนูจะเปิดไปไม่ได้",
+  RICH_MENU_SYNC_FAILED: "อัปเดตเมนู LINE ไม่สำเร็จ กรุณาลองใหม่หรือตรวจสอบการเชื่อมต่อกับ LINE"
 };
 
 export const API_ERROR_FALLBACK = "ไม่สามารถโหลดข้อมูลได้";

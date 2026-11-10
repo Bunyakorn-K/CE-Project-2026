@@ -85,5 +85,10 @@ RUN node -e "const r=p=>require('/app/node_modules/'+p+'/package.json').version,
 COPY --from=build /app/apps/api/dist /app/dist
 COPY --from=build /app/apps/web/dist /app/public
 
+# The rich menu images, rendered by deploy/line/render-rich-menus.py and committed.
+# They are uploaded to LINE by POST /api/admin/rich-menus/sync, which runs in this
+# container — so the PNGs have to be here, not only in the repository.
+COPY deploy/line/rich-menus /app/rich-menus
+
 EXPOSE 8787
 CMD ["node", "dist/index.mjs"]

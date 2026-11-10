@@ -170,6 +170,18 @@ export const alertSettings = sqliteTable("alert_settings", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
 });
 
+// The rich menu ids LINE assigned, one row per role key.
+//
+// LINE has no "update a menu" call, so a sync creates new menus and deletes the
+// old ones; the ids therefore change on every sync and cannot be constants. They
+// are stored rather than looked up on each login: the login path must not depend
+// on a second API call succeeding.
+export const richMenu = sqliteTable("rich_menu", {
+  key: text("key").primaryKey(),
+  richMenuId: text("rich_menu_id").notNull(),
+  syncedAt: integer("synced_at", { mode: "timestamp_ms" }).notNull()
+});
+
 export const chatMessage = sqliteTable("chat_message", {
   id: text("id").primaryKey(),
   threadId: text("thread_id").notNull(),
@@ -196,5 +208,6 @@ export const schema = {
   alertNotification,
   aiSettings,
   alertSettings,
+  richMenu,
   chatMessage
 };

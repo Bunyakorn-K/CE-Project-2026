@@ -22,6 +22,7 @@ import { Route as AuthenticatedPlaygroundRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAiRouteImport } from './routes/_authenticated/admin/ai'
 import { Route as AuthenticatedAdminAlertsRouteImport } from './routes/_authenticated/admin/alerts'
+import { Route as AuthenticatedAdminLineRouteImport } from './routes/_authenticated/admin/line'
 import { Route as AuthenticatedAlertsAlertIdRouteImport } from './routes/_authenticated/alerts.$alertId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -89,6 +90,11 @@ const AuthenticatedAdminAlertsRoute =
     path: '/alerts',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminLineRoute = AuthenticatedAdminLineRouteImport.update({
+  id: '/line',
+  path: '/line',
+  getParentRoute: () => AuthenticatedAdminRoute,
+} as any)
 const AuthenticatedAlertsAlertIdRoute =
   AuthenticatedAlertsAlertIdRouteImport.update({
     id: '/alerts/$alertId',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/playground': typeof AuthenticatedPlaygroundRoute
   '/admin/ai': typeof AuthenticatedAdminAiRoute
   '/admin/alerts': typeof AuthenticatedAdminAlertsRoute
+  '/admin/line': typeof AuthenticatedAdminLineRoute
   '/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/playground': typeof AuthenticatedPlaygroundRoute
   '/admin/ai': typeof AuthenticatedAdminAiRoute
   '/admin/alerts': typeof AuthenticatedAdminAlertsRoute
+  '/admin/line': typeof AuthenticatedAdminLineRoute
   '/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
 }
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/_authenticated/playground': typeof AuthenticatedPlaygroundRoute
   '/_authenticated/admin/ai': typeof AuthenticatedAdminAiRoute
   '/_authenticated/admin/alerts': typeof AuthenticatedAdminAlertsRoute
+  '/_authenticated/admin/line': typeof AuthenticatedAdminLineRoute
   '/_authenticated/alerts/$alertId': typeof AuthenticatedAlertsAlertIdRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/playground'
     | '/admin/ai'
     | '/admin/alerts'
+    | '/admin/line'
     | '/alerts/$alertId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/playground'
     | '/admin/ai'
     | '/admin/alerts'
+    | '/admin/line'
     | '/alerts/$alertId'
     | '/admin'
   id:
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/_authenticated/playground'
     | '/_authenticated/admin/ai'
     | '/_authenticated/admin/alerts'
+    | '/_authenticated/admin/line'
     | '/_authenticated/alerts/$alertId'
     | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
@@ -291,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminAlertsRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/line': {
+      id: '/_authenticated/admin/line'
+      path: '/line'
+      fullPath: '/admin/line'
+      preLoaderRoute: typeof AuthenticatedAdminLineRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/alerts/$alertId': {
       id: '/_authenticated/alerts/$alertId'
       path: '/alerts/$alertId'
@@ -304,12 +323,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminAiRoute: typeof AuthenticatedAdminAiRoute
   AuthenticatedAdminAlertsRoute: typeof AuthenticatedAdminAlertsRoute
+  AuthenticatedAdminLineRoute: typeof AuthenticatedAdminLineRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminAiRoute: AuthenticatedAdminAiRoute,
   AuthenticatedAdminAlertsRoute: AuthenticatedAdminAlertsRoute,
+  AuthenticatedAdminLineRoute: AuthenticatedAdminLineRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
 }
 

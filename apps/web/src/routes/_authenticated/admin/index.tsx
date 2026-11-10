@@ -237,6 +237,14 @@ export function AdminHome() {
           <Link to="/admin/alerts" className="secondary-button mt-4 w-fit">เปิดการตั้งค่าการแจ้งเตือน</Link>
         </Card.Content>
       </Card>
+
+      <Card variant="transparent" className="surface-card admin-section">
+        <Card.Content>
+          <div className="section-heading"><h2>เมนู LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
+          <p>แผงเมนูในแชท LINE แยกตามบทบาท และปุ่มซิงก์เมนูกับ LINE</p>
+          <Link to="/admin/line" className="secondary-button mt-4 w-fit">เปิดเมนู LINE</Link>
+        </Card.Content>
+      </Card>
     </div>
   );
 }

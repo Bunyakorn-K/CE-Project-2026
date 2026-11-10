@@ -137,6 +137,11 @@ export function initializeDatabase() {
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS rich_menu (
+      key text PRIMARY KEY NOT NULL,
+      rich_menu_id text NOT NULL,
+      synced_at integer NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS alert_settings (
       id text PRIMARY KEY NOT NULL DEFAULT 'default',
       renotify_hours integer NOT NULL DEFAULT 12,

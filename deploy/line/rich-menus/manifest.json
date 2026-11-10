@@ -1,0 +1,195 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 843
+  },
+  "menus": [
+    {
+      "key": "owner",
+      "name": "laundrytwin:owner:v1",
+      "chatBarText": "เมนูเจ้าของ",
+      "labels": [
+        "ภาพรวม",
+        "วิเคราะห์",
+        "เครื่องซักผ้า",
+        "ผู้ดูแล"
+      ],
+      "areas": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 625,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/dashboard"
+          }
+        },
+        {
+          "bounds": {
+            "x": 625,
+            "y": 0,
+            "width": 625,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/analytics"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1250,
+            "y": 0,
+            "width": 625,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/machines"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1875,
+            "y": 0,
+            "width": 625,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/admin"
+          }
+        }
+      ],
+      "file": "owner.png",
+      "bytes": 41607
+    },
+    {
+      "key": "manager",
+      "name": "laundrytwin:manager:v1",
+      "chatBarText": "เมนูผู้จัดการ",
+      "labels": [
+        "ภาพรวม",
+        "วิเคราะห์",
+        "เครื่องซักผ้า"
+      ],
+      "areas": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 833,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/dashboard"
+          }
+        },
+        {
+          "bounds": {
+            "x": 833,
+            "y": 0,
+            "width": 833,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/analytics"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1666,
+            "y": 0,
+            "width": 834,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/machines"
+          }
+        }
+      ],
+      "file": "manager.png",
+      "bytes": 43635
+    },
+    {
+      "key": "technician",
+      "name": "laundrytwin:technician:v1",
+      "chatBarText": "เมนูช่าง",
+      "labels": [
+        "ภาพรวม",
+        "เครื่องซักผ้า",
+        "แจ้งซ่อม"
+      ],
+      "areas": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 833,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/dashboard"
+          }
+        },
+        {
+          "bounds": {
+            "x": 833,
+            "y": 0,
+            "width": 833,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/machines"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1666,
+            "y": 0,
+            "width": 834,
+            "height": 843
+          },
+          "action": {
+            "type": "message",
+            "text": "แจ้งซ่อม"
+          }
+        }
+      ],
+      "file": "technician.png",
+      "bytes": 45525
+    },
+    {
+      "key": "default",
+      "name": "laundrytwin:default:v1",
+      "chatBarText": "LaundryTwin",
+      "labels": [
+        "ขอสิทธิ์ใช้งาน"
+      ],
+      "areas": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 2500,
+            "height": 843
+          },
+          "action": {
+            "type": "message",
+            "text": "ขอสิทธิ์ใช้งาน"
+          }
+        }
+      ],
+      "file": "default.png",
+      "bytes": 34555
+    }
+  ]
+}
