@@ -6,13 +6,102 @@
   "menus": [
     {
       "key": "owner",
-      "name": "laundrytwin:owner:v1",
+      "name": "laundrytwin:owner:v2",
       "chatBarText": "เมนูเจ้าของ",
       "labels": [
         "ภาพรวม",
         "วิเคราะห์",
         "เครื่องซักผ้า",
-        "ผู้ดูแล"
+        "ผู้ดูแล",
+        "แชทกับ AI"
+      ],
+      "icons": [
+        "grid",
+        "chart",
+        "washer",
+        "shield",
+        "chat"
+      ],
+      "areas": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 500,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/dashboard"
+          }
+        },
+        {
+          "bounds": {
+            "x": 500,
+            "y": 0,
+            "width": 500,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/analytics"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1000,
+            "y": 0,
+            "width": 500,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/machines"
+          }
+        },
+        {
+          "bounds": {
+            "x": 1500,
+            "y": 0,
+            "width": 500,
+            "height": 843
+          },
+          "action": {
+            "type": "uri",
+            "uri": "https://liff.line.me/0000000000-placeholder/admin"
+          }
+        },
+        {
+          "bounds": {
+            "x": 2000,
+            "y": 0,
+            "width": 500,
+            "height": 843
+          },
+          "action": {
+            "type": "message",
+            "text": "สวัสดี"
+          }
+        }
+      ],
+      "file": "owner.png",
+      "bytes": 83741
+    },
+    {
+      "key": "manager",
+      "name": "laundrytwin:manager:v2",
+      "chatBarText": "เมนูผู้จัดการ",
+      "labels": [
+        "ภาพรวม",
+        "วิเคราะห์",
+        "เครื่องซักผ้า",
+        "แชทกับ AI"
+      ],
+      "icons": [
+        "grid",
+        "chart",
+        "washer",
+        "chat"
       ],
       "areas": [
         {
@@ -59,79 +148,36 @@
             "height": 843
           },
           "action": {
-            "type": "uri",
-            "uri": "https://liff.line.me/0000000000-placeholder/admin"
-          }
-        }
-      ],
-      "file": "owner.png",
-      "bytes": 41607
-    },
-    {
-      "key": "manager",
-      "name": "laundrytwin:manager:v1",
-      "chatBarText": "เมนูผู้จัดการ",
-      "labels": [
-        "ภาพรวม",
-        "วิเคราะห์",
-        "เครื่องซักผ้า"
-      ],
-      "areas": [
-        {
-          "bounds": {
-            "x": 0,
-            "y": 0,
-            "width": 833,
-            "height": 843
-          },
-          "action": {
-            "type": "uri",
-            "uri": "https://liff.line.me/0000000000-placeholder/dashboard"
-          }
-        },
-        {
-          "bounds": {
-            "x": 833,
-            "y": 0,
-            "width": 833,
-            "height": 843
-          },
-          "action": {
-            "type": "uri",
-            "uri": "https://liff.line.me/0000000000-placeholder/analytics"
-          }
-        },
-        {
-          "bounds": {
-            "x": 1666,
-            "y": 0,
-            "width": 834,
-            "height": 843
-          },
-          "action": {
-            "type": "uri",
-            "uri": "https://liff.line.me/0000000000-placeholder/machines"
+            "type": "message",
+            "text": "สวัสดี"
           }
         }
       ],
       "file": "manager.png",
-      "bytes": 43635
+      "bytes": 82499
     },
     {
       "key": "technician",
-      "name": "laundrytwin:technician:v1",
+      "name": "laundrytwin:technician:v2",
       "chatBarText": "เมนูช่าง",
       "labels": [
         "ภาพรวม",
         "เครื่องซักผ้า",
-        "แจ้งซ่อม"
+        "แจ้งซ่อม",
+        "แชทกับ AI"
+      ],
+      "icons": [
+        "grid",
+        "washer",
+        "wrench",
+        "chat"
       ],
       "areas": [
         {
           "bounds": {
             "x": 0,
             "y": 0,
-            "width": 833,
+            "width": 625,
             "height": 843
           },
           "action": {
@@ -141,9 +187,9 @@
         },
         {
           "bounds": {
-            "x": 833,
+            "x": 625,
             "y": 0,
-            "width": 833,
+            "width": 625,
             "height": 843
           },
           "action": {
@@ -153,43 +199,72 @@
         },
         {
           "bounds": {
-            "x": 1666,
+            "x": 1250,
             "y": 0,
-            "width": 834,
+            "width": 625,
             "height": 843
           },
           "action": {
             "type": "message",
             "text": "แจ้งซ่อม"
           }
+        },
+        {
+          "bounds": {
+            "x": 1875,
+            "y": 0,
+            "width": 625,
+            "height": 843
+          },
+          "action": {
+            "type": "message",
+            "text": "สวัสดี"
+          }
         }
       ],
       "file": "technician.png",
-      "bytes": 45525
+      "bytes": 83771
     },
     {
       "key": "default",
-      "name": "laundrytwin:default:v1",
+      "name": "laundrytwin:default:v2",
       "chatBarText": "LaundryTwin",
       "labels": [
-        "ขอสิทธิ์ใช้งาน"
+        "ขอสิทธิ์ใช้งาน",
+        "แชทกับ AI"
+      ],
+      "icons": [
+        "key",
+        "chat"
       ],
       "areas": [
         {
           "bounds": {
             "x": 0,
             "y": 0,
-            "width": 2500,
+            "width": 1250,
             "height": 843
           },
           "action": {
             "type": "message",
             "text": "ขอสิทธิ์ใช้งาน"
           }
+        },
+        {
+          "bounds": {
+            "x": 1250,
+            "y": 0,
+            "width": 1250,
+            "height": 843
+          },
+          "action": {
+            "type": "message",
+            "text": "สวัสดี"
+          }
         }
       ],
       "file": "default.png",
-      "bytes": 34555
+      "bytes": 55317
     }
   ]
 }

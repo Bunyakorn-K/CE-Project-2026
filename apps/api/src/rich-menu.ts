@@ -39,6 +39,10 @@ export type RichMenuAction =
 
 export type RichMenuArea = { bounds: Bounds; action: RichMenuAction };
 
+/** Icon names the renderer knows how to draw. Kept as strings so this file stays
+ *  platform-free and the picture is a rendering concern. */
+export type RichMenuIcon = "grid" | "chart" | "washer" | "shield" | "wrench" | "chat" | "key";
+
 export type RichMenuDefinition = {
   key: RichMenuKey;
   /** LINE-side name. Versioned: a menu object cannot be edited, only replaced. */
@@ -47,6 +51,9 @@ export type RichMenuDefinition = {
   chatBarText: string;
   /** What the renderer draws in each column, in the same order as `areas`. */
   labels: string[];
+  /** One icon and one tile colour per column, same order as `areas`. */
+  icons: RichMenuIcon[];
+  colors: string[];
   /** Accent colour for the renderer, so the panel matches the role. */
   accent: string;
   areas: RichMenuArea[];
@@ -78,8 +85,28 @@ type MenuSpec = {
   key: RichMenuKey;
   chatBarText: string;
   accent: string;
-  items: { label: string; path?: string; message?: string }[];
+  items: { label: string; icon: RichMenuIcon; color: string; path?: string; message?: string }[];
 };
+
+// A tile palette rather than one accent per role: the panel is a grid of buttons,
+// and four identical squares of the same blue is harder to aim at than four
+// distinguishable tiles. The reference the owner pointed at does the same.
+const BLUE = "#1f6feb";
+const GREEN = "#2ea043";
+const ORANGE = "#d29922";
+const PURPLE = "#8250df";
+const TEAL = "#1b7c83";
+const SLATE = "#57606a";
+
+/**
+ * The chat tile.
+ *
+ * It is a `message` action, not a link: tapping it sends a line of text as the
+ * user, which opens the conversation and is answered with a free reply. That is
+ * the difference between "the panel has a button to the web app" and "the panel
+ * can start a conversation with the assistant".
+ */
+const CHAT = { label: "แชทกับ AI", icon: "chat" as RichMenuIcon, color: PURPLE, message: "สวัสดี" };
 
 /**
  * What each role gets, and why.
@@ -93,42 +120,48 @@ const SPECS: MenuSpec[] = [
   {
     key: "owner",
     chatBarText: "เมนูเจ้าของ",
-    accent: "#1f6feb",
+    accent: BLUE,
     items: [
-      { label: "ภาพรวม", path: "/dashboard" },
-      { label: "วิเคราะห์", path: "/analytics" },
-      { label: "เครื่องซักผ้า", path: "/machines" },
-      { label: "ผู้ดูแล", path: "/admin" }
+      { label: "ภาพรวม", icon: "grid", color: BLUE, path: "/dashboard" },
+      { label: "วิเคราะห์", icon: "chart", color: GREEN, path: "/analytics" },
+      { label: "เครื่องซักผ้า", icon: "washer", color: TEAL, path: "/machines" },
+      { label: "ผู้ดูแล", icon: "shield", color: ORANGE, path: "/admin" },
+      CHAT
     ]
   },
   {
     key: "manager",
     chatBarText: "เมนูผู้จัดการ",
-    accent: "#2ea043",
+    accent: GREEN,
     items: [
-      { label: "ภาพรวม", path: "/dashboard" },
-      { label: "วิเคราะห์", path: "/analytics" },
-      { label: "เครื่องซักผ้า", path: "/machines" }
+      { label: "ภาพรวม", icon: "grid", color: BLUE, path: "/dashboard" },
+      { label: "วิเคราะห์", icon: "chart", color: GREEN, path: "/analytics" },
+      { label: "เครื่องซักผ้า", icon: "washer", color: TEAL, path: "/machines" },
+      CHAT
     ]
   },
   {
     key: "technician",
     chatBarText: "เมนูช่าง",
-    accent: "#d29922",
+    accent: ORANGE,
     items: [
-      { label: "ภาพรวม", path: "/dashboard" },
-      { label: "เครื่องซักผ้า", path: "/machines" },
+      { label: "ภาพรวม", icon: "grid", color: BLUE, path: "/dashboard" },
+      { label: "เครื่องซักผ้า", icon: "washer", color: TEAL, path: "/machines" },
       // A message action, not a page: the technician's next step when a machine
       // misbehaves is to tell someone, and a message the user sends is answered
       // with a free reply.
-      { label: "แจ้งซ่อม", message: "แจ้งซ่อม" }
+      { label: "แจ้งซ่อม", icon: "wrench", color: ORANGE, message: "แจ้งซ่อม" },
+      CHAT
     ]
   },
   {
     key: "default",
     chatBarText: "LaundryTwin",
-    accent: "#6e7781",
-    items: [{ label: "ขอสิทธิ์ใช้งาน", message: "ขอสิทธิ์ใช้งาน" }]
+    accent: SLATE,
+    items: [
+      { label: "ขอสิทธิ์ใช้งาน", icon: "key", color: SLATE, message: "ขอสิทธิ์ใช้งาน" },
+      CHAT
+    ]
   }
 ];
 
@@ -136,9 +169,14 @@ function buildDefinition(spec: MenuSpec, liffId: string): RichMenuDefinition {
   const count = spec.items.length;
   return {
     key: spec.key,
-    name: `${RICH_MENU_PREFIX}${spec.key}:v1`,
+    // v2: tiled panels with icons and the conversation starter. The version is in
+    // the name because LINE cannot edit a menu — a v1 and a v2 side by side in the
+    // list is how a half-finished sync is recognisable.
+    name: `${RICH_MENU_PREFIX}${spec.key}:v2`,
     chatBarText: spec.chatBarText,
     labels: spec.items.map((item) => item.label),
+    icons: spec.items.map((item) => item.icon),
+    colors: spec.items.map((item) => item.color),
     accent: spec.accent,
     areas: spec.items.map((item, index) => ({
       bounds: columnBounds(index, count),

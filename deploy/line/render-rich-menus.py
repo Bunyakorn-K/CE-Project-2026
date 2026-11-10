@@ -23,7 +23,6 @@ Output: <out-dir>/<key>.png and <out-dir>/manifest.json
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -45,9 +44,26 @@ MEASURE_FONT = [
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0),
 ]
 
-BACKGROUND = "#0d1117"
-DIVIDER = "#30363d"
-TEXT = "#f0f6fc"
+CANVAS = "#eef0f3"
+TEXT = "#ffffff"
+
+# The same glyphs the web app uses in its own navigation where one exists, so the
+# panel and the app look like one product. 24x24 viewBox, drawn with a stroke.
+ICONS = {
+    "grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+    '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "chart": '<path d="M4 19V5"/><path d="M4 19h17"/><path d="m7 15 3-4 3 2 5-7"/>',
+    # A drum inside a cabinet reads as "washing machine" at a glance; the app's
+    # line-panel icon does not at this size.
+    "washer": '<rect x="4" y="3" width="16" height="18" rx="2.5"/><circle cx="12" cy="13" r="4.2"/>'
+    '<path d="M7.5 6.5h.01M10.5 6.5h.01"/>',
+    "shield": '<path d="M12 3.2 5 6v6c0 4.2 2.9 7.4 7 8.8 4.1-1.4 7-4.6 7-8.8V6z"/>'
+    '<path d="m9 12 2.2 2.2L15.5 10"/>',
+    "wrench": '<path d="M14.7 6.3a4 4 0 0 0 5 5l-9.4 9.4a2.1 2.1 0 0 1-3-3z"/><path d="m6 6 3 3"/>',
+    "chat": '<path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.6A7 7 0 0 1 4 12a7 7 0 0 1 7-7h2a7 7 0 0 1 7 7z"/>'
+    '<path d="M9 12h.01M12.5 12h.01M16 12h.01"/>',
+    "key": '<circle cx="8" cy="12" r="3.5"/><path d="M11.5 12H21"/><path d="M18 12v3.5"/><path d="M15 12v2.5"/>',
+}
 
 
 def chrome() -> str:
@@ -67,48 +83,55 @@ def measure(text: str, size: int) -> float:
 
 # Pillow measures Thai without shaping, so every vowel and tone mark counts as a
 # full advance and the width comes out roughly a fifth too wide. Chrome, which
-# draws the image, stacks those marks on their consonant. Without this correction
-# the longest label shrinks the whole panel to about half the size it could be.
+# draws the image, stacks those marks on their consonant.
 SHAPING_CORRECTION = 0.82
 
 
-def font_size_for(label: str, column_width: int) -> int:
-    """Largest size at which the label fits, capped so short labels stay calm."""
-    available = column_width - 48
-    size = 150
-    while size > 28 and measure(label, size) * SHAPING_CORRECTION > available:
-        size -= 4
+def font_size_for(label: str, tile_width: int) -> int:
+    """Largest size at which the label fits its tile, capped so it stays calm."""
+    available = tile_width - 36
+    size = 104
+    while size > 24 and measure(label, size) * SHAPING_CORRECTION > available:
+        size -= 2
     return size
 
 
 def build_html(menu: dict, width: int, height: int) -> str:
-    # One size for the whole panel: the largest that fits the longest label. Per
-    # column sizing made "ภาพรวม" twice the height of "เครื่องซักผ้า" and the panel
-    # read as four unrelated buttons.
-    size = min(
-        font_size_for(menu["labels"][index], area["bounds"]["width"])
-        for index, area in enumerate(menu["areas"])
-    )
-    columns = []
-    for index, area in enumerate(menu["areas"]):
-        bounds = area["bounds"]
-        label = menu["labels"][index]
-        border = f"border-left:2px solid {DIVIDER};" if index > 0 else ""
-        columns.append(
-            f'<div class="col" style="width:{bounds["width"]}px;{border}">'
-            f'<div class="strip" style="background:{menu["accent"]}"></div>'
-            f'<div class="label" style="font-size:{size}px">{label}</div>'
+    count = len(menu["areas"])
+    column = width // count
+    tile_width = column - 28
+    tile_height = height - 28
+
+    # One label size for the whole panel: per-tile sizing made "ภาพรวม" twice the
+    # height of "เครื่องซักผ้า" and the panel read as unrelated buttons.
+    size = min(font_size_for(label, tile_width) for label in menu["labels"])
+    # The icons carry the panel: at 0.5 of the tile they read as decoration above
+    # a label rather than as the button itself.
+    icon_size = int(min(tile_width * 0.66, tile_height * 0.52))
+
+    tiles = []
+    for index in range(count):
+        icon = ICONS[menu["icons"][index]]
+        tiles.append(
+            f'<div class="tile" style="width:{tile_width}px;height:{tile_height}px;'
+            f'background:{menu["colors"][index]}">'
+            f'<svg viewBox="0 0 24 24" width="{icon_size}" height="{icon_size}" fill="none" '
+            f'stroke="{TEXT}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+            f"{icon}</svg>"
+            f'<div class="label" style="font-size:{size}px">{menu["labels"][index]}</div>'
             f"</div>"
         )
+
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  html, body {{ width:{width}px; height:{height}px; background:{BACKGROUND}; overflow:hidden; }}
-  body {{ display:flex; font-family:"Thonburi","Noto Sans Thai",sans-serif; }}
-  .col {{ position:relative; height:{height}px; display:flex; align-items:center; justify-content:center; }}
-  .strip {{ position:absolute; top:0; left:0; right:0; height:10px; }}
-  .label {{ color:{TEXT}; font-weight:700; white-space:nowrap; letter-spacing:0.5px; }}
-</style></head><body>{"".join(columns)}</body></html>"""
+  html, body {{ width:{width}px; height:{height}px; background:{CANVAS}; overflow:hidden; }}
+  body {{ display:flex; align-items:center; justify-content:flex-start;
+         font-family:"Thonburi","Noto Sans Thai",sans-serif; }}
+  .tile {{ margin:14px; border-radius:34px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:26px; }}
+  .label {{ color:{TEXT}; font-weight:700; white-space:nowrap; letter-spacing:0.4px; }}
+</style></head><body>{"".join(tiles)}</body></html>"""
 
 
 def render(menu: dict, width: int, height: int, out_path: str) -> None:
@@ -151,6 +174,7 @@ def main() -> None:
                 "name": menu["name"],
                 "chatBarText": menu["chatBarText"],
                 "labels": menu["labels"],
+                "icons": menu["icons"],
                 "areas": menu["areas"],
                 "file": os.path.basename(path),
                 "bytes": os.path.getsize(path),

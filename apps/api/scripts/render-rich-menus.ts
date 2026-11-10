@@ -18,6 +18,8 @@ process.stdout.write(
         chatBarText: definition.chatBarText,
         accent: definition.accent,
         labels: definition.labels,
+        icons: definition.icons,
+        colors: definition.colors,
         areas: definition.areas
       }))
     },

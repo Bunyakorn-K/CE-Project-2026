@@ -123,6 +123,30 @@ describe("richMenuDefinitions", () => {
     }
   });
 
+  it("can start a conversation from every menu", () => {
+    // A panel made only of links assumes the user already knows the bot answers
+    // questions. One message action per menu is the way in — and a message the
+    // user sends is answered with a free reply, so it costs nothing.
+    for (const definition of definitions) {
+      const messages = definition.areas.filter((area) => area.action.type === "message");
+      expect(messages.length, `${definition.key} has no message action`).toBeGreaterThan(0);
+    }
+    const chat = definitions.map((definition) =>
+      definition.areas.find((area) => area.action.type === "message" && area.action.text === "สวัสดี")
+    );
+    // The same opener in every menu, so the assistant hears one consistent start.
+    for (const area of chat) expect(area).toBeDefined();
+  });
+
+  it("gives every area an icon and a tile colour", () => {
+    for (const definition of definitions) {
+      expect(definition.icons.length).toBe(definition.areas.length);
+      expect(definition.colors.length).toBe(definition.areas.length);
+      for (const color of definition.colors) expect(color).toMatch(/^#[0-9a-f]{6}$/i);
+      for (const icon of definition.icons) expect(icon.trim()).not.toBe("");
+    }
+  });
+
   it("names every menu with the deployment prefix and a version", () => {
     for (const definition of definitions) {
       expect(definition.name.startsWith(RICH_MENU_PREFIX)).toBe(true);
@@ -219,7 +243,14 @@ describe("the rendered images match the definitions", () => {
     readFileSync(new URL("../../../deploy/line/rich-menus/manifest.json", import.meta.url), "utf8")
   ) as {
     size: { width: number; height: number };
-    menus: { key: RichMenuKey; name: string; chatBarText: string; labels: string[]; areas: unknown[] }[];
+    menus: {
+      key: RichMenuKey;
+      name: string;
+      chatBarText: string;
+      labels: string[];
+      icons: string[];
+      areas: unknown[];
+    }[];
   };
 
   it("was rendered at the size the definitions declare", () => {
@@ -245,6 +276,7 @@ describe("the rendered images match the definitions", () => {
       const rendered = manifest.menus.find((menu) => menu.key === definition.key);
       expect(rendered, definition.key).toBeDefined();
       expect(rendered?.labels).toEqual(definition.labels);
+      expect(rendered?.icons).toEqual(definition.icons);
       expect(normalize(rendered?.areas as never)).toEqual(normalize(definition.areas as never));
       expect(rendered?.chatBarText).toBe(definition.chatBarText);
     }
