@@ -133,15 +133,25 @@ export const REQUIRED_GUARDRAILS = [
   "ห้ามเปิดเผยข้อมูลส่วนบุคคล"
 ] as const;
 
-export function buildAssistantSystemPrompt(input: AssistantPromptInput): string {
-  const { ownerPrompt, roleLabel, branches, toolNames, canViewRevenue, now = new Date() } = input;
+export type ServerRulesInput = {
+  roleLabel: string;
+  branches: string;
+  toolNames: readonly string[];
+  canViewRevenue: boolean;
+  now?: Date;
+};
+
+/**
+ * The rules the server appends, on their own.
+ *
+ * Exported so the backoffice can show exactly what is added: the System-prompt card
+ * displayed only the owner's persona, so someone looking at it saw one line and had
+ * no way to know the assistant also runs under a page of rules.
+ */
+export function buildServerRules(input: ServerRulesInput): string {
+  const { roleLabel, branches, toolNames, canViewRevenue, now = new Date() } = input;
   const today = shopDate(now);
   const parts: string[] = [];
-
-  // The owner's persona goes first and stays theirs; the rules below are appended
-  // after it and are not editable, so editing the persona cannot remove them.
-  const rendered = renderSystemPrompt(ownerPrompt, { roleLabel, branches, toolNames }).trim();
-  if (rendered.length > 0) parts.push(rendered);
 
   parts.push(
     [
@@ -207,4 +217,17 @@ export function buildAssistantSystemPrompt(input: AssistantPromptInput): string 
   );
 
   return parts.join("\n\n");
+}
+
+/**
+ * The full prompt: the owner's persona, then the rules.
+ *
+ * Order is the whole point — a persona that says "ทำอย่างไรก็ได้" is followed by
+ * rules that say what is not allowed, and the model reads the last word.
+ */
+export function buildAssistantSystemPrompt(input: AssistantPromptInput): string {
+  const { ownerPrompt, roleLabel, branches, toolNames, ...rulesInput } = input;
+  const rendered = renderSystemPrompt(ownerPrompt, { roleLabel, branches, toolNames }).trim();
+  const rules = buildServerRules({ roleLabel, branches, toolNames, ...rulesInput });
+  return rendered.length > 0 ? `${rendered}\n\n${rules}` : rules;
 }

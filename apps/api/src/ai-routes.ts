@@ -20,7 +20,7 @@ import { answerForMessage, describeBotFailure } from "./bot/conversation";
 import type { McpClientLike } from "./bot/mcp-client";
 import { randomUUID } from "node:crypto";
 import { recordAiChat, resolveAuditActor } from "./ai-audit";
-import { branchLabel, renderSystemPrompt } from "./llm-prompt";
+import { ASSISTANT_PROMPT_VERSION, branchLabel, buildServerRules, renderSystemPrompt } from "./llm-prompt";
 import { roleLabel, scopeForPrincipal } from "./bot/identity";
 
 type AppEnv = { Variables: { principal: Principal | null } };
@@ -63,8 +63,34 @@ export function registerAiRoutes(app: Hono<AppEnv>, deps: AiRouteDeps) {
     await next();
   });
 
-  app.get("/api/ai/settings", (c) => {
-    return c.json({ settings: getAiSettings() });
+  // Settings plus the rules the server appends. The console used to show only the
+  // owner's persona, so the card read "คุณคือผู้ช่วยข้อมูล…" and nothing else — the
+  // page of rules that actually shapes every answer was invisible to the person
+  // responsible for it.
+  app.get("/api/ai/settings", async (c) => {
+    const owner = requireOwner(c);
+    if (!owner) return c.json({ error: { code: "forbidden", message: "Owner role required" } }, 403);
+    const scope = scopeForPrincipal(owner);
+    let toolNames: string[] = [];
+    try {
+      toolNames = (await mcp.listTools(scope)).map((tool) => tool.name);
+    } catch {
+      // An unreadable tool list must not break the settings page; the preview then
+      // shows the rules without the tool names.
+    }
+    return c.json({
+      settings: getAiSettings(),
+      prompt: {
+        version: ASSISTANT_PROMPT_VERSION,
+        rules: buildServerRules({
+          roleLabel: roleLabel(owner),
+          branches: branchLabel(scope.branchIds),
+          toolNames,
+          canViewRevenue: scope.canViewRevenue
+        }),
+        toolNames
+      }
+    });
   });
 
   app.put("/api/ai/settings", async (c) => {

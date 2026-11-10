@@ -21,6 +21,9 @@ type ChatMsg = {
   trace?: ChatTrace;
 };
 
+/** The rules the server appends to the owner's persona, and their version. */
+type ServerPrompt = { version: string; rules: string; toolNames: string[] };
+
 /** What the server did to produce the answer — the point of a test console. */
 type ChatTrace = {
   model: string;
@@ -54,7 +57,11 @@ function AiConsolePage() {
 
   const settingsQuery = useQuery({
     queryKey: ["ai", "settings"],
-    queryFn: () => fetchJson<{ settings: AiSettings }>("/api/ai/settings", "ไม่สามารถโหลดการตั้งค่า AI ได้"),
+    queryFn: () =>
+      fetchJson<{ settings: AiSettings; prompt?: ServerPrompt }>(
+        "/api/ai/settings",
+        "ไม่สามารถโหลดการตั้งค่า AI ได้"
+      ),
     enabled: isOwner
   });
 
@@ -210,7 +217,20 @@ function AiConsolePage() {
           <label className="sr-only" htmlFor="ai-system-prompt">System prompt</label>
           <textarea id="ai-system-prompt" className="field-control field-textarea" value={form.systemPrompt} onChange={(event) => setForm((current) => ({ ...current, systemPrompt: event.target.value }))} placeholder="คุณคือผู้ช่วยข้อมูลของระบบ LaundryTwin" />
           <p className="kpi-detail">ตัวแปรเทมเพลต: <code>{"{{role}}"}</code> <code>{"{{branches}}"}</code> <code>{"{{tools}}"}</code> — เซิร์ฟเวอร์แทนค่าให้จากสิทธิ์ของผู้ใช้จริงเสมอ ประกอบด้วย <code>{"{{tools}}"}</code> ในแชท LINE จะเป็นเครื่องมือวิเคราะห์ที่ส่งให้จริง ส่วนหน้านี้เป็น plain chat จึงไม่มีเครื่องมือ</p>
-          <p className="kpi-detail">ท้าย prompt ระบบจะเติมกฎของระบบ (อย่าเดาตัวเลข, เงินเป็นสตางค์, ปฏิเสธเมื่อไม่มีสิทธิ์ดูรายได้) ต่อท้ายให้อัตโนมัติ แก้ไขส่วนนี้ไม่ได้</p>
+          <p className="kpi-detail">
+            prompt ที่ส่งจริง = ข้อความข้างบน (persona) + <strong>กฎระบบ</strong> ที่ต่อท้ายอัตโนมัติ
+            จึงแก้ persona ให้ขัดกับกฎไม่ได้
+          </p>
+          {settingsQuery.data?.prompt && (
+            <details className="kpi-detail">
+              <summary>
+                ดูกฎระบบที่ต่อท้าย (v{settingsQuery.data.prompt.version}) — แก้ไขไม่ได้
+              </summary>
+              <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", marginTop: "0.5rem" }}>
+                {settingsQuery.data.prompt.rules}
+              </pre>
+            </details>
+          )}
         </Card.Content>
       </Card>
 
