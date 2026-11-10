@@ -278,19 +278,21 @@ describe("bot webhook handler", () => {
   });
 
   // P1: the typing indicator, the queue, the memory write, and history on the wire.
-  function harness(options: { delayMs?: number } = {}) {
+  function harness(options: { delayMs?: number; answer?: string } = {}) {
     const adapter = {
       platform: "line" as const,
       sendText: vi.fn().mockResolvedValue("reply" as const),
+      sendFlex: vi.fn().mockResolvedValue("reply" as const),
       showLoading: vi.fn().mockResolvedValue(undefined)
     };
     const mcp = { listTools: vi.fn().mockResolvedValue([]), callTool: vi.fn() };
     const fetchImpl = vi.fn(async (_url: unknown, _init?: RequestInit): Promise<Response> => {
       if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
-      return new Response(
-        `data: {"choices":[{"delta":{"content":"ตอบแล้ว"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
-        { status: 200, headers: { "content-type": "text/event-stream" } }
-      );
+      const payload = JSON.stringify({ choices: [{ delta: { content: options.answer ?? "ตอบแล้ว" } }] });
+      return new Response(`data: ${payload}\n\ndata: [DONE]\n`, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      });
     });
     const handler = createBotHandler(
       { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn().mockResolvedValue([]), fetchImpl },
@@ -360,6 +362,65 @@ describe("bot webhook handler", () => {
       delivered: "reply"
     });
     expect(row.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("sends a card when the answer has structure, and text when it does not", async () => {
+    // The user's complaint that started this: LINE does not render markdown, so the
+    // answer arrived with its ** and ## intact. Structure becomes a flex bubble;
+    // a plain sentence stays a message.
+    const structured = harness({
+      answer: "## ภาพรวมวันนี้\nรายได้: 1,240 บาท\nรอบซัก: 31 รอบ"
+    });
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+    await structured.handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ภาพรวมวันนี้" },
+      source: { userId: "line-card" },
+      replyToken: "rt-card"
+    });
+
+    expect(structured.adapter.sendFlex).toHaveBeenCalledTimes(1);
+    const [to, altText, contents, options] = structured.adapter.sendFlex.mock.calls[0];
+    expect(to).toBe("line-card");
+    expect(altText).toContain("ภาพรวมวันนี้");
+    expect(JSON.stringify(contents)).toContain("1,240 บาท");
+    expect(options).toEqual({ replyToken: "rt-card" });
+    expect(structured.adapter.sendText).not.toHaveBeenCalled();
+
+    const plain = harness({ answer: "ครับ วันนี้ร้านเปิดปกติครับ" });
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+    await plain.handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ร้านเปิดไหม" },
+      source: { userId: "line-plain" },
+      replyToken: "rt-plain"
+    });
+
+    expect(plain.adapter.sendFlex).not.toHaveBeenCalled();
+    expect(plain.adapter.sendText).toHaveBeenCalledWith("line-plain", "ครับ วันนี้ร้านเปิดปกติครับ", {
+      replyToken: "rt-plain"
+    });
+  });
+
+  it("falls back to text when the card itself cannot be sent", async () => {
+    const { adapter, handler } = harness({ answer: "## หัวข้อ\nรายได้: 10 บาท" });
+    adapter.sendFlex.mockRejectedValueOnce(new Error("LINE rejected the flex"));
+    accessStore.resolveUserPrincipal.mockReturnValue(owner);
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "รายได้" },
+      source: { userId: "line-fallback" },
+      replyToken: "rt-fb"
+    });
+
+    // The answer must still arrive, without the markdown the user complained about.
+    expect(adapter.sendText).toHaveBeenCalledWith("line-fallback", "หัวข้อ\nรายได้: 10 บาท", {
+      replyToken: "rt-fb"
+    });
   });
 
   it("tells the user the gateway is down instead of a generic apology", () => {

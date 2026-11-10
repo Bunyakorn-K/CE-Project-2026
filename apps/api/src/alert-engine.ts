@@ -45,7 +45,7 @@ export type AlertEngineDeps = {
     // Resolves with how it left ("reply" is free, "push" is charged); the alert
     // path ignores the value, the bot records it.
     sendText(userId: string, text: string): Promise<unknown>;
-    sendFlex?(userId: string, altText: string, contents: Record<string, unknown>): Promise<void>;
+    sendFlex?(userId: string, altText: string, contents: Record<string, unknown>): Promise<unknown>;
   };
   /** When false (no LINE_CHANNEL_ACCESS_TOKEN), attempts are recorded as failed instead of sent. */
   adapterAvailable?: boolean;

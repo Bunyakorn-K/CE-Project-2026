@@ -7,6 +7,7 @@ import type { AccessScope } from "./identity";
 import { resolveLineIdentity, roleLabel } from "./identity";
 import { answerForMessage, describeBotFailure } from "./conversation";
 import { appendTurn } from "./memory";
+import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
 
@@ -36,6 +37,19 @@ async function branchContextFor(scope: AccessScope, clickhouse: ClickHouseExecut
   } catch {
     return "";
   }
+}
+
+/** The card header colour, so a role's answer matches the panel it came from. */
+const CARD_ACCENTS: Record<string, string> = {
+  owner: "#1f6feb",
+  manager: "#2ea043",
+  technician: "#d29922",
+  default: "#57606a"
+};
+
+function accentFor(roleLabel: string): string {
+  const first = roleLabel.split(",")[0]?.trim() ?? "";
+  return CARD_ACCENTS[first] ?? CARD_ACCENTS.default;
 }
 
 export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapter, mcpOverride?: McpClientLike) {
@@ -68,6 +82,27 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
    * otherwise. Written as two calls rather than one with `undefined`, so a caller
    * that has no token sends exactly what it sent before this existed.
    */
+  /**
+   * Send the answer as a card when it has shape, as text when it does not.
+   *
+   * LINE does not render markdown, so a text answer arrived with its `**` and
+   * `###` intact — the reader saw the markup. The card is built from the answer's
+   * own structure (a heading, `ชื่อ: ค่า` lines, bullets) and the plain text stays
+   * as the fallback, so a failure to build one never loses the answer.
+   */
+  async function deliver(userId: string, text: string, roleLabel: string, replyToken?: string) {
+    const parsed = parseAnswer(text);
+    const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel) });
+    if (flex && adapter.sendFlex) {
+      try {
+        return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken });
+      } catch {
+        // fall through to the text path
+      }
+    }
+    return reply(userId, stripMarkdown(text), replyToken);
+  }
+
   async function reply(userId: string, text: string, replyToken?: string) {
     if (replyToken) {
       return adapter.sendText(userId, text, { replyToken });
@@ -112,14 +147,16 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         },
         { mcp, fetchImpl: deps.fetchImpl }
       );
-      const delivered = await reply(userId, answer.text, event.replyToken);
+      const delivered = await deliver(userId, answer.text, roleLabel(identity.principal), event.replyToken);
 
       // The turn is the bot's memory and its record: without this row a follow-up
       // question has nothing to refer to, and nobody can see what the bot said.
       appendTurn({
         lineUserId: userId,
         userText: event.message.text,
-        answerText: answer.text,
+        // Stored without markdown: this is what the next question is given as
+        // context, and a transcript full of `**` teaches the model to use it.
+        answerText: stripMarkdown(answer.text),
         model: answer.model,
         steps: answer.steps,
         toolCalls: answer.toolCalls,

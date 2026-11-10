@@ -33,5 +33,10 @@ export interface PlatformAdapter {
    * a second platform may not have an equivalent: a caller that cannot send one
    * must fall back to `sendText` rather than silently sending nothing.
    */
-  sendFlex?(userId: string, altText: string, contents: Record<string, unknown>): Promise<void>;
+  sendFlex?(
+    userId: string,
+    altText: string,
+    contents: Record<string, unknown>,
+    options?: { replyToken?: string }
+  ): Promise<DeliveryKind>;
 }

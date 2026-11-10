@@ -48,17 +48,33 @@ export class LineAdapter implements PlatformAdapter {
    * and in clients that cannot render a flex message — so it is required, and
    * LINE rejects anything over 400 characters.
    */
-  async sendFlex(userId: string, altText: string, contents: Record<string, unknown>): Promise<void> {
-    if (!this.client) return;
-    await this.client.pushMessage({
-      to: userId,
-      messages: [
-        {
-          type: "flex",
-          altText: altText.slice(0, 400),
-          contents: contents as messagingApi.FlexContainer
-        }
-      ]
-    });
+  async sendFlex(
+    userId: string,
+    altText: string,
+    contents: Record<string, unknown>,
+    options: { replyToken?: string } = {}
+  ): Promise<DeliveryKind> {
+    if (!this.client) return "unknown";
+    const messages = [
+      {
+        type: "flex" as const,
+        altText: altText.slice(0, 400),
+        contents: contents as messagingApi.FlexContainer
+      }
+    ];
+
+    // A card is still a message: sent as a reply it costs nothing, sent as a push
+    // it spends one of the 300. The alert path has no token so it always pushes;
+    // the chat path replies whenever the token is still alive.
+    if (options.replyToken) {
+      try {
+        await this.client.replyMessage({ replyToken: options.replyToken, messages });
+        return "reply";
+      } catch {
+        // fall through to push
+      }
+    }
+    await this.client.pushMessage({ to: userId, messages });
+    return "push";
   }
 }
