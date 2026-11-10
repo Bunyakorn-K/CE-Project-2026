@@ -148,3 +148,43 @@ GET  (api-data) .../content       owner 83741 · manager 82499 ·
 
 Still not seen: the panel rendered on a phone. The pixels are confirmed present and
 correct; how the labels read at LINE's display size is the owner's call.
+
+## Update: the owner panel gets a hero tile (v3)
+
+Five tiles in one row squeezed every label into a 400px column. The owner asked for
+one tile across the top instead — which is not a bounds tweak but a different panel
+shape:
+
+- **2500x1686, top 40% is one full-width tile**, the remaining four split the row
+  beneath (625x1012 each). The other three menus keep 2500x843 and one row.
+- Definitions now carry their own `size` and a `layout` (`row` | `hero`), and
+  `buildRichMenuObject` sends the definition's size rather than a global constant —
+  LINE rejects an image whose dimensions disagree with the object.
+- Bounds are tested to tile the image **exactly** for 2..6 areas: an uncovered strip
+  shows the canvas colour through the panel, a seam down the middle of the chat. The
+  last tile in the row takes the remainder pixels for the same reason.
+- The renderer places tiles from the bounds rather than assuming a grid, and flips a
+  tile much wider than it is tall to icon-beside-label: stacked, a 2472px tile is a
+  small icon floating in an empty band. The hero also gets a larger label cap
+  (168px), so it reads as the primary button instead of a sixth equal one.
+
+Verified after the sync (`bf83630`, image `sha256:1a45127c…`):
+
+```text
+POST /api/admin/rich-menus/sync   200 · created 4 · deleted 4 · linked 1 · failed 0
+GET  /v2/bot/richmenu/list        4 menus, v3 only
+  laundrytwin:owner:v3       2500 x 1686 · 5 areas
+      (0, 0, 2500, 674)                       <- hero, full width
+      (0, 674, 625, 1012) (625, 674, …) (1250, 674, …) (1875, 674, …)
+  laundrytwin:manager:v3     2500 x 843 · 4 areas  625 wide each
+  laundrytwin:technician:v3  2500 x 843 · 4 areas  625 wide each
+  laundrytwin:default:v3     2500 x 843 · 2 areas 1250 wide each
+GET  /v2/bot/user/{user}/richmenu  richmenu-4df1a5d5… (owner v3)
+GET  /v2/bot/user/all/richmenu     richmenu-2b528a88… (default v3)
+GET  (api-data) .../content        owner 115252 · manager 82499 ·
+                                   technician 83771 · default 55317 bytes
+                                   — identical to the committed PNGs
+```
+
+Still not seen: the panel on a phone, and the tall shape in particular — it covers
+more of the chat than the wide one, which is the trade the hero tile buys.
