@@ -25,7 +25,7 @@
 
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "./db";
-import { alertNotification } from "./schema";
+import { alertNotification, chatTurn } from "./schema";
 
 export const DEFAULT_MONTHLY_BUDGET = 200;
 
@@ -35,6 +35,8 @@ export type BudgetState = {
   used: number;
   cap: number;
   remaining: number;
+  /** Which half of `used` is which — alerts and chat pushes share one allowance. */
+  breakdown: { alerts: number; chat: number };
 };
 
 export function monthStart(now: Date): Date {
@@ -61,13 +63,40 @@ export function monthlySentCount(now: Date): number {
   return rows.length;
 }
 
-export function budgetState(now: Date, cap: number = DEFAULT_MONTHLY_BUDGET): BudgetState {
-  const used = monthlySentCount(now);
+/**
+ * Chat answers that went out as pushes this month.
+ *
+ * They spend the same LINE allowance as the alerts: the reply path is free, but a
+ * reply token that expires falls back to a push, and those messages come out of the
+ * same 300. Counting them here is what keeps the alert cap honest — a busy month of
+ * chat would otherwise leave the alerts to fail at the API with no warning.
+ */
+export function monthlyChatPushes(now: Date): number {
+  const rows = db
+    .select({ id: chatTurn.id })
+    .from(chatTurn)
+    .where(and(eq(chatTurn.delivered, "push"), gte(chatTurn.createdAt, monthStart(now))))
+    .all();
+  return rows.length;
+}
+
+export function budgetState(
+  now: Date,
+  cap: number = DEFAULT_MONTHLY_BUDGET,
+  /** Injectable so a test can state its own chat usage instead of inheriting rows
+   *  another test file wrote to the same table in parallel. */
+  chatPushes: number = monthlyChatPushes(now)
+): BudgetState {
+  const alerts = monthlySentCount(now);
+  const chat = chatPushes;
+  const used = alerts + chat;
   return {
     month: monthKey(now),
     used,
     cap,
-    remaining: Math.max(0, cap - used)
+    remaining: Math.max(0, cap - used),
+    /** Split out so the owner can see which half is growing. */
+    breakdown: { alerts, chat }
   };
 }
 

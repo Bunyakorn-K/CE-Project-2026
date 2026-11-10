@@ -11,6 +11,11 @@ export type PlatformName = "line" | "telegram";
  */
 export type DeliveryKind = "reply" | "push" | "unknown";
 
+/** One message in a reply. LINE allows up to five; this chat sends at most two. */
+export type OutboundMessage =
+  | { kind: "text"; text: string }
+  | { kind: "flex"; altText: string; contents: Record<string, unknown> };
+
 /** A tappable suggestion above the keyboard. Free — it rides on the message. */
 export type QuickReply = { label: string; text?: string; uri?: string };
 
@@ -35,6 +40,15 @@ export interface PlatformAdapter {
    * like a bot that is broken.
    */
   showLoading?(userId: string, seconds?: number): Promise<void>;
+  /**
+   * Several messages in one reply. A reply costs one message whether it carries one
+   * or five, so a long answer split for readability must not become two sends.
+   */
+  sendMessages?(
+    userId: string,
+    messages: OutboundMessage[],
+    options?: { replyToken?: string; quickReplies?: QuickReply[] }
+  ): Promise<DeliveryKind>;
   /**
    * Push a rich card. Optional because the adapter interface predates cards and
    * a second platform may not have an equivalent: a caller that cannot send one

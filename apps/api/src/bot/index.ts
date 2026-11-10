@@ -16,6 +16,9 @@ import {
   welcomeText
 } from "./actions";
 import { menuKeyForRoles, richMenuDefinitions } from "../rich-menu";
+import { chatEnabled, evaluateChatLimit } from "./limit";
+import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
+import type { OutboundMessage } from "./adapter";
 import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
@@ -125,16 +128,52 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     replyToken?: string,
     quickReplies?: { label: string; text?: string; uri?: string }[]
   ) {
-    const parsed = parseAnswer(text);
+    // At most two messages, cut at paragraph or sentence boundaries, never inside a
+    // word — LINE shows a long answer as a wall, and refuses past 5,000 characters.
+    const shaped = shapeAnswer(text);
+    const first = shaped.parts[0] ?? text;
+    const parsed = parseAnswer(first);
     const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel) });
-    if (flex && adapter.sendFlex) {
+
+    const parts: OutboundMessage[] = [];
+    if (flex) {
+      parts.push({ kind: "flex", altText: answerAltText(parsed), contents: flex });
+    } else {
+      parts.push({ kind: "text", text: stripMarkdown(first) });
+    }
+    for (const extra of shaped.parts.slice(1)) {
+      parts.push({ kind: "text", text: stripMarkdown(extra) });
+    }
+    if (shaped.truncated) {
+      // Say it was cut, in the last message, rather than leaving a sentence that
+      // stops mid-thought and reads as a broken bot.
+      const last = parts[parts.length - 1];
+      const note = TRUNCATION_NOTE;
+      if (last?.kind === "text") last.text = `${last.text}\n\n${note}`;
+      else parts.push({ kind: "text", text: note });
+    }
+
+    // One message: the card or text path that was here before, unchanged. Two
+    // messages: one reply carrying both, so the split costs nothing.
+    if (parts.length === 1) {
+      if (flex && adapter.sendFlex) {
+        try {
+          return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken, quickReplies });
+        } catch {
+          // fall through to text
+        }
+      }
+      return reply(userId, stripMarkdown(first), replyToken, quickReplies);
+    }
+
+    if (adapter.sendMessages) {
       try {
-        return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken, quickReplies });
+        return await adapter.sendMessages(userId, parts, { replyToken, quickReplies });
       } catch {
-        // fall through to the text path
+        // fall through to the single-message path below
       }
     }
-    return reply(userId, stripMarkdown(text), replyToken, quickReplies);
+    return reply(userId, stripMarkdown(first), replyToken, quickReplies);
   }
 
   async function reply(
@@ -169,6 +208,17 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         );
         return;
       }
+      // A switch first, then the allowance: both refuse before spending a model call.
+      if (!chatEnabled()) {
+        await reply(userId, "ผู้ช่วยถูกปิดปรับปรุงชั่วคราว กรุณาลองใหม่ภายหลัง", event.replyToken);
+        return;
+      }
+      const limit = evaluateChatLimit({ lineUserId: userId });
+      if (!limit.allowed) {
+        await reply(userId, limit.message, event.replyToken);
+        return;
+      }
+
       // Typing indicator first: the model plus a tool call takes seconds, and
       // silence reads as "broken". Free, and it covers the whole answer.
       void adapter.showLoading?.(userId);

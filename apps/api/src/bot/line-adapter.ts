@@ -1,5 +1,5 @@
 import { messagingApi } from "@line/bot-sdk";
-import type { DeliveryKind, PlatformAdapter, QuickReply } from "./adapter";
+import type { DeliveryKind, OutboundMessage, PlatformAdapter, QuickReply } from "./adapter";
 
 const MAX_QUICK_REPLIES = 13;
 
@@ -50,6 +50,37 @@ export class LineAdapter implements PlatformAdapter {
       }
     }
     await this.client.pushMessage({ to: userId, messages });
+    return "push";
+  }
+
+  /** One reply carrying every part: a reply is charged once, not once per part. */
+  async sendMessages(
+    userId: string,
+    messages: OutboundMessage[],
+    options: { replyToken?: string; quickReplies?: QuickReply[] } = {}
+  ): Promise<DeliveryKind> {
+    if (!this.client) return "unknown";
+    const quickReply = quickReplyObject(options.quickReplies);
+    const payload = messages.map((message) =>
+      message.kind === "flex"
+        ? {
+            type: "flex" as const,
+            altText: message.altText.slice(0, 400),
+            contents: message.contents as messagingApi.FlexContainer,
+            ...(quickReply ? { quickReply } : {})
+          }
+        : { type: "text" as const, text: message.text, ...(quickReply ? { quickReply } : {}) }
+    );
+
+    if (options.replyToken) {
+      try {
+        await this.client.replyMessage({ replyToken: options.replyToken, messages: payload });
+        return "reply";
+      } catch {
+        // fall through to push
+      }
+    }
+    await this.client.pushMessage({ to: userId, messages: payload });
     return "push";
   }
 

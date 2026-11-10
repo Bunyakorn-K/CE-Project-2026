@@ -76,11 +76,13 @@ describe("budgetState", () => {
     const now = new Date("2026-11-09T12:00:00.000Z");
     const used = monthlySentCount(now);
 
-    const roomy = budgetState(now, used + 5);
+    // Chat pushes are stated, not inherited: another test file writes `chat_turn`
+    // rows to the same SQLite file in parallel.
+    const roomy = budgetState(now, used + 5, 0);
     expect(roomy.remaining).toBe(5);
     expect(roomy.month).toBe("2026-11");
 
-    const spent = budgetState(now, Math.max(0, used - 1));
+    const spent = budgetState(now, Math.max(0, used - 1), 0);
     expect(spent.remaining).toBe(0);
   });
 });

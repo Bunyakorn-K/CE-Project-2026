@@ -16,6 +16,7 @@ import {
   updateAiSettings
 } from "./ai-settings";
 import { purgeExpiredChatTurns } from "./bot/memory";
+import { chatStats } from "./bot/limit";
 import { answerForMessage, describeBotFailure } from "./bot/conversation";
 import type { McpClientLike } from "./bot/mcp-client";
 import { randomUUID } from "node:crypto";
@@ -271,6 +272,14 @@ export function registerAiRoutes(app: Hono<AppEnv>, deps: AiRouteDeps) {
       createdAt: m.createdAt.getTime()
     }));
     return c.json({ messages });
+  });
+
+  // How much chat has happened, and what it is allowed. The console is where an
+  // owner looks after the assistant, so the count belongs beside the test chat.
+  app.get("/api/ai/chat/stats", (c) => {
+    const owner = requireOwner(c);
+    if (!owner) return c.json({ error: { code: "forbidden", message: "Owner role required" } }, 403);
+    return c.json({ stats: chatStats() });
   });
 
   // On-demand purge of conversation content older than the 30-day window.

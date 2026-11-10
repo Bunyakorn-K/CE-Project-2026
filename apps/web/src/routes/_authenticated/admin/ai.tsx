@@ -21,6 +21,16 @@ type ChatMsg = {
   trace?: ChatTrace;
 };
 
+/** Today's chat volume, and what it is allowed. */
+type ChatStats = {
+  day: string;
+  turnsToday: number;
+  repliesToday: number;
+  pushesToday: number;
+  pushesThisMonth: number;
+  limits: { hourly: number; daily: number; enabled: boolean };
+};
+
 /** The rules the server appends to the owner's persona, and their version. */
 type ServerPrompt = { version: string; rules: string; toolNames: string[] };
 
@@ -88,6 +98,12 @@ function AiConsolePage() {
     },
     enabled: isOwner && settingsQuery.data?.settings.hasApiKey === true,
     staleTime: 10 * 60 * 1000
+  });
+
+  const statsQuery = useQuery({
+    queryKey: ["ai", "chat-stats"],
+    queryFn: () => fetchJson<{ stats: ChatStats }>("/api/ai/chat/stats", "ไม่สามารถโหลดสถิติการแชทได้"),
+    enabled: isOwner
   });
 
   const historyQuery = useQuery({
@@ -237,6 +253,15 @@ function AiConsolePage() {
       <Card variant="transparent" className="surface-card admin-section">
         <Card.Content>
           <div className="section-heading"><h2>ทดสอบการสนทนา</h2><span>{threadId ? `Thread: ${threadId}` : "เริ่ม thread ใหม่"}</span></div>
+          {statsQuery.data && (
+            <p className="kpi-detail">
+              {statsQuery.data.stats.limits.enabled ? "ผู้ช่วยเปิดใช้งาน" : "ผู้ช่วยปิดอยู่ (CHAT_ENABLED=false)"}
+              {" · วันนี้ "}{statsQuery.data.stats.turnsToday}{" ครั้ง"}
+              {" (reply "}{statsQuery.data.stats.repliesToday}{" · push "}{statsQuery.data.stats.pushesToday}{")"}
+              {" · push เดือนนี้ "}{statsQuery.data.stats.pushesThisMonth}{" (นับรวมเพดานเดียวกับ alert)"}
+              {" · เพดาน "}{statsQuery.data.stats.limits.hourly}{"/ชม. · "}{statsQuery.data.stats.limits.daily}{"/วัน"}
+            </p>
+          )}
           <div className="ai-thread" role="log" aria-live="polite" aria-label="ข้อความสนทนา">
             {historyQuery.isLoading && <p className="state-message">กำลังโหลดประวัติสนทนา</p>}
             {historyQuery.isError && <p className="error-message">โหลดประวัติสนทนาไม่สำเร็จ: {historyQuery.error.message}</p>}
