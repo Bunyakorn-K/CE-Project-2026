@@ -27,7 +27,7 @@ vi.mock("../ai-settings", () => aiSettings);
 
 import { db, initializeDatabase } from "../db";
 import { resolveLineIdentity, roleLabel, scopeForPrincipal } from "./identity";
-import { answerForMessage } from "./conversation";
+import { answerForMessage, describeBotFailure } from "./conversation";
 import { createBotHandler } from "./index";
 import { allTurns } from "./memory";
 
@@ -360,6 +360,28 @@ describe("bot webhook handler", () => {
       delivered: "reply"
     });
     expect(row.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("tells the user the gateway is down instead of a generic apology", () => {
+    // The failure this was written for: llm.kovaspire.com answered the container
+    // with 502 and the user got "เกิดข้อผิดพลาดในการประมวลผล" — true, and useless.
+    const gateway = describeBotFailure(
+      Object.assign(new Error("Bad Gateway"), { name: "AI_APICallError", statusCode: 502 })
+    );
+    expect(gateway).toContain("เชื่อมต่อโมเดลไม่ได้");
+
+    expect(describeBotFailure(Object.assign(new Error("retries exhausted"), { name: "AI_RetryError" }))).toContain(
+      "เชื่อมต่อโมเดลไม่ได้"
+    );
+    expect(describeBotFailure(new Error("fetch failed"))).toContain("เชื่อมต่อโมเดลไม่ได้");
+    expect(describeBotFailure(Object.assign(new Error("no output"), { name: "AI_NoOutputGeneratedError" }))).toContain(
+      "เชื่อมต่อโมเดลไม่ได้"
+    );
+
+    // A model-level failure is worth retrying and must not be blamed on the gateway.
+    expect(describeBotFailure(new Error("tool schema invalid"))).toBe(
+      "ขออภัย เกิดข้อผิดพลาดในการประมวลผล ลองถามใหม่อีกครั้ง"
+    );
   });
 
   it("sends the previous turns as messages, not as one pasted prompt", async () => {

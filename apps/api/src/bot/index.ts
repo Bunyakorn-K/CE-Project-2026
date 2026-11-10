@@ -5,7 +5,7 @@ import { isValidLineSignature } from "../line";
 import type { PlatformAdapter } from "./adapter";
 import type { AccessScope } from "./identity";
 import { resolveLineIdentity, roleLabel } from "./identity";
-import { answerForMessage } from "./conversation";
+import { answerForMessage, describeBotFailure } from "./conversation";
 import { appendTurn } from "./memory";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
@@ -128,7 +128,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     } catch (error) {
       console.error("LaundryTwin bot error", error);
       try {
-        await reply(userId, "ขออภัย เกิดข้อผิดพลาดในการประมวลผล ลองถามใหม่อีกครั้ง", event.replyToken);
+        await reply(userId, describeBotFailure(error), event.replyToken);
       } catch {
         // reply is best-effort; never let a reply failure crash the webhook
       }

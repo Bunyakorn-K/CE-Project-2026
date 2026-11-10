@@ -69,6 +69,37 @@ export type ConversationAnswer = {
   model: string;
 };
 
+/**
+ * What to tell the user when the answer could not be produced.
+ *
+ * The old single sentence ("เกิดข้อผิดพลาดในการประมวลผล") was true and useless: it
+ * does not separate "the gateway is unreachable" — a deployment problem the owner
+ * must see — from "this question broke the model", which is worth retrying. The AI
+ * SDK throws `AI_APICallError` with a status for the first and `AI_RetryError` once
+ * it has exhausted retries; both mean the same thing to the person holding the
+ * phone, and something different to whoever fixes it.
+ */
+export function describeBotFailure(error: unknown): string {
+  const name = typeof (error as { name?: unknown })?.name === "string" ? String((error as { name: string }).name) : "";
+  const cause = (error as { cause?: unknown })?.cause;
+  const status =
+    (error as { statusCode?: unknown })?.statusCode ??
+    (cause as { statusCode?: unknown })?.statusCode ??
+    (error as { status?: unknown })?.status;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  const gatewayProblem =
+    name.includes("APICallError") ||
+    name.includes("RetryError") ||
+    name.includes("NoOutputGenerated") ||
+    (typeof status === "number" && status >= 500) ||
+    /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket hang up|502|503|504/i.test(message);
+
+  return gatewayProblem
+    ? "ขออภัย ระบบผู้ช่วยเชื่อมต่อโมเดลไม่ได้ในขณะนี้ (เกตเวย์ไม่ตอบสนอง) กรุณาลองใหม่ภายหลัง หรือแจ้งผู้ดูแลระบบให้ตรวจสอบ"
+    : "ขออภัย เกิดข้อผิดพลาดในการประมวลผล ลองถามใหม่อีกครั้ง";
+}
+
 export async function answerForMessage(
   ctx: ConversationContext,
   deps: ConversationDeps
@@ -92,6 +123,8 @@ export async function answerForMessage(
   const history = recentTurns(ctx.lineUserId);
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
+  // The base URL belongs in the log next to the failure: "502" is a deployment
+  // fact and the stack trace alone does not name the host that did not answer.
   const result = await agenticAnswerWithMeta(settings.baseUrl, settings.apiKey, settings.model, {
     instructions: buildSystemPrompt(ctx, settings.systemPrompt, tools.map((tool) => tool.name)),
     input: ctx.userText,
@@ -122,6 +155,9 @@ export async function answerForMessage(
     // answer "compare branch A with B". The loop is bounded so cost stays predictable.
     maxSteps: settings.maxSteps,
     fetchImpl: deps.fetchImpl
+  }).catch((error: unknown) => {
+    console.error("LLM call failed", { baseUrl: settings.baseUrl, model: settings.model, error });
+    throw error;
   });
 
   return { text: result.text, steps: result.steps, toolCalls: result.toolCalls, model: settings.model };
