@@ -194,11 +194,12 @@ describe("runAlertSweep", () => {
     const owner = seedRecipient({ role: "owner", branchId: "B1" });
     const sendText = vi.fn().mockResolvedValue(undefined);
     const alert = makeAlert();
-    const later = () => new Date("2026-09-06T14:00:00.000Z"); // past the 1h cooldown window
-    const afterCooldown = () => new Date("2026-09-06T16:00:00.000Z"); // 2h later: cooldown no longer shields it
+    const later = () => new Date("2026-09-06T14:00:00.000Z");
+    const afterCooldown = () => new Date("2026-09-06T16:00:00.000Z"); // 2h later
+    const oneHour = 60 * 60 * 1000;
 
-    const first = await runAlertSweep([alert], deps({ adapter: { sendText }, now: later }));
-    const second = await runAlertSweep([alert], deps({ adapter: { sendText }, now: afterCooldown }));
+    const first = await runAlertSweep([alert], deps({ adapter: { sendText }, now: later, cooldownMs: oneHour }));
+    const second = await runAlertSweep([alert], deps({ adapter: { sendText }, now: afterCooldown, cooldownMs: oneHour }));
 
     expect(first.sent).toBe(1);
     expect(second.sent).toBe(0);
@@ -215,15 +216,57 @@ describe("runAlertSweep", () => {
     const withinWindow = () => new Date("2026-09-06T12:30:00.000Z");
     const afterWindow = () => new Date("2026-09-06T14:00:00.000Z");
 
-    const first = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: t0 }));
-    const second = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: withinWindow }));
-    const third = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: afterWindow }));
+    const oneHour = 60 * 60 * 1000;
+    const first = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: t0, cooldownMs: oneHour }));
+    const second = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: withinWindow, cooldownMs: oneHour }));
+    const third = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: afterWindow, cooldownMs: oneHour }));
 
     expect(first.sent).toBe(1);
     expect(second.cooldown).toBe(1);
     expect(second.sent).toBe(0);
     expect(third.sent).toBe(1);
     expect(sendText).toHaveBeenCalledTimes(2);
+  });
+
+  // The default floor is 12 hours, not 1: an hourly alert on two channels is
+  // 1,440 messages a month against a 300-message allowance.
+  it("holds a repeat for twelve hours by default, and lets it through after", async () => {
+    seedRecipient({ role: "owner", branchId: "B1" });
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const t0 = () => new Date("2026-09-06T12:00:00.000Z");
+    const twoHours = () => new Date("2026-09-06T14:00:00.000Z");
+    const thirteenHours = () => new Date("2026-09-07T01:00:00.000Z");
+
+    const first = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: t0 }));
+    const second = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: twoHours }));
+    const third = await runAlertSweep([makeAlert()], deps({ adapter: { sendText }, now: thirteenHours }));
+
+    expect(first.sent).toBe(1);
+    expect(second.cooldown).toBe(1);
+    expect(second.sent).toBe(0);
+    expect(third.sent).toBe(1);
+  });
+
+  it("stops sending when the month's allowance is spent, and says so", async () => {
+    seedRecipient({ role: "owner", branchId: "B1" });
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const previous = process.env.ALERT_MONTHLY_BUDGET;
+    process.env.ALERT_MONTHLY_BUDGET = "0";
+    try {
+      const summary = await runAlertSweep([makeAlert()], deps({ adapter: { sendText } }));
+      expect(summary.sent).toBe(0);
+      expect(summary.suppressedBudget).toBe(1);
+      expect(sendText).not.toHaveBeenCalled();
+      const audit = db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "alert.suppressed_budget"))
+        .all();
+      expect(audit.length).toBeGreaterThan(0);
+    } finally {
+      if (previous === undefined) delete process.env.ALERT_MONTHLY_BUDGET;
+      else process.env.ALERT_MONTHLY_BUDGET = previous;
+    }
   });
 
   it("does not apply cooldown across different branches", async () => {

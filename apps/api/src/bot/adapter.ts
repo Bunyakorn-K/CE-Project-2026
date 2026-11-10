@@ -6,8 +6,15 @@ export type PlatformName = "line" | "telegram";
 
 export interface PlatformAdapter {
   readonly platform: PlatformName;
-  /** Push a text message to a user identified by the platform's userId. */
-  sendText(userId: string, text: string): Promise<void>;
+  /**
+   * Send a text message to a user.
+   *
+   * `replyToken` is the free path: LINE charges nothing for a reply to a message
+   * the user just sent, and the free plan's 300 pushes a month are needed for
+   * alerts. The token is short-lived and single-use, so an implementation must
+   * fall back to a push when it is missing or rejected.
+   */
+  sendText(userId: string, text: string, options?: { replyToken?: string }): Promise<void>;
   /**
    * Push a rich card. Optional because the adapter interface predates cards and
    * a second platform may not have an equivalent: a caller that cannot send one

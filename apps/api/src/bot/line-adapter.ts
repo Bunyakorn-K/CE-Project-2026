@@ -13,9 +13,23 @@ export class LineAdapter implements PlatformAdapter {
       : null;
   }
 
-  async sendText(userId: string, text: string): Promise<void> {
+  async sendText(userId: string, text: string, options: { replyToken?: string } = {}): Promise<void> {
     if (!this.client) return;
-    await this.client.pushMessage({ to: userId, messages: [{ type: "text", text }] });
+    const messages = [{ type: "text" as const, text }];
+
+    // A reply is free and does not touch the monthly push allowance; a push is
+    // charged. The token expires about a minute after the user's message and can
+    // only be used once, so a rejected reply falls back rather than losing the
+    // answer — the LLM loop can outlast the window.
+    if (options.replyToken) {
+      try {
+        await this.client.replyMessage({ replyToken: options.replyToken, messages });
+        return;
+      } catch {
+        // fall through to push
+      }
+    }
+    await this.client.pushMessage({ to: userId, messages });
   }
 
   /**

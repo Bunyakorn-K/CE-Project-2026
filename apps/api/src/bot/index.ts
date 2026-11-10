@@ -21,6 +21,8 @@ type LineTextEvent = {
   type: "message";
   message: { type: "text"; text: string };
   source?: { userId?: string; displayName?: string };
+  /** Free reply path; absent on events that are not a user message. */
+  replyToken?: string;
 };
 
 async function branchContextFor(scope: AccessScope, clickhouse: ClickHouseExecutor): Promise<string> {
@@ -40,6 +42,19 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
   const mcp = mcpOverride ?? new McpClient(deps.mcpUrl, deps.mcpToken);
   const busy = new Set<string>();
 
+  /**
+   * Answer with a free reply when the event carried a token, and a charged push
+   * otherwise. Written as two calls rather than one with `undefined`, so a caller
+   * that has no token sends exactly what it sent before this existed.
+   */
+  async function reply(userId: string, text: string, replyToken?: string): Promise<void> {
+    if (replyToken) {
+      await adapter.sendText(userId, text, { replyToken });
+      return;
+    }
+    await adapter.sendText(userId, text);
+  }
+
   async function handleTextEvent(event: LineTextEvent): Promise<void> {
     const userId = event.source?.userId;
     if (!userId) return;
@@ -54,7 +69,11 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
             displayName: event.source?.displayName ?? "LINE bot user"
           });
         }
-        await adapter.sendText(userId, "บัญชี LINE นี้ยังไม่ได้รับสิทธิ์ใช้งาน LaundryTwin กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์");
+        await reply(
+          userId,
+          "บัญชี LINE นี้ยังไม่ได้รับสิทธิ์ใช้งาน LaundryTwin กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์",
+          event.replyToken
+        );
         return;
       }
       const branchContext = await branchContextFor(identity.scope, deps.clickhouse);
@@ -68,11 +87,11 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         },
         { mcp, fetchImpl: deps.fetchImpl }
       );
-      await adapter.sendText(userId, answer);
+      await reply(userId, answer, event.replyToken);
     } catch (error) {
       console.error("LaundryTwin bot error", error);
       try {
-        await adapter.sendText(userId, "ขออภัย เกิดข้อผิดพลาดในการประมวลผล ลองถามใหม่อีกครั้ง");
+        await reply(userId, "ขออภัย เกิดข้อผิดพลาดในการประมวลผล ลองถามใหม่อีกครั้ง", event.replyToken);
       } catch {
         // reply is best-effort; never let a reply failure crash the webhook
       }

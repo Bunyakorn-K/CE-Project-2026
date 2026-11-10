@@ -221,4 +221,37 @@ describe("bot webhook handler", () => {
     expect(adapter.sendText).toHaveBeenCalledWith("line-2", "สาขา SYNTH-A มี 31 รอบ");
     expect(fetchImpl).toHaveBeenCalled();
   });
+
+  // A reply is free; a push is charged against the 300-a-month allowance that the
+  // alerts need. The token has to reach the adapter or every chat answer costs a
+  // message.
+  it("forwards the reply token so the answer is free", async () => {
+    const adapter = { platform: "line" as const, sendText: vi.fn().mockResolvedValue(undefined) };
+    const mcp = {
+      listTools: vi.fn().mockResolvedValue([]),
+      callTool: vi.fn()
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        `data: {"choices":[{"delta":{"content":"สวัสดี"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } }
+      )
+    );
+    const handler = createBotHandler(
+      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn().mockResolvedValue([]), fetchImpl },
+      adapter,
+      mcp
+    );
+    accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Manager", email: "m@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(manager);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "สวัสดี" },
+      source: { userId: "line-3" },
+      replyToken: "rt-abc"
+    });
+
+    expect(adapter.sendText).toHaveBeenCalledWith("line-3", "สวัสดี", { replyToken: "rt-abc" });
+  });
 });
