@@ -23,7 +23,7 @@ jobs:
     # for a hung build.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         # version comes from package.json "packageManager"
