@@ -12,6 +12,12 @@ export type ConversationContext = {
   lineUserId: string;
   /** When the question arrived; the prompt says "today" from this. */
   now?: Date;
+  /**
+   * Explicit prior turns. The LINE bot reads its own memory; the backoffice
+   * console passes its thread, so the same answer path serves both without the
+   * console's conversation landing in the bot's memory.
+   */
+  messages?: { role: "user" | "assistant"; content: string }[];
   roleLabel: string;
   branchContext: string;
   scope: AccessScope;
@@ -69,6 +75,8 @@ export type ConversationAnswer = {
   /** Model turns taken, and tool calls made inside them — recorded per turn. */
   steps: number;
   toolCalls: number;
+  /** Which tools ran, in order. The console shows this; the chat log records it. */
+  toolNames: string[];
   model: string;
 };
 
@@ -115,6 +123,7 @@ export async function answerForMessage(
       text: "ขออภัย ยังไม่ได้ตั้งค่า API key ของผู้ช่วย กรุณาให้ผู้ดูแลระบบตั้งค่าในหน้า AI Console",
       steps: 0,
       toolCalls: 0,
+      toolNames: [],
       model: settings.model
     };
   }
@@ -123,7 +132,7 @@ export async function answerForMessage(
   // The last few turns, so a follow-up can refer to what came before. Read per
   // message, not cached: the container restarts on deploy and the conversation
   // must survive that.
-  const history = recentTurns(ctx.lineUserId);
+  const history = ctx.messages ?? recentTurns(ctx.lineUserId);
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
   // The base URL belongs in the log next to the failure: "502" is a deployment
@@ -163,5 +172,11 @@ export async function answerForMessage(
     throw error;
   });
 
-  return { text: result.text, steps: result.steps, toolCalls: result.toolCalls, model: settings.model };
+  return {
+    text: result.text,
+    steps: result.steps,
+    toolCalls: result.toolCalls,
+    toolNames: result.toolNames,
+    model: settings.model
+  };
 }

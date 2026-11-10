@@ -102,6 +102,8 @@ export type AgenticAnswerResult = {
   /** How many model turns ran, including the one that produced the answer. */
   steps: number;
   toolCalls: number;
+  /** The tool names the model actually called — what a test console shows. */
+  toolNames: string[];
 };
 
 export async function agenticAnswerWithMeta(
@@ -138,8 +140,13 @@ export async function agenticAnswerWithMeta(
     ...(maxTokens !== undefined ? { maxTokens } : {})
   });
   const [text, steps] = await Promise.all([result.text, result.steps]);
-  const toolCalls = steps.reduce((total, step) => total + (step.toolCalls?.length ?? 0), 0);
-  return { text: text || "ขออภัย ไม่สามารถหาคำตอบได้", steps: steps.length, toolCalls };
+  const calls = steps.flatMap((step) => step.toolCalls ?? []);
+  return {
+    text: text || "ขออภัย ไม่สามารถหาคำตอบได้",
+    steps: steps.length,
+    toolCalls: calls.length,
+    toolNames: calls.map((call) => call.toolName)
+  };
 }
 
 /** Text only, for callers that do not record how the answer was produced. */

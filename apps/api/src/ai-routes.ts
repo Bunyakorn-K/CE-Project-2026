@@ -16,9 +16,10 @@ import {
   updateAiSettings
 } from "./ai-settings";
 import { purgeExpiredChatTurns } from "./bot/memory";
+import { answerForMessage, describeBotFailure } from "./bot/conversation";
+import type { McpClientLike } from "./bot/mcp-client";
 import { randomUUID } from "node:crypto";
 import { recordAiChat, resolveAuditActor } from "./ai-audit";
-import { plainChat } from "./llm-client";
 import { branchLabel, renderSystemPrompt } from "./llm-prompt";
 import { roleLabel, scopeForPrincipal } from "./bot/identity";
 
@@ -46,7 +47,13 @@ function requireOwner(c: { get: (k: "principal") => Principal | null }): Princip
   return isOwner(principal.grants) ? principal : null;
 }
 
-export function registerAiRoutes(app: Hono<AppEnv>) {
+export type AiRouteDeps = {
+  /** The same MCP client the bot uses; the console must not have its own path. */
+  mcp: McpClientLike;
+};
+
+export function registerAiRoutes(app: Hono<AppEnv>, deps: AiRouteDeps) {
+  const { mcp } = deps;
   // Owner-gated middleware for the whole /api/ai surface.
   app.use("/api/ai/*", async (c, next) => {
     const owner = requireOwner(c);
@@ -94,10 +101,17 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     }
   });
 
-  // Simple non-streaming chat through the configured gateway. Stores both
-  // sides in chat_history (30-day retention). Tool calling is NOT wired here
-  // yet — the playground is a plain chat completion; MCP tools remain the
-  // analytical surface used by the LINE bot.
+  // FULL-SYSTEM chat: the same answer path the LINE bot runs.
+  //
+  // This used to be a plain completion with no tools, and it answered — in Arabic,
+  // saying it had no access to the shop's data. That is worse than broken: it looks
+  // like a working console and proves nothing about what a customer will receive.
+  //
+  // The console now goes through `answerForMessage`, which is what the bot calls:
+  // server-derived scope, the same MCP tools, the same system rules (role, branches,
+  // today's date, no invented numbers), the same agentic loop and the same audit
+  // rows. The only difference is where the history comes from — the console's thread
+  // instead of the bot's chat_turn memory.
   app.post("/api/ai/chat", async (c) => {
     const owner = requireOwner(c);
     if (!owner) return c.json({ error: { code: "forbidden", message: "Owner role required" } }, 403);
@@ -121,48 +135,74 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
     // answered and still audited, and the history write is skipped. In
     // production this branch never runs — every principal is a real user.
     const actor = resolveAuditActor(owner.user.id);
+    const history = actor.actorUnresolved
+      ? []
+      : listChatMessages(threadId, owner.user.id, 20)
+          .filter((message) => message.role === "user" || message.role === "assistant")
+          // `listChatMessages` returns newest first; a model needs the conversation
+          // oldest first, or it reads the answer before the question.
+          .reverse()
+          .map((message) => ({
+            role: message.role as "user" | "assistant",
+            content: message.content
+          }));
+
     if (!actor.actorUnresolved) {
       addChatMessage({ threadId, userId: owner.user.id, role: "user", content: parsed.data.message, model: settings.model });
     }
 
+    const startedAt = Date.now();
     try {
-      // The console is a plain chat completion: it passes no tools to the SDK,
-      // so {{tools}} renders an explicit "none" rather than a catalogue the
-      // model would then claim to have used.
-      const instructions = renderSystemPrompt(settings.systemPrompt, {
-        roleLabel: roleLabel(owner),
-        branches: branchLabel(scopeForPrincipal(owner).branchIds),
-        toolNames: []
-      });
-      const reply = await plainChat(
-        settings.baseUrl,
-        settings.apiKey,
-        settings.model,
-        instructions,
-        parsed.data.message,
-        { temperature: settings.temperature }
+      const scope = scopeForPrincipal(owner);
+      const answer = await answerForMessage(
+        {
+          userText: parsed.data.message,
+          // No LINE user here; the history is explicit, so this is only an identity
+          // for logs — and it must not collide with a real LINE id.
+          lineUserId: `console:${owner.user.id}`,
+          roleLabel: roleLabel(owner),
+          branchContext: branchLabel(scope.branchIds),
+          scope,
+          actorUserId: owner.user.id,
+          now: new Date(),
+          messages: history
+        },
+        { mcp }
       );
+
       if (!actor.actorUnresolved) {
         addChatMessage({
           threadId,
           userId: owner.user.id,
           role: "assistant",
-          content: reply,
-          model: settings.model
+          content: answer.text,
+          model: answer.model
         });
       }
-      // One row per chat request. `usedTools` is false by construction here —
-      // this route passes no tools to the model — and the agentic path records
-      // its own tool calls beside this.
       recordAiChat({
         actorUserId: owner.user.id,
-        model: settings.model,
+        model: answer.model,
         threadId,
         messageCount: 1,
-        usedTools: false,
+        usedTools: answer.toolCalls > 0,
         outcome: "ok"
       });
-      return c.json({ threadId, reply });
+
+      // The trace is the point of a test console: which model answered, how many
+      // turns and tools it took, and how long it was silent.
+      return c.json({
+        threadId,
+        reply: answer.text,
+        trace: {
+          model: answer.model,
+          steps: answer.steps,
+          toolCalls: answer.toolCalls,
+          tools: answer.toolNames,
+          latencyMs: Date.now() - startedAt,
+          scope: { branches: branchLabel(scope.branchIds), canViewRevenue: scope.canViewRevenue },
+          maxSteps: settings.maxSteps
+        }
+      });
     } catch (err) {
       recordAiChat({
         actorUserId: owner.user.id,
@@ -172,7 +212,20 @@ export function registerAiRoutes(app: Hono<AppEnv>) {
         usedTools: false,
         outcome: "error"
       });
-      return c.json({ error: { code: "gateway_unreachable", message: String(err) } }, 502);
+      // The console is where someone is debugging, so the real reason goes back to
+      // it: "gateway_unreachable" with no detail is what made the last outage take
+      // an afternoon to identify.
+      return c.json(
+        {
+          error: {
+            code: "chat_failed",
+            message: err instanceof Error ? err.message : String(err),
+            hint: describeBotFailure(err)
+          },
+          threadId
+        },
+        502
+      );
     }
   });
 

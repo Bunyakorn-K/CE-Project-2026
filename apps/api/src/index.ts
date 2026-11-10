@@ -59,6 +59,7 @@ import { budgetState } from "./alert-budget";
 import { verifyLiffIdToken, parseChannelIds } from "./liff-auth";
 import { buildThaiStakeholderSummary, redactDashboardDataRevenue, redactDashboardRevenue } from "./reporting";
 import { registerAiRoutes } from "./ai-routes";
+import { McpClient, type McpClientLike } from "./bot/mcp-client";
 import {
   encodeEventCursor,
   InvalidCursorError,
@@ -88,6 +89,8 @@ export type AppDependencies = {
   liffVerifier?: LiffVerifier;
   analyticsDeps?: AnalyticsDeps;
   mcp?: McpTransport;
+  /** The MCP *client* the bot and the AI console share. Tests pass a fake. */
+  mcpClient?: McpClientLike;
 };
 
 initializeDatabase();
@@ -108,12 +111,22 @@ export function createApp(dependencies: AppDependencies = {}) {
     mcpSecret: mcpAccessToken,
     allowRevenue: process.env.MCP_ALLOW_REVENUE === "true"
   });
-  const botHandler = createBotHandler({
-    mcpUrl: process.env.BOT_MCP_URL ?? "http://127.0.0.1:8787/mcp",
-    mcpToken: mcpAccessToken,
-    lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-    clickhouse
-  });
+  // One MCP client for the bot and the backoffice console: the console is a test
+  // of the same path, so it must not have a second connection, a second scope or a
+  // second set of tool schemas.
+  const mcpClient =
+    dependencies.mcpClient ??
+    new McpClient(process.env.BOT_MCP_URL ?? "http://127.0.0.1:8787/mcp", mcpAccessToken);
+  const botHandler = createBotHandler(
+    {
+      mcpUrl: process.env.BOT_MCP_URL ?? "http://127.0.0.1:8787/mcp",
+      mcpToken: mcpAccessToken,
+      lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+      clickhouse
+    },
+    undefined,
+    mcpClient
+  );
 
   /**
    * One sweep, two entry points.
@@ -290,7 +303,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   registerAnalyticsRoutes(app, dependencies.analyticsDeps ?? { clickhouse: createClickHouseClient() });
-  registerAiRoutes(app);
+  registerAiRoutes(app, { mcp: mcpClient });
 
   app.get("/api/me", (c) => {
     const principal = requirePrincipal(c);

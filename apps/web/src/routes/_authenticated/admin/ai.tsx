@@ -12,7 +12,25 @@ export const Route = createFileRoute("/_authenticated/admin/ai")({
 });
 
 type AiSettings = { baseUrl: string; model: string; systemPrompt: string; temperature: number; maxSteps: number; hasApiKey: boolean; updatedAt: number | null };
-type ChatMsg = { role: "user" | "assistant" | "system"; content: string; model: string | null; createdAt?: number };
+type ChatMsg = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  model: string | null;
+  createdAt?: number;
+  /** Only on a live answer: the history endpoint stores the text, not the trace. */
+  trace?: ChatTrace;
+};
+
+/** What the server did to produce the answer — the point of a test console. */
+type ChatTrace = {
+  model: string;
+  steps: number;
+  toolCalls: number;
+  tools: string[];
+  latencyMs: number;
+  scope: { branches: string; canViewRevenue: boolean };
+  maxSteps: number;
+};
 type FormState = { baseUrl: string; apiKey: string; model: string; systemPrompt: string; temperature: number; maxSteps: number };
 
 async function fetchJson<T>(path: string, fallback: string): Promise<T> {
@@ -98,12 +116,24 @@ function AiConsolePage() {
         credentials: "include",
         body: JSON.stringify({ threadId: threadId ?? undefined, message })
       });
-      if (!response.ok) throw new Error(await apiErrorMessage(response, `ส่งข้อความไม่สำเร็จ (HTTP ${response.status})`));
-      return (await response.json()) as { threadId: string; reply: string };
+      if (!response.ok) {
+        // A test console has to show what the server said, not a generic Thai
+        // sentence: "gateway 502" is the answer the operator came for.
+        const body = (await response.json().catch(() => null)) as
+          | { error?: { message?: string; hint?: string } }
+          | null;
+        const detail = [body?.error?.message, body?.error?.hint].filter(Boolean).join(" — ");
+        throw new Error(detail || `ส่งข้อความไม่สำเร็จ (HTTP ${response.status})`);
+      }
+      return (await response.json()) as { threadId: string; reply: string; trace: ChatTrace };
     },
     onSuccess: async (data, message) => {
       setThreadId(data.threadId);
-      setMessages((current) => [...current, { role: "user", content: message, model: null }, { role: "assistant", content: data.reply, model: form.model }]);
+      setMessages((current) => [
+        ...current,
+        { role: "user", content: message, model: null },
+        { role: "assistant", content: data.reply, model: data.trace?.model ?? form.model, trace: data.trace }
+      ]);
       setChatInput("");
       await queryClient.invalidateQueries({ queryKey: ["ai", "chat", data.threadId] });
     }
@@ -190,7 +220,7 @@ function AiConsolePage() {
             {historyQuery.isLoading && <p className="state-message">กำลังโหลดประวัติสนทนา</p>}
             {historyQuery.isError && <p className="error-message">โหลดประวัติสนทนาไม่สำเร็จ: {historyQuery.error.message}</p>}
             {!historyQuery.isLoading && messages.length === 0 && <p className="state-message">ส่งข้อความเพื่อทดสอบ gateway ที่ตั้งค่าไว้</p>}
-            {messages.map((message, index) => <div key={`${message.role}-${message.createdAt ?? index}-${message.content.slice(0, 20)}`} className={`chat-message chat-message--${message.role}`}><strong>{message.role === "user" ? "คุณ" : message.role === "assistant" ? "ผู้ช่วย" : "ระบบ"}</strong><p>{message.content}</p>{message.model && <small>{message.model}</small>}</div>)}
+            {messages.map((message, index) => <div key={`${message.role}-${message.createdAt ?? index}-${message.content.slice(0, 20)}`} className={`chat-message chat-message--${message.role}`}><strong>{message.role === "user" ? "คุณ" : message.role === "assistant" ? "ผู้ช่วย" : "ระบบ"}</strong><p>{message.content}</p>{message.trace ? (<small>{"ที่มาของคำตอบ: "}{message.trace.model}{" · "}{message.trace.steps}{" รอบ"}{" · "}{message.trace.toolCalls}{" tool calls"}{message.trace.tools.length > 0 ? ` (${message.trace.tools.join(", ")})` : ""}{" · "}{message.trace.latencyMs}{" ms"}{" · สาขา: "}{message.trace.scope.branches}{message.trace.scope.canViewRevenue ? "" : " · ไม่เห็นรายได้"}</small>) : message.model ? (<small>{message.model}</small>) : null}</div>)}
             {chatMutation.isPending && <p className="state-message" role="status">กำลังรอคำตอบ…</p>}
           </div>
           <form className="chat-form" onSubmit={(event) => { event.preventDefault(); if (chatInput.trim() && !chatMutation.isPending) chatMutation.mutate(chatInput.trim()); }}>
@@ -199,7 +229,10 @@ function AiConsolePage() {
             <Button type="submit" className="primary-button" isDisabled={!chatInput.trim() || chatMutation.isPending}>{chatMutation.isPending ? "กำลังส่ง…" : "ส่งข้อความ"}</Button>
           </form>
           {chatMutation.isError && <p className="error-message" role="alert">ส่งข้อความไม่สำเร็จ: {chatMutation.error.message}</p>}
-          <p className="ai-limitation">AI Console ปัจจุบันเป็น plain chat completion ยังไม่เรียก MCP tools จากหน้านี้ และไม่แสดง audit trail ของ tool call</p>
+          <p className="ai-limitation">
+            หน้านี้ทดสอบระบบเต็มรูปแบบเหมือน LINE: scope จากสิทธิ์ของคุณ, MCP tools ชุดเดียวกับบอท,
+            กฎระบบ (วันที่/สาขา/ห้ามเดาตัวเลข) และ audit row ต่อ tool call — ต่างกันแค่ประวัติสนทนามาจาก thread นี้ ไม่ใช่ memory ของ LINE
+          </p>
         </Card.Content>
       </Card>
     </div>

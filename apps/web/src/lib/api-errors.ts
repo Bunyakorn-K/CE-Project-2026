@@ -64,7 +64,8 @@ const API_ERROR_COPY: Record<string, string> = {
   UNTRUSTED_ORIGIN: "คำขอมาจากแหล่งที่ไม่ได้รับความเชื่อถือ",
   LINE_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่าช่องทาง LINE ของระบบ",
   LIFF_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่า LIFF ไอดี ปุ่มในเมนูจะเปิดไปไม่ได้",
-  RICH_MENU_SYNC_FAILED: "อัปเดตเมนู LINE ไม่สำเร็จ กรุณาลองใหม่หรือตรวจสอบการเชื่อมต่อกับ LINE"
+  RICH_MENU_SYNC_FAILED: "อัปเดตเมนู LINE ไม่สำเร็จ กรุณาลองใหม่หรือตรวจสอบการเชื่อมต่อกับ LINE",
+  CHAT_FAILED: "ผู้ช่วยตอบไม่สำเร็จ — ดูรายละเอียดจากระบบโมเดลด้านล่าง"
 };
 
 export const API_ERROR_FALLBACK = "ไม่สามารถโหลดข้อมูลได้";
