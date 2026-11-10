@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
+  HERO_HEIGHT_RATIO,
   RICH_MENU_IMAGE,
+  RICH_MENU_SIZES,
+  heroBounds,
+  rowBounds,
   RICH_MENU_PREFIX,
   buildRichMenuObject,
   columnBounds,
@@ -68,6 +72,68 @@ describe("columnBounds", () => {
   it("refuses an index outside the row", () => {
     expect(() => columnBounds(3, 3)).toThrow();
     expect(() => columnBounds(0, 0)).toThrow();
+  });
+});
+
+describe("heroBounds", () => {
+  const size = RICH_MENU_SIZES.tall;
+
+  it("puts one full-width tile on top and the rest in a row beneath", () => {
+    const count = 5;
+    const bounds = Array.from({ length: count }, (_, index) => heroBounds(index, count, size));
+
+    expect(bounds[0]).toEqual({
+      x: 0,
+      y: 0,
+      width: size.width,
+      height: Math.round(size.height * HERO_HEIGHT_RATIO)
+    });
+
+    // The row below starts where the hero ends and its tiles sit side by side.
+    for (const bound of bounds.slice(1)) {
+      expect(bound.y).toBe(bounds[0].height);
+      expect(bound.height).toBe(size.height - bounds[0].height);
+    }
+    for (let i = 2; i < bounds.length; i += 1) {
+      expect(bounds[i].x).toBe(bounds[i - 1].x + bounds[i - 1].width);
+    }
+  });
+
+  it("covers the image exactly — an uncovered strip shows the canvas through the panel", () => {
+    for (const count of [2, 3, 4, 5, 6]) {
+      const bounds = Array.from({ length: count }, (_, index) => heroBounds(index, count, size));
+      const area = bounds.reduce((sum, bound) => sum + bound.width * bound.height, 0);
+      expect(area).toBe(size.width * size.height);
+      const last = bounds[bounds.length - 1];
+      expect(last.x + last.width).toBe(size.width);
+      expect(last.y + last.height).toBe(size.height);
+    }
+  });
+
+  it("needs a tile beneath the hero", () => {
+    expect(() => heroBounds(0, 1, size)).toThrow();
+  });
+
+  it("gives the owner the tall shape and a hero tile, and the others one row", () => {
+    const definitions = richMenuDefinitions(LIFF_ID);
+    const owner = definitions.find((definition) => definition.key === "owner");
+    expect(owner?.layout).toBe("hero");
+    expect(owner?.size).toEqual(RICH_MENU_SIZES.tall);
+    expect(owner?.areas[0].bounds.width).toBe(RICH_MENU_SIZES.tall.width);
+    expect(owner?.areas[0].action).toEqual({ type: "uri", uri: `https://liff.line.me/${LIFF_ID}/dashboard` });
+
+    for (const definition of definitions.filter((entry) => entry.key !== "owner")) {
+      expect(definition.layout).toBe("row");
+      expect(definition.size).toEqual(RICH_MENU_SIZES.wide);
+    }
+  });
+});
+
+describe("rowBounds", () => {
+  it("still splits the wide image into equal columns", () => {
+    const bounds = Array.from({ length: 4 }, (_, index) => rowBounds(index, 4, RICH_MENU_SIZES.wide));
+    expect(bounds[0].width).toBe(625);
+    expect(bounds[3].x + bounds[3].width).toBe(RICH_MENU_SIZES.wide.width);
   });
 });
 
@@ -159,7 +225,9 @@ describe("buildRichMenuObject", () => {
   it("produces the shape LINE's create endpoint expects", () => {
     const [owner] = richMenuDefinitions(LIFF_ID);
     const object = buildRichMenuObject(owner);
-    expect(object.size).toEqual({ width: 2500, height: 843 });
+    // The owner panel is the tall shape; the object must declare that size or LINE
+    // rejects the image it is given.
+    expect(object.size).toEqual({ width: 2500, height: 1686 });
     expect(object.selected).toBe(true);
     expect(object.name).toBe(owner.name);
     expect(object.chatBarText).toBe(owner.chatBarText);
@@ -249,12 +317,17 @@ describe("the rendered images match the definitions", () => {
       chatBarText: string;
       labels: string[];
       icons: string[];
+      size: { width: number; height: number };
       areas: unknown[];
     }[];
   };
 
-  it("was rendered at the size the definitions declare", () => {
-    expect(manifest.size).toEqual(RICH_MENU_IMAGE);
+  it("was rendered at the size each definition declares", () => {
+    const definitions = richMenuDefinitions(LIFF_ID);
+    for (const definition of definitions) {
+      const rendered = manifest.menus.find((menu) => menu.key === definition.key);
+      expect(rendered?.size, definition.key).toEqual(definition.size);
+    }
   });
 
   // The renderer runs with a placeholder LIFF id (it only draws labels), so the

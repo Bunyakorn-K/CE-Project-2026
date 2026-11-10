@@ -14,6 +14,8 @@ process.stdout.write(
       size: RICH_MENU_IMAGE,
       menus: definitions.map((definition) => ({
         key: definition.key,
+        size: definition.size,
+        layout: definition.layout,
         name: definition.name,
         chatBarText: definition.chatBarText,
         accent: definition.accent,

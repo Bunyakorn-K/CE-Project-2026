@@ -6,8 +6,13 @@
   "menus": [
     {
       "key": "owner",
-      "name": "laundrytwin:owner:v2",
+      "name": "laundrytwin:owner:v3",
       "chatBarText": "เมนูเจ้าของ",
+      "size": {
+        "width": 2500,
+        "height": 1686
+      },
+      "layout": "hero",
       "labels": [
         "ภาพรวม",
         "วิเคราะห์",
@@ -27,8 +32,8 @@
           "bounds": {
             "x": 0,
             "y": 0,
-            "width": 500,
-            "height": 843
+            "width": 2500,
+            "height": 674
           },
           "action": {
             "type": "uri",
@@ -37,10 +42,10 @@
         },
         {
           "bounds": {
-            "x": 500,
-            "y": 0,
-            "width": 500,
-            "height": 843
+            "x": 0,
+            "y": 674,
+            "width": 625,
+            "height": 1012
           },
           "action": {
             "type": "uri",
@@ -49,10 +54,10 @@
         },
         {
           "bounds": {
-            "x": 1000,
-            "y": 0,
-            "width": 500,
-            "height": 843
+            "x": 625,
+            "y": 674,
+            "width": 625,
+            "height": 1012
           },
           "action": {
             "type": "uri",
@@ -61,10 +66,10 @@
         },
         {
           "bounds": {
-            "x": 1500,
-            "y": 0,
-            "width": 500,
-            "height": 843
+            "x": 1250,
+            "y": 674,
+            "width": 625,
+            "height": 1012
           },
           "action": {
             "type": "uri",
@@ -73,10 +78,10 @@
         },
         {
           "bounds": {
-            "x": 2000,
-            "y": 0,
-            "width": 500,
-            "height": 843
+            "x": 1875,
+            "y": 674,
+            "width": 625,
+            "height": 1012
           },
           "action": {
             "type": "message",
@@ -85,12 +90,17 @@
         }
       ],
       "file": "owner.png",
-      "bytes": 83741
+      "bytes": 115252
     },
     {
       "key": "manager",
-      "name": "laundrytwin:manager:v2",
+      "name": "laundrytwin:manager:v3",
       "chatBarText": "เมนูผู้จัดการ",
+      "size": {
+        "width": 2500,
+        "height": 843
+      },
+      "layout": "row",
       "labels": [
         "ภาพรวม",
         "วิเคราะห์",
@@ -158,8 +168,13 @@
     },
     {
       "key": "technician",
-      "name": "laundrytwin:technician:v2",
+      "name": "laundrytwin:technician:v3",
       "chatBarText": "เมนูช่าง",
+      "size": {
+        "width": 2500,
+        "height": 843
+      },
+      "layout": "row",
       "labels": [
         "ภาพรวม",
         "เครื่องซักผ้า",
@@ -227,8 +242,13 @@
     },
     {
       "key": "default",
-      "name": "laundrytwin:default:v2",
+      "name": "laundrytwin:default:v3",
       "chatBarText": "LaundryTwin",
+      "size": {
+        "width": 2500,
+        "height": 843
+      },
+      "layout": "row",
       "labels": [
         "ขอสิทธิ์ใช้งาน",
         "แชทกับ AI"

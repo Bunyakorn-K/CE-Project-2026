@@ -87,38 +87,58 @@ def measure(text: str, size: int) -> float:
 SHAPING_CORRECTION = 0.82
 
 
-def font_size_for(label: str, tile_width: int) -> int:
+def font_size_for(label: str, tile_width: int, cap: int = 104) -> int:
     """Largest size at which the label fits its tile, capped so it stays calm."""
     available = tile_width - 36
-    size = 104
+    size = cap
     while size > 24 and measure(label, size) * SHAPING_CORRECTION > available:
         size -= 2
     return size
 
 
+INSET = 14
+
+
 def build_html(menu: dict, width: int, height: int) -> str:
-    count = len(menu["areas"])
-    column = width // count
-    tile_width = column - 28
-    tile_height = height - 28
+    # Tiles are placed from the bounds the API defined, not from an assumed grid:
+    # the owner panel has a full-width hero tile above a row of four, and the
+    # renderer must not need to know that shape to draw it.
+    boxes = [
+        {
+            "x": area["bounds"]["x"] + INSET,
+            "y": area["bounds"]["y"] + INSET,
+            "w": area["bounds"]["width"] - 2 * INSET,
+            "h": area["bounds"]["height"] - 2 * INSET,
+        }
+        for area in menu["areas"]
+    ]
 
     # One label size for the whole panel: per-tile sizing made "ภาพรวม" twice the
     # height of "เครื่องซักผ้า" and the panel read as unrelated buttons.
-    size = min(font_size_for(label, tile_width) for label in menu["labels"])
-    # The icons carry the panel: at 0.5 of the tile they read as decoration above
-    # a label rather than as the button itself.
-    icon_size = int(min(tile_width * 0.66, tile_height * 0.52))
+    size = min(
+        font_size_for(label, box["w"]) for label, box in zip(menu["labels"], boxes)
+    )
 
     tiles = []
-    for index in range(count):
+    for index, box in enumerate(boxes):
         icon = ICONS[menu["icons"][index]]
+        # A tile much wider than it is tall gets its icon beside the label; stacked,
+        # a full-width hero tile is a small icon floating in a wide empty band.
+        horizontal = box["w"] > box["h"] * 1.6
+        icon_size = int(min(box["w"] * (0.3 if horizontal else 0.66), box["h"] * 0.52))
+        # The hero is a different shape, so it may carry a larger label without
+        # breaking the row beneath it; capped so it stays a tile and not a banner.
+        # The hero gets its own, larger cap: it is a different shape, so a bigger
+        # label there reads as hierarchy rather than as an inconsistent panel.
+        label_size = font_size_for(menu["labels"][index], box["w"], cap=168) if horizontal else size
         tiles.append(
-            f'<div class="tile" style="width:{tile_width}px;height:{tile_height}px;'
+            f'<div class="tile{" row" if horizontal else ""}" style="left:{box["x"]}px;'
+            f'top:{box["y"]}px;width:{box["w"]}px;height:{box["h"]}px;'
             f'background:{menu["colors"][index]}">'
             f'<svg viewBox="0 0 24 24" width="{icon_size}" height="{icon_size}" fill="none" '
             f'stroke="{TEXT}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
             f"{icon}</svg>"
-            f'<div class="label" style="font-size:{size}px">{menu["labels"][index]}</div>'
+            f'<div class="label" style="font-size:{label_size}px">{menu["labels"][index]}</div>'
             f"</div>"
         )
 
@@ -126,10 +146,10 @@ def build_html(menu: dict, width: int, height: int) -> str:
 <html><head><meta charset="utf-8"><style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   html, body {{ width:{width}px; height:{height}px; background:{CANVAS}; overflow:hidden; }}
-  body {{ display:flex; align-items:center; justify-content:flex-start;
-         font-family:"Thonburi","Noto Sans Thai",sans-serif; }}
-  .tile {{ margin:14px; border-radius:34px; display:flex; flex-direction:column;
+  body {{ position:relative; font-family:"Thonburi","Noto Sans Thai",sans-serif; }}
+  .tile {{ position:absolute; border-radius:34px; display:flex; flex-direction:column;
            align-items:center; justify-content:center; gap:26px; }}
+  .tile.row {{ flex-direction:row; gap:44px; }}
   .label {{ color:{TEXT}; font-weight:700; white-space:nowrap; letter-spacing:0.4px; }}
 </style></head><body>{"".join(tiles)}</body></html>"""
 
@@ -161,11 +181,11 @@ def main() -> None:
         raise SystemExit("usage: render-rich-menus.py <out-dir>")
     out_dir = sys.argv[1]
     spec = json.load(sys.stdin)
-    width, height = spec["size"]["width"], spec["size"]["height"]
     os.makedirs(out_dir, exist_ok=True)
 
     manifest = {"size": spec["size"], "menus": []}
     for menu in spec["menus"]:
+        width, height = menu["size"]["width"], menu["size"]["height"]
         path = os.path.join(out_dir, f"{menu['key']}.png")
         render(menu, width, height, path)
         manifest["menus"].append(
@@ -173,6 +193,8 @@ def main() -> None:
                 "key": menu["key"],
                 "name": menu["name"],
                 "chatBarText": menu["chatBarText"],
+                "size": menu["size"],
+                "layout": menu["layout"],
                 "labels": menu["labels"],
                 "icons": menu["icons"],
                 "areas": menu["areas"],

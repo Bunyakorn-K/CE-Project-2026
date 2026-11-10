@@ -24,7 +24,29 @@
 
 import type { Role } from "./access-policy";
 
-export const RICH_MENU_IMAGE = { width: 2500, height: 843 } as const;
+export type RichMenuSize = { width: number; height: number };
+
+/**
+ * LINE accepts two shapes. `wide` is one row of tiles above the keyboard; `tall`
+ * is a proper panel that covers more of the chat, which is what a menu with a
+ * hero tile needs — six tiles in one row makes each one too narrow to read.
+ */
+export const RICH_MENU_SIZES: Record<"wide" | "tall", RichMenuSize> = {
+  wide: { width: 2500, height: 843 },
+  tall: { width: 2500, height: 1686 }
+};
+
+/** Kept for the tests and the renderer's default; `tall` is opt-in per menu. */
+export const RICH_MENU_IMAGE = RICH_MENU_SIZES.wide;
+
+/**
+ * How the areas are arranged.
+ *
+ * `row` is N equal columns. `hero` is one tile across the full width with the rest
+ * in a row beneath it — the shape that keeps a five- or six-item menu readable
+ * instead of squeezing every label into a 400px column.
+ */
+export type RichMenuLayout = "row" | "hero";
 
 /** Every menu this deployment owns starts with this, so stale ones are findable. */
 export const RICH_MENU_PREFIX = "laundrytwin:";
@@ -56,23 +78,73 @@ export type RichMenuDefinition = {
   colors: string[];
   /** Accent colour for the renderer, so the panel matches the role. */
   accent: string;
+  size: RichMenuSize;
+  layout: RichMenuLayout;
   areas: RichMenuArea[];
 };
 
-/** Equal columns across the image, which is how the renderer draws them. */
-export function columnBounds(index: number, count: number): Bounds {
+/** How much of a tall panel the hero tile takes. The rest is the row beneath. */
+export const HERO_HEIGHT_RATIO = 0.4;
+
+function assertIndex(index: number, count: number) {
   if (count <= 0) throw new Error("a rich menu needs at least one area");
   if (index < 0 || index >= count) throw new Error(`area ${index} is outside 0..${count - 1}`);
-  const width = Math.floor(RICH_MENU_IMAGE.width / count);
+}
+
+/** Equal columns across the whole image. */
+export function rowBounds(index: number, count: number, size: RichMenuSize = RICH_MENU_IMAGE): Bounds {
+  assertIndex(index, count);
+  const width = Math.floor(size.width / count);
   const x = index * width;
   // The last column takes the remainder so the areas cover the image exactly.
   const isLast = index === count - 1;
   return {
     x,
     y: 0,
-    width: isLast ? RICH_MENU_IMAGE.width - x : width,
-    height: RICH_MENU_IMAGE.height
+    width: isLast ? size.width - x : width,
+    height: size.height
   };
+}
+
+/**
+ * A full-width tile on top, the remaining areas in one row beneath it.
+ *
+ * Bounds tile the whole image: the hero spans the width, the row below splits the
+ * remainder, and the last tile takes the leftover pixels so nothing is uncovered —
+ * an uncovered strip shows the canvas colour through the panel.
+ */
+export function heroBounds(index: number, count: number, size: RichMenuSize = RICH_MENU_SIZES.tall): Bounds {
+  assertIndex(index, count);
+  if (count < 2) throw new Error("a hero layout needs a tile beneath it");
+  const heroHeight = Math.round(size.height * HERO_HEIGHT_RATIO);
+  if (index === 0) {
+    return { x: 0, y: 0, width: size.width, height: heroHeight };
+  }
+  const columns = count - 1;
+  const column = Math.floor(size.width / columns);
+  const position = index - 1;
+  const x = position * column;
+  const isLast = position === columns - 1;
+  return {
+    x,
+    y: heroHeight,
+    width: isLast ? size.width - x : column,
+    height: size.height - heroHeight
+  };
+}
+
+export function layoutBounds(
+  index: number,
+  count: number,
+  size: RichMenuSize,
+  layout: RichMenuLayout
+): Bounds {
+  return layout === "hero" ? heroBounds(index, count, size) : rowBounds(index, count, size);
+}
+
+/** @deprecated name kept for the existing call sites; equal columns, wide size. */
+export function columnBounds(index: number, count: number): Bounds {
+  return rowBounds(index, count, RICH_MENU_IMAGE);
 }
 
 /** `https://liff.line.me/<id>/<path>` — the path is forwarded to the LIFF endpoint. */
@@ -85,6 +157,8 @@ type MenuSpec = {
   key: RichMenuKey;
   chatBarText: string;
   accent: string;
+  /** Defaults to the wide single-row panel. */
+  layout?: RichMenuLayout;
   items: { label: string; icon: RichMenuIcon; color: string; path?: string; message?: string }[];
 };
 
@@ -121,6 +195,10 @@ const SPECS: MenuSpec[] = [
     key: "owner",
     chatBarText: "เมนูเจ้าของ",
     accent: BLUE,
+    // Five tiles in one row squeezed every label into a 400px column. The
+    // dashboard — what an owner opens most — takes the full-width tile on top and
+    // the other four sit beneath it.
+    layout: "hero",
     items: [
       { label: "ภาพรวม", icon: "grid", color: BLUE, path: "/dashboard" },
       { label: "วิเคราะห์", icon: "chart", color: GREEN, path: "/analytics" },
@@ -167,19 +245,22 @@ const SPECS: MenuSpec[] = [
 
 function buildDefinition(spec: MenuSpec, liffId: string): RichMenuDefinition {
   const count = spec.items.length;
+  const layout: RichMenuLayout = spec.layout ?? "row";
   return {
     key: spec.key,
-    // v2: tiled panels with icons and the conversation starter. The version is in
-    // the name because LINE cannot edit a menu — a v1 and a v2 side by side in the
+    // v3: the owner panel grew a hero tile, so its shape changed. The version is in
+    // the name because LINE cannot edit a menu — two versions side by side in the
     // list is how a half-finished sync is recognisable.
-    name: `${RICH_MENU_PREFIX}${spec.key}:v2`,
+    name: `${RICH_MENU_PREFIX}${spec.key}:v3`,
     chatBarText: spec.chatBarText,
     labels: spec.items.map((item) => item.label),
     icons: spec.items.map((item) => item.icon),
     colors: spec.items.map((item) => item.color),
     accent: spec.accent,
+    size: layout === "hero" ? RICH_MENU_SIZES.tall : RICH_MENU_SIZES.wide,
+    layout,
     areas: spec.items.map((item, index) => ({
-      bounds: columnBounds(index, count),
+      bounds: layoutBounds(index, count, layout === "hero" ? RICH_MENU_SIZES.tall : RICH_MENU_SIZES.wide, layout),
       action: item.path
         ? { type: "uri", uri: liffUri(liffId, item.path) }
         : { type: "message", text: item.message ?? item.label }
@@ -207,7 +288,7 @@ export function menuKeyForRoles(roles: Role[]): RichMenuKey {
 /** The object LINE's `POST /v2/bot/richmenu` expects. */
 export function buildRichMenuObject(definition: RichMenuDefinition) {
   return {
-    size: { width: RICH_MENU_IMAGE.width, height: RICH_MENU_IMAGE.height },
+    size: { width: definition.size.width, height: definition.size.height },
     selected: true,
     name: definition.name,
     chatBarText: definition.chatBarText,
