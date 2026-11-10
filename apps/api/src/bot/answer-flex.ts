@@ -150,8 +150,16 @@ function text(content: string, options: Record<string, unknown> = {}) {
   return { type: "text", text: content, wrap: true, ...options };
 }
 
-function spacer(size = "sm") {
-  return { type: "spacer", size };
+/**
+ * Spacing is a `margin` on the next component, never a spacer.
+ *
+ * LINE validates the message and rejects any spacer that is not the first or last
+ * element of its box — "spacer must be the fist or last element of the box". The
+ * first version of this module put spacers between rows and the API refused every
+ * card; `validate/push` caught it before a phone did.
+ */
+function withMargin(component: Record<string, unknown>, margin?: string) {
+  return margin ? { ...component, margin } : component;
 }
 
 /** A label and its value on one line — the whole reason this module exists. */
@@ -198,36 +206,27 @@ export function buildAnswerFlex(
   if (!looksStructured(parsed)) return null;
 
   const accent = options.accent ?? "#1f6feb";
-  const body: unknown[] = [];
+  const body: Record<string, unknown>[] = [];
 
-  for (const line of parsed.intro) {
-    body.push(text(line, { size: "sm", color: "#374151" }));
-    body.push(spacer("sm"));
-  }
+  parsed.intro.forEach((line, index) => {
+    body.push(withMargin(text(line, { size: "sm", color: "#374151" }), index === 0 ? undefined : "sm"));
+  });
 
-  if (parsed.rows.length > 0) {
-    parsed.rows.forEach((row, index) => {
-      if (index > 0) body.push(spacer("sm"));
-      body.push(rowComponent(row));
-    });
-  }
+  parsed.rows.forEach((row, index) => {
+    const first = index === 0;
+    body.push(withMargin(rowComponent(row), first && parsed.intro.length === 0 ? undefined : "sm"));
+  });
 
-  if (parsed.bullets.length > 0) {
-    if (parsed.rows.length > 0) body.push(spacer("md"));
-    parsed.bullets.forEach((bullet, index) => {
-      if (index > 0) body.push(spacer("xs"));
-      body.push(bulletComponent(bullet));
-    });
-  }
+  parsed.bullets.forEach((bullet, index) => {
+    body.push(withMargin(bulletComponent(bullet), index === 0 ? "md" : "xs"));
+  });
 
-  for (const line of parsed.outro) {
-    body.push(spacer("md"));
-    body.push(text(line, { size: "sm", color: "#374151" }));
-  }
+  parsed.outro.forEach((line, index) => {
+    body.push(withMargin(text(line, { size: "sm", color: "#374151" }), index === 0 ? "md" : "sm"));
+  });
 
   if (options.footer) {
-    body.push(spacer("md"));
-    body.push(text(options.footer, { size: "xxs", color: "#9CA3AF" }));
+    body.push(withMargin(text(options.footer, { size: "xxs", color: "#9CA3AF" }), "md"));
   }
 
   const bubble: Record<string, unknown> = {

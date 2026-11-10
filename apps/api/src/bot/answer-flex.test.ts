@@ -108,6 +108,19 @@ describe("buildAnswerFlex", () => {
     }
   });
 
+  it("never uses a spacer — LINE rejects one that is not first or last in a box", () => {
+    // validate/push answered: "spacer must be the fist or last element of the box".
+    // Every card carrying a spacer between rows was refused outright.
+    expect(JSON.stringify(buildAnswerFlex(parsed))).not.toContain('"spacer"');
+  });
+
+  it("spaces rows with margins on the following component", () => {
+    const bubble = buildAnswerFlex(parsed) as { body: { contents: { margin?: string }[] } };
+    const margins = bubble.body.contents.map((component) => component.margin);
+    expect(margins[0]).toBeUndefined();
+    expect(margins.slice(1)).toContain("sm");
+  });
+
   it("builds altText from the same parts and keeps it inside LINE's limit", () => {
     const alt = answerAltText(parsed);
     expect(alt).toContain("ภาพรวมวันนี้");
