@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { initTelemetry, telemetryStatus, withAnswerSpan } from "./telemetry";
+import { db, initializeDatabase } from "./db";
+import { aiTrace } from "./schema";
+import { hashUser, initTelemetry, telemetryStatus, withAnswerSpan, withToolSpan } from "./telemetry";
+
+initializeDatabase();
 
 describe("telemetryStatus", () => {
   it("is off, and says why, when no endpoint is configured", () => {
@@ -51,5 +55,76 @@ describe("withAnswerSpan", () => {
         throw new Error("gateway down");
       }, {})
     ).rejects.toThrow("gateway down");
+  });
+});
+
+describe("local trace rows", () => {
+  const attributes = {
+    model: "test-model",
+    steps: 0,
+    toolCalls: 0,
+    promptVersion: "v-test",
+    roleLabel: "owner",
+    turnId: "turn-1",
+    finalize: (result: unknown) => ({
+      "llm.steps": (result as { steps: number }).steps,
+      "llm.input_tokens": 120
+    })
+  };
+
+  it("keeps one row per answer, with the numbers known only at the end", async () => {
+    db.delete(aiTrace).run();
+    await withAnswerSpan(attributes, async () => ({ steps: 3 }), {});
+    const rows = db.select().from(aiTrace).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("chat.answer");
+    expect(rows[0].turnId).toBe("turn-1");
+    expect(rows[0].status).toBe("ok");
+    const parsed = JSON.parse(rows[0].attributes) as Record<string, unknown>;
+    expect(parsed["llm.steps"]).toBe(3);
+    expect(parsed["llm.input_tokens"]).toBe(120);
+    // Never the question or the answer.
+    expect(JSON.stringify(parsed)).not.toContain("ภาพรวมวันนี้");
+  });
+
+  it("records a failure as a failure", async () => {
+    db.delete(aiTrace).run();
+    await expect(
+      withAnswerSpan(attributes, async () => {
+        throw new Error("gateway down");
+      }, {})
+    ).rejects.toThrow("gateway down");
+    const rows = db.select().from(aiTrace).all();
+    expect(rows[0].status).toBe("error");
+    expect(rows[0].attributes).toContain("gateway down");
+  });
+
+  it("gives every tool call its own row, under the turn", async () => {
+    db.delete(aiTrace).run();
+    await withToolSpan("get_revenue", "turn-9", async () => "x".repeat(42));
+    const rows = db.select().from(aiTrace).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("tool.get_revenue");
+    expect(rows[0].turnId).toBe("turn-9");
+    expect(JSON.parse(rows[0].attributes)["tool.result_chars"]).toBe(42);
+  });
+
+  it("records a failed tool call without throwing away the error", async () => {
+    db.delete(aiTrace).run();
+    await expect(withToolSpan("get_revenue", "turn-9", async () => {
+      throw new Error("MCP 503");
+    })).rejects.toThrow("MCP 503");
+    expect(db.select().from(aiTrace).all()[0].status).toBe("error");
+  });
+});
+
+describe("session pseudonym", () => {
+  it("is stable, and not the LINE id", () => {
+    const first = hashUser("U284d77fa27c1bf0be58fe91ad71618d3", {});
+    expect(first).toBe(hashUser("U284d77fa27c1bf0be58fe91ad71618d3", {}));
+    expect(first).not.toContain("U284d");
+    expect(first).toHaveLength(16);
+    // A different salt gives a different pseudonym.
+    expect(hashUser("U284d77fa27c1bf0be58fe91ad71618d3", { OTEL_HASH_SALT: "x" })).not.toBe(first);
   });
 });

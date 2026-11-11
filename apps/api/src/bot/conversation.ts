@@ -3,8 +3,9 @@ import type { McpClientLike } from "./mcp-client";
 import { getAiSettingsWithKey } from "../ai-settings";
 import { runAuditedToolCall } from "../ai-audit";
 import { agenticAnswerWithMeta } from "../llm-client";
+import { randomUUID } from "node:crypto";
 import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
-import { withAnswerSpan } from "../telemetry";
+import { withAnswerSpan, withToolSpan, hashUser } from "../telemetry";
 import { recentTurns } from "./memory";
 
 export type ConversationContext = {
@@ -84,6 +85,10 @@ export type ConversationAnswer = {
   model: string;
   /** The server-rules version that shaped the answer. */
   promptVersion: string;
+  /** The span id shared with this answer's tool spans. */
+  turnId: string;
+  inputTokens: number;
+  outputTokens: number;
 };
 
 /**
@@ -121,22 +126,38 @@ export async function answerForMessage(
   ctx: ConversationContext,
   deps: ConversationDeps
 ): Promise<ConversationAnswer> {
+  const turnId = randomUUID();
+  // The span is opened before the work so a model that never returns still shows up in
+  // the trace; the counts are filled in on the way out.
   return withAnswerSpan(
     {
-      // Filled in after the answer; the span is opened first so a slow model shows up
-      // in the trace even when it never returns.
       model: ctx.roleLabel,
       steps: 0,
       toolCalls: 0,
       promptVersion: ASSISTANT_PROMPT_VERSION,
       roleLabel: ctx.roleLabel,
-      question: ctx.userText
+      question: ctx.userText,
+      turnId,
+      sessionId: ctx.lineUserId ? hashUser(ctx.lineUserId) : undefined,
+      finalize: (answer) => {
+        const typed = answer as ConversationAnswer;
+        return {
+          "llm.steps": typed.steps,
+          "llm.tool_calls": typed.toolCalls,
+          "llm.input_tokens": typed.inputTokens,
+          "llm.output_tokens": typed.outputTokens
+        };
+      }
     },
-    () => answerOnce(ctx, deps)
+    () => answerOnce(ctx, deps, turnId)
   );
 }
 
-async function answerOnce(ctx: ConversationContext, deps: ConversationDeps): Promise<ConversationAnswer> {
+async function answerOnce(
+  ctx: ConversationContext,
+  deps: ConversationDeps,
+  turnId: string
+): Promise<ConversationAnswer> {
   // The gateway config is now DB-driven (ai_settings) — the bot reads the
   // same baseURL/apiKey/model/prompt that the backoffice AI console manages.
   const settings = getAiSettingsWithKey();
@@ -147,7 +168,10 @@ async function answerOnce(ctx: ConversationContext, deps: ConversationDeps): Pro
       toolCalls: 0,
       toolNames: [],
       model: settings.model,
-      promptVersion: ASSISTANT_PROMPT_VERSION
+      promptVersion: ASSISTANT_PROMPT_VERSION,
+      turnId,
+      inputTokens: 0,
+      outputTokens: 0
     };
   }
 
@@ -182,7 +206,10 @@ async function answerOnce(ctx: ConversationContext, deps: ConversationDeps): Pro
         actorUserId: ctx.actorUserId ?? null,
         model: settings.model,
         args: toolArgs,
-        execute: async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope))
+        execute: async () =>
+          // Its own span, so "89 seconds" can be attributed to one call instead of
+          // being one number for four.
+          withToolSpan(name, turnId, async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope)))
       });
     },
     temperature: settings.temperature,
@@ -201,6 +228,9 @@ async function answerOnce(ctx: ConversationContext, deps: ConversationDeps): Pro
     toolCalls: result.toolCalls,
     toolNames: result.toolNames,
     model: settings.model,
-    promptVersion: ASSISTANT_PROMPT_VERSION
+    promptVersion: ASSISTANT_PROMPT_VERSION,
+    turnId,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens
   };
 }

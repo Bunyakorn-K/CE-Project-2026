@@ -164,6 +164,48 @@ export function initializeDatabase() {
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS eval_case (
+      id text PRIMARY KEY NOT NULL,
+      question text NOT NULL,
+      expect_contains text,
+      origin text NOT NULL DEFAULT 'canonical',
+      enabled integer NOT NULL DEFAULT 1,
+      created_at integer NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS eval_run (
+      id text PRIMARY KEY NOT NULL,
+      model text NOT NULL,
+      prompt_version text NOT NULL,
+      baseline_model text,
+      status text NOT NULL DEFAULT 'running',
+      started_at integer NOT NULL,
+      finished_at integer
+    );
+    CREATE TABLE IF NOT EXISTS eval_result (
+      id text PRIMARY KEY NOT NULL,
+      run_id text NOT NULL,
+      case_id text NOT NULL,
+      question text NOT NULL,
+      answer text NOT NULL,
+      score integer NOT NULL,
+      checks text NOT NULL,
+      latency_ms integer NOT NULL,
+      input_tokens integer NOT NULL DEFAULT 0,
+      output_tokens integer NOT NULL DEFAULT 0,
+      created_at integer NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS eval_result_run_idx ON eval_result(run_id);
+    CREATE TABLE IF NOT EXISTS ai_trace (
+      id text PRIMARY KEY NOT NULL,
+      turn_id text,
+      name text NOT NULL,
+      status text NOT NULL,
+      duration_ms integer NOT NULL,
+      attributes text NOT NULL DEFAULT '{}',
+      created_at integer NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ai_trace_turn_idx ON ai_trace(turn_id);
+    CREATE INDEX IF NOT EXISTS ai_trace_created_idx ON ai_trace(created_at);
     CREATE TABLE IF NOT EXISTS chat_preference (
       line_user_id text NOT NULL,
       key text NOT NULL,
@@ -212,6 +254,9 @@ export function initializeDatabase() {
   // since September; without the ALTER, the first SELECT would fail with
   // "no such column: max_steps" and the whole API would stop.
   ensureColumn("ai_settings", "max_steps", "integer NOT NULL DEFAULT 4");
+  // Tokens are what turn a latency into a cost; they were not captured before L1.
+  ensureColumn("chat_turn", "input_tokens", "integer NOT NULL DEFAULT 0");
+  ensureColumn("chat_turn", "output_tokens", "integer NOT NULL DEFAULT 0");
 }
 
 /** Add a column only if the table does not have it yet. Idempotent by design. */

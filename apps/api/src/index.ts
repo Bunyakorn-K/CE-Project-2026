@@ -4,6 +4,7 @@ import { compress } from "hono/compress";
 import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { Hono, type Context } from "hono";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { canAccessBranch, mayManageAccess, mayViewRevenue, type Role } from "./access-policy";
 import {
@@ -35,6 +36,8 @@ import { isCalendarDate } from "./calendar-date";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { parseAnalyticsRange } from "./analytics/scope";
 import { initTelemetry, withAnswerSpan } from "./telemetry";
+import { listCases, listRuns, runEval } from "./eval";
+import { answerForMessage } from "./bot/conversation";
 import {
   addDigestRecipient,
   listDigestRecipients,
@@ -878,6 +881,59 @@ export function createApp(dependencies: AppDependencies = {}) {
       force: c.req.query("force") === "1"
     });
     return c.json({ digest: summary });
+  });
+
+  /**
+   * Replay the golden set against the model configured right now.
+   *
+   * Machine-triggered (a workflow, or an owner's script) because a run costs model
+   * calls and should not be a stray browser click. To compare two models: run it,
+   * switch the model in `/admin/ai`, run it again, and compare the two runs — the
+   * settings stay the single source of truth for what production uses.
+   */
+  app.post("/api/internal/eval/run", async (c) => {
+    if (!isAlertSweepTokenValid(c.req.header("x-alert-sweep-token"), process.env.ALERT_SWEEP_TOKEN)) {
+      return apiError(c, 401, "UNAUTHORIZED", "A valid alert sweep token is required");
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+    const limit = typeof body.limit === "number" ? Math.min(20, Math.max(1, body.limit)) : 5;
+
+    const summary = await runEval({
+      limit,
+      answer: async (question) => {
+        // The same call the bot makes, with a tenant-wide owner scope: a run must
+        // exercise production's path, not a simplified one.
+        const answer = await answerForMessage(
+          {
+            userText: question,
+            // A throwaway conversation id: the replay must not read the owner's real
+            // memory (which would change the answer) and must not write to it either.
+            // Unique per question, so one case cannot prime the next.
+            lineUserId: `eval:${randomUUID()}`,
+            roleLabel: "owner",
+            branchContext: "",
+            scope: { branchIds: ["*"], canViewRevenue: true },
+            actorUserId: null,
+            now: new Date()
+          },
+          { mcp: mcpClient }
+        );
+        return {
+          text: answer.text,
+          inputTokens: answer.inputTokens,
+          outputTokens: answer.outputTokens,
+          model: answer.model,
+          promptVersion: answer.promptVersion
+        };
+      }
+    });
+    return c.json({ eval: summary });
+  });
+
+  app.get("/api/admin/eval/runs", (c) => {
+    const owner = requireOwner(c);
+    if (owner instanceof Response) return owner;
+    return c.json({ runs: listRuns(10), cases: listCases() });
   });
 
   app.post("/webhooks/line", async (c) => {

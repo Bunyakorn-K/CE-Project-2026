@@ -104,6 +104,9 @@ export type AgenticAnswerResult = {
   toolCalls: number;
   /** The tool names the model actually called — what a test console shows. */
   toolNames: string[];
+  /** Prompt tokens for the whole loop; 0 when the gateway does not report them. */
+  inputTokens: number;
+  outputTokens: number;
 };
 
 export async function agenticAnswerWithMeta(
@@ -139,13 +142,17 @@ export async function agenticAnswerWithMeta(
     temperature: temperature / 100,
     ...(maxTokens !== undefined ? { maxTokens } : {})
   });
-  const [text, steps] = await Promise.all([result.text, result.steps]);
+  const [text, steps, usage] = await Promise.all([result.text, result.steps, result.totalUsage]);
   const calls = steps.flatMap((step) => step.toolCalls ?? []);
   return {
     text: text || "ขออภัย ไม่สามารถหาคำตอบได้",
     steps: steps.length,
     toolCalls: calls.length,
-    toolNames: calls.map((call) => call.toolName)
+    toolNames: calls.map((call) => call.toolName),
+    // Tokens are the only way a latency becomes a cost. The gateway may omit them,
+    // so they are optional rather than invented.
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0
   };
 }
 

@@ -41,6 +41,9 @@ export type AppendTurnInput = {
   steps?: number;
   toolCalls?: number;
   latencyMs?: number;
+  /** Tokens for the whole answer, when the gateway reports them. */
+  inputTokens?: number;
+  outputTokens?: number;
   delivered?: "reply" | "push";
   at?: Date;
 };
@@ -56,6 +59,8 @@ export function appendTurn(input: AppendTurnInput): void {
       steps: input.steps ?? 0,
       toolCalls: input.toolCalls ?? 0,
       latencyMs: input.latencyMs ?? 0,
+      inputTokens: input.inputTokens ?? 0,
+      outputTokens: input.outputTokens ?? 0,
       delivered: input.delivered ?? "reply",
       createdAt: input.at ?? new Date()
     })

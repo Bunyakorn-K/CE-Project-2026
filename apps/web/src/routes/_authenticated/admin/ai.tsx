@@ -31,6 +31,19 @@ type ChatStats = {
   limits: { hourly: number; daily: number; enabled: boolean };
 };
 
+/** One replay of the golden set: the same questions, scored by rules. */
+type EvalRunView = {
+  runId: string;
+  model: string;
+  promptVersion: string;
+  baselineModel: string | null;
+  startedAt: number;
+  total: number;
+  passed: number;
+  averageScore: number;
+  averageLatencyMs: number;
+};
+
 /** The rules the server appends to the owner's persona, and their version. */
 type ServerPrompt = { version: string; rules: string; toolNames: string[] };
 
@@ -98,6 +111,16 @@ function AiConsolePage() {
     },
     enabled: isOwner && settingsQuery.data?.settings.hasApiKey === true,
     staleTime: 10 * 60 * 1000
+  });
+
+  const evalQuery = useQuery({
+    queryKey: ["ai", "eval-runs"],
+    queryFn: () =>
+      fetchJson<{ runs: EvalRunView[]; cases: { question: string }[] }>(
+        "/api/admin/eval/runs",
+        "ไม่สามารถโหลดผลการทดสอบได้"
+      ),
+    enabled: isOwner
   });
 
   const statsQuery = useQuery({
@@ -252,6 +275,23 @@ function AiConsolePage() {
 
       <Card variant="transparent" className="surface-card admin-section">
         <Card.Content>
+          {evalQuery.data && evalQuery.data.runs.length > 0 ? (
+            <div className="mt-4 rounded-large border border-default-200 p-4">
+              <h3 className="text-small font-semibold text-default-600">ชุดทดสอบย้อนหลัง (golden set)</h3>
+              <p className="mt-1 text-tiny text-default-500">
+                {evalQuery.data.cases.length} คำถาม · วัดด้วยกฎ ไม่ใช่โมเดลตัดสิน — ใช้เทียบก่อน/หลังเปลี่ยนโมเดล
+              </p>
+              <ul className="mt-2 space-y-1 text-small">
+                {evalQuery.data.runs.map((run) => (
+                  <li key={run.runId}>
+                    {new Date(run.startedAt).toLocaleString("th-TH")} · {run.model} · ผ่าน {run.passed}/{run.total} ·
+                    คะแนน {run.averageScore} · เฉลี่ย {Math.round(run.averageLatencyMs / 1000)} วิ
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="section-heading"><h2>ทดสอบการสนทนา</h2><span>{threadId ? `Thread: ${threadId}` : "เริ่ม thread ใหม่"}</span></div>
           {statsQuery.data && (
             <p className="kpi-detail">

@@ -178,6 +178,75 @@ export const digestSettings = sqliteTable("digest_settings", {
 });
 
 /**
+ * A question worth asking again.
+ *
+ * The golden set exists because of a real failure: the gateway was switched and the
+ * assistant started answering about 2026-07-01 — nothing compared the new model with
+ * the old one, so the first person to notice was the owner, in LINE. These are the
+ * questions a run replays.
+ */
+export const evalCase = sqliteTable("eval_case", {
+  id: text("id").primaryKey(),
+  question: text("question").notNull(),
+  /** What a correct answer must mention, e.g. a branch name. Optional. */
+  expectContains: text("expect_contains"),
+  /** Where it came from: "chat" (a real question) or "canonical". */
+  origin: text("origin").notNull().default("canonical"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+export const evalRun = sqliteTable("eval_run", {
+  id: text("id").primaryKey(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  /** The model this run is being compared against, when there is one. */
+  baselineModel: text("baseline_model"),
+  status: text("status").notNull().default("running"),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "timestamp_ms" })
+});
+
+export const evalResult = sqliteTable("eval_result", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull(),
+  caseId: text("case_id").notNull(),
+  question: text("question").notNull(),
+  /** The answer, truncated: enough to read, not a second copy of the transcript. */
+  answer: text("answer").notNull(),
+  score: integer("score").notNull(),
+  checks: text("checks").notNull(),
+  latencyMs: integer("latency_ms").notNull(),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+/**
+ * One row per span, kept locally.
+ *
+ * WHY BOTH THIS AND OTLP. The collector is optional and off by default; the shop's
+ * own record of "what was slow, which tool, how many tokens" must not depend on
+ * somebody having configured an endpoint. This table is the L1 floor, and the same
+ * spans are exported when a collector is set.
+ *
+ * Metadata only: model, tool name, counts, durations, status. Never the question or
+ * the answer — those live in `chat_turn`, with its own retention.
+ */
+export const aiTrace = sqliteTable("ai_trace", {
+  id: text("id").primaryKey(),
+  /** The answer this span belongs to, so a tool span can be shown under its turn. */
+  turnId: text("turn_id"),
+  /** `chat.answer` or `tool.<name>`. */
+  name: text("name").notNull(),
+  status: text("status").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  /** JSON of the span's attributes. Metadata only, by construction. */
+  attributes: text("attributes").notNull().default("{}"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+});
+
+/**
  * What the chat remembers about a person between conversations.
  *
  * Only settings they stated on purpose ("สาขาประจำของฉันคือ…"), never inferred ones:
@@ -247,6 +316,9 @@ export const chatTurn = sqliteTable("chat_turn", {
   steps: integer("steps").notNull().default(0),
   toolCalls: integer("tool_calls").notNull().default(0),
   latencyMs: integer("latency_ms").notNull().default(0),
+  /** Tokens for the whole loop; 0 when the gateway does not report usage. */
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
   /** "reply" is free; "push" spends one of the 300 a month. */
   delivered: text("delivered").notNull().default("reply"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()

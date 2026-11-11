@@ -311,6 +311,8 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         steps: answer.steps,
         toolCalls: answer.toolCalls,
         latencyMs: Date.now() - startedAt,
+        inputTokens: answer.inputTokens,
+        outputTokens: answer.outputTokens,
         delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
       });
     } catch (error) {

@@ -18,6 +18,10 @@
  * environment variable instead of the code.
  */
 
+import { createHash, randomUUID } from "node:crypto";
+import { db } from "./db";
+import { aiTrace } from "./schema";
+
 export type TelemetryStatus = {
   enabled: boolean;
   endpoint: string | null;
@@ -87,6 +91,40 @@ export async function initTelemetry(env: NodeJS.ProcessEnv = process.env): Promi
   return status;
 }
 
+/**
+ * A stable pseudonym for a LINE user, so spans can be grouped by person without
+ * putting the LINE id in a collector. Salted with `OTEL_HASH_SALT` when set.
+ */
+export function hashUser(lineUserId: string, env: NodeJS.ProcessEnv = process.env): string {
+  const salt = (env.OTEL_HASH_SALT ?? "laundrytwin").trim();
+  return createHash("sha256").update(`${salt}:${lineUserId}`).digest("hex").slice(0, 16);
+}
+
+/** One span, kept locally. Metadata only — the text lives in `chat_turn`. */
+function persistTrace(input: {
+  turnId: string | null;
+  name: string;
+  status: "ok" | "error";
+  durationMs: number;
+  attributes: Record<string, unknown>;
+}): void {
+  try {
+    db.insert(aiTrace)
+      .values({
+        id: randomUUID(),
+        turnId: input.turnId,
+        name: input.name,
+        status: input.status,
+        durationMs: Math.round(input.durationMs),
+        attributes: JSON.stringify(input.attributes),
+        createdAt: new Date()
+      })
+      .run();
+  } catch {
+    // A trace row must never be the reason an answer fails.
+  }
+}
+
 export type AnswerSpanAttributes = {
   model: string;
   steps: number;
@@ -95,6 +133,19 @@ export type AnswerSpanAttributes = {
   roleLabel: string;
   /** Only when `OTEL_RECORD_CONTENT=1`; otherwise the text stays local. */
   question?: string;
+  /** Groups every span of one answer. */
+  turnId?: string;
+  /** Pseudonym for the LINE user, so a collector can group sessions. */
+  sessionId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  /**
+   * Attributes known only after the work is done (steps, tool count, tokens). The
+   * span is opened before the call so a hung model is visible, and completed with
+   * these on the way out — a span that reports "0 steps" for every answer is worse
+   * than no span at all.
+   */
+  finalize?: (result: unknown) => Record<string, unknown>;
 };
 
 /**
@@ -113,20 +164,83 @@ export async function withAnswerSpan<T>(
   const tracer = trace.getTracer("laundrytwin");
   const recordsContent = telemetryStatus(env).recordsContent;
 
+  const turnId = attributes.turnId ?? randomUUID();
+  const startedAt = Date.now();
+  const metadata: Record<string, unknown> = {
+    "llm.model": attributes.model,
+    "llm.steps": attributes.steps,
+    "llm.tool_calls": attributes.toolCalls,
+    "llm.prompt_version": attributes.promptVersion,
+    "chat.role": attributes.roleLabel,
+    ...(attributes.sessionId ? { "session.id": attributes.sessionId } : {}),
+    ...(attributes.inputTokens !== undefined ? { "llm.input_tokens": attributes.inputTokens } : {}),
+    ...(attributes.outputTokens !== undefined ? { "llm.output_tokens": attributes.outputTokens } : {})
+  };
+
   return tracer.startActiveSpan("chat.answer", async (span) => {
-    span.setAttributes({
-      "llm.model": attributes.model,
-      "llm.steps": attributes.steps,
-      "llm.tool_calls": attributes.toolCalls,
-      "llm.prompt_version": attributes.promptVersion,
-      "chat.role": attributes.roleLabel
-    });
+    span.setAttributes(metadata as Record<string, string | number>);
     if (recordsContent && attributes.question) span.setAttribute("chat.question", attributes.question);
     try {
       const result = await fn();
+      const final = attributes.finalize ? attributes.finalize(result) : {};
+      span.setAttributes(final as Record<string, string | number>);
+      persistTrace({
+        turnId,
+        name: "chat.answer",
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+        attributes: { ...metadata, ...final }
+      });
       return result;
     } catch (error) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: error instanceof Error ? error.message : "unknown" });
+      const message = error instanceof Error ? error.message : "unknown";
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      persistTrace({
+        turnId,
+        name: "chat.answer",
+        status: "error",
+        durationMs: Date.now() - startedAt,
+        attributes: { ...metadata, error: message.slice(0, 200) }
+      });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+/**
+ * A tool call, as its own span.
+ *
+ * The answer span says 89 seconds; this says which of the four calls spent them. It is
+ * the reason L1 exists at all — `chat_turn` records the total and nothing else.
+ */
+export async function withToolSpan<T>(
+  tool: string,
+  turnId: string | null,
+  fn: () => Promise<T>
+): Promise<T> {
+  const { trace, SpanStatusCode } = await import("@opentelemetry/api");
+  const startedAt = Date.now();
+  const metadata = { "tool.name": tool, ...(turnId ? { "turn.id": turnId } : {}) };
+
+  return trace.getTracer("laundrytwin").startActiveSpan(`tool.${tool}`, async (span) => {
+    span.setAttributes(metadata);
+    try {
+      const result = await fn();
+      const text = typeof result === "string" ? result.length : 0;
+      persistTrace({ turnId, name: `tool.${tool}`, status: "ok", durationMs: Date.now() - startedAt, attributes: { ...metadata, "tool.result_chars": text } });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      persistTrace({
+        turnId,
+        name: `tool.${tool}`,
+        status: "error",
+        durationMs: Date.now() - startedAt,
+        attributes: { ...metadata, error: message.slice(0, 200) }
+      });
       throw error;
     } finally {
       span.end();
