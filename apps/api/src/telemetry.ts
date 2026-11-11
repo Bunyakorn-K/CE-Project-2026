@@ -191,6 +191,17 @@ export async function withAnswerSpan<T>(
       const result = await fn();
       const final = attributes.finalize ? attributes.finalize(result) : {};
       span.setAttributes(final as Record<string, string | number>);
+      // Langfuse's own attribute set on the OTLP path: without this the span is shown
+      // as a generation with no model and no tokens, even though gen_ai.* is set.
+      const usage = {
+        input: Number(final["gen_ai.usage.input_tokens"] ?? attributes.inputTokens ?? 0),
+        output: Number(final["gen_ai.usage.output_tokens"] ?? attributes.outputTokens ?? 0)
+      };
+      span.setAttributes({
+        "langfuse.observation.type": "generation",
+        "langfuse.observation.model.name": attributes.model,
+        "langfuse.observation.usage_details": JSON.stringify(usage)
+      });
       persistTrace({
         turnId,
         name: "chat.answer",
