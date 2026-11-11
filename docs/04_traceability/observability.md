@@ -82,6 +82,34 @@ $ docker exec laundrytwin-app-1 printenv OTEL_EXPORTER_OTLP_ENDPOINT   # empty
 $ curl -s localhost:8787/health                                        # 200
 ```
 
+## L1 and L2, as built (`d3f758b`)
+
+**L1 — where the time went.** `ai_trace` holds one row per span: the answer and every
+tool call inside it, with duration, status and metadata (model, steps, tool count,
+input/output tokens, prompt version, salted session pseudonym). `chat_turn` gained
+`input_tokens` / `output_tokens`, read from the stream's `totalUsage` — 0 when the
+gateway omits it, never invented.
+
+Measured on production, one real question:
+
+```text
+tool.get_revenue_daily   16ms
+tool.get_cycles_daily    59ms
+chat.answer          11,173ms    12,961 input tokens / 1,094 output
+```
+
+The tools are not the slow part. Before L1 the only number was "23 seconds".
+
+**L2 — did the change help.** `eval_case` / `eval_run` / `eval_result` replay five
+canonical questions through the same `answerForMessage` production uses, scored by
+rules (answered, grounded, mentions, timely). `POST /api/internal/eval/run` runs it with
+the machine token; `/admin/ai` lists the last ten runs. First production run
+(`84d9c3ab`): 2 cases, 2 passed, average score 100, average latency 11.6s.
+
+A run is a regression alarm, not a truth oracle: a confident wrong number passes
+"grounded". What it catches is "the model stopped using tools", "every answer is an
+apology", "the date is wrong" — the failures that actually shipped on 2026-11-10.
+
 ## What this does not do
 
 - It does not evaluate answer quality; it shows where time went.
