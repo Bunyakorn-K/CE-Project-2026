@@ -65,7 +65,10 @@ export async function initTelemetry(env: NodeJS.ProcessEnv = process.env): Promi
 
     const sdk = new NodeSDK({
       resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: status.serviceName }),
-      traceExporter: new OTLPTraceExporter()
+      traceExporter: new OTLPTraceExporter(),
+      // The SDK's default instrumentations wrap every HTTP request, which turns one
+      // answer into a trace per session call and hides the spans that matter.
+      instrumentations: []
     });
     sdk.start();
     // Spans are ours, not the SDK's: `withAnswerSpan` records the shape of the work
@@ -166,15 +169,19 @@ export async function withAnswerSpan<T>(
 
   const turnId = attributes.turnId ?? randomUUID();
   const startedAt = Date.now();
+  // GenAI semantic conventions where they exist: Langfuse, Phoenix and Tempo all read
+  // `gen_ai.*` without a vendor SDK, and `usage` only shows up when the token keys are
+  // spelled the standard way.
   const metadata: Record<string, unknown> = {
-    "llm.model": attributes.model,
+    "gen_ai.operation.name": "chat",
+    "gen_ai.request.model": attributes.model,
     "llm.steps": attributes.steps,
     "llm.tool_calls": attributes.toolCalls,
     "llm.prompt_version": attributes.promptVersion,
     "chat.role": attributes.roleLabel,
     ...(attributes.sessionId ? { "session.id": attributes.sessionId } : {}),
-    ...(attributes.inputTokens !== undefined ? { "llm.input_tokens": attributes.inputTokens } : {}),
-    ...(attributes.outputTokens !== undefined ? { "llm.output_tokens": attributes.outputTokens } : {})
+    ...(attributes.inputTokens !== undefined ? { "gen_ai.usage.input_tokens": attributes.inputTokens } : {}),
+    ...(attributes.outputTokens !== undefined ? { "gen_ai.usage.output_tokens": attributes.outputTokens } : {})
   };
 
   return tracer.startActiveSpan("chat.answer", async (span) => {
@@ -222,7 +229,11 @@ export async function withToolSpan<T>(
 ): Promise<T> {
   const { trace, SpanStatusCode } = await import("@opentelemetry/api");
   const startedAt = Date.now();
-  const metadata = { "tool.name": tool, ...(turnId ? { "turn.id": turnId } : {}) };
+  const metadata = {
+    "gen_ai.tool.name": tool,
+    "gen_ai.operation.name": "execute_tool",
+    ...(turnId ? { "turn.id": turnId } : {})
+  };
 
   return trace.getTracer("laundrytwin").startActiveSpan(`tool.${tool}`, async (span) => {
     span.setAttributes(metadata);

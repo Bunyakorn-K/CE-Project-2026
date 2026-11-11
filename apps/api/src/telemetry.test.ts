@@ -106,7 +106,11 @@ describe("local trace rows", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("tool.get_revenue");
     expect(rows[0].turnId).toBe("turn-9");
-    expect(JSON.parse(rows[0].attributes)["tool.result_chars"]).toBe(42);
+    const attributes = JSON.parse(rows[0].attributes) as Record<string, unknown>;
+    expect(attributes["tool.result_chars"]).toBe(42);
+    // The GenAI convention is what a collector reads to label a tool span.
+    expect(attributes["gen_ai.tool.name"]).toBe("get_revenue");
+    expect(attributes["gen_ai.operation.name"]).toBe("execute_tool");
   });
 
   it("records a failed tool call without throwing away the error", async () => {
