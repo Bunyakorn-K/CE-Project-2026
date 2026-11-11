@@ -19,6 +19,7 @@ export const bundleExternals = [
   'ai',
   '@ai-sdk/*',
   '@vercel/oidc',
+  '@opentelemetry/*',
   'zod',
   'zod/*'
 ]

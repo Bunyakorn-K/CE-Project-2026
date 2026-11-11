@@ -4,6 +4,7 @@ import { getAiSettingsWithKey } from "../ai-settings";
 import { runAuditedToolCall } from "../ai-audit";
 import { agenticAnswerWithMeta } from "../llm-client";
 import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
+import { withAnswerSpan } from "../telemetry";
 import { recentTurns } from "./memory";
 
 export type ConversationContext = {
@@ -120,6 +121,22 @@ export async function answerForMessage(
   ctx: ConversationContext,
   deps: ConversationDeps
 ): Promise<ConversationAnswer> {
+  return withAnswerSpan(
+    {
+      // Filled in after the answer; the span is opened first so a slow model shows up
+      // in the trace even when it never returns.
+      model: ctx.roleLabel,
+      steps: 0,
+      toolCalls: 0,
+      promptVersion: ASSISTANT_PROMPT_VERSION,
+      roleLabel: ctx.roleLabel,
+      question: ctx.userText
+    },
+    () => answerOnce(ctx, deps)
+  );
+}
+
+async function answerOnce(ctx: ConversationContext, deps: ConversationDeps): Promise<ConversationAnswer> {
   // The gateway config is now DB-driven (ai_settings) — the bot reads the
   // same baseURL/apiKey/model/prompt that the backoffice AI console manages.
   const settings = getAiSettingsWithKey();

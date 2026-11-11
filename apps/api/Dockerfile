@@ -76,6 +76,11 @@ RUN npm install --no-save --omit=dev \
       @ai-sdk/openai-compatible@3.0.47 \
       @vercel/oidc@3.2.0 \
       zod@4.6.7 \
+      @opentelemetry/api@1.10.0 \
+      @opentelemetry/sdk-node@0.301.1 \
+      @opentelemetry/exporter-trace-otlp-http@0.301.1 \
+      @opentelemetry/resources@3.1.1 \
+      @opentelemetry/semantic-conventions@1.45.0 \
   && npm cache clean --force
 
 # Fail the build rather than ship a tree someone cannot audit: the pinned versions

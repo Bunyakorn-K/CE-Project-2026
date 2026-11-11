@@ -34,6 +34,7 @@ import { buildOpenApiDocument } from "./analytics/openapi";
 import { isCalendarDate } from "./calendar-date";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { parseAnalyticsRange } from "./analytics/scope";
+import { initTelemetry, withAnswerSpan } from "./telemetry";
 import {
   addDigestRecipient,
   listDigestRecipients,
@@ -104,6 +105,9 @@ export type AppDependencies = {
 };
 
 initializeDatabase();
+
+// Off unless OTEL_EXPORTER_OTLP_ENDPOINT is set; never fatal (see telemetry.ts).
+void initTelemetry();
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = new Hono<{ Variables: AppVariables }>();
