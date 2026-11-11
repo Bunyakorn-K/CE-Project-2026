@@ -164,6 +164,13 @@ export function initializeDatabase() {
       updated_at integer NOT NULL,
       created_at integer NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS chat_preference (
+      line_user_id text NOT NULL,
+      key text NOT NULL,
+      value text NOT NULL,
+      updated_at integer NOT NULL,
+      PRIMARY KEY (line_user_id, key)
+    );
     CREATE TABLE IF NOT EXISTS digest_settings (
       id text PRIMARY KEY NOT NULL DEFAULT 'default',
       enabled integer NOT NULL DEFAULT 0,

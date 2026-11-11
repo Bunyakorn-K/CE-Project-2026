@@ -17,7 +17,15 @@ export type OutboundMessage =
   | { kind: "flex"; altText: string; contents: Record<string, unknown> };
 
 /** A tappable suggestion above the keyboard. Free — it rides on the message. */
-export type QuickReply = { label: string; text?: string; uri?: string };
+export type QuickReply = {
+  label: string;
+  /** A message action: tapping sends this text. */
+  text?: string;
+  /** A URI action: tapping opens this link. */
+  uri?: string;
+  /** A postback action: tapping sends `data` to the webhook without typing anything. */
+  data?: string;
+};
 
 export interface PlatformAdapter {
   readonly platform: PlatformName;

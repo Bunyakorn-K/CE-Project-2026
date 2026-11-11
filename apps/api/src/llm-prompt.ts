@@ -71,6 +71,12 @@ export type AssistantPromptInput = {
    * invented, and a report that was empty.
    */
   now?: Date;
+  /**
+   * What the person asked the chat to remember, e.g. `สาขาประจำ: แม่โจ้ (b1)`.
+   * Stated as their own words, not as an instruction: a question about another
+   * branch must still be answered about that branch.
+   */
+  remembered?: string | null;
 };
 
 /** Today in the shop's timezone, as the tools want it: YYYY-MM-DD. */
@@ -139,6 +145,12 @@ export type ServerRulesInput = {
   toolNames: readonly string[];
   canViewRevenue: boolean;
   now?: Date;
+  /**
+   * What the person asked the chat to remember, e.g. `สาขาประจำ: แม่โจ้ (b1)`.
+   * Stated as their own words, not as an instruction: a question about another
+   * branch must still be answered about that branch.
+   */
+  remembered?: string | null;
 };
 
 /**
@@ -168,6 +180,7 @@ export function buildServerRules(input: ServerRulesInput): string {
       `ผู้ใช้มีสิทธิ์: ${roleLabel}`,
       `สาขาที่เข้าถึงได้: ${branches}`,
       `วันนี้คือ ${today} (Asia/Bangkok, UTC+7)`,
+      ...(input.remembered ? [`ผู้ใช้เคยแจ้งไว้: ${input.remembered}`] : []),
       toolNames.length > 0 ? `เครื่องมือที่ใช้ได้: ${toolNames.join(", ")}` : "ไม่มีเครื่องมือในคำขอนี้",
       "ข้อมูลร้านนี้เป็นของเจ้าของร้านแต่เพียงผู้เดียว ห้ามนำไปเปรียบเทียบหรือเปิดเผยให้ร้านอื่น",
       "ถ้าผู้ใช้ไม่ระบุสาขา ให้ใช้สาขาตามสิทธิ์ข้างบนทันทีโดยไม่ต้องถามซ้ำ (ทุกสาขา = tenant-wide)"

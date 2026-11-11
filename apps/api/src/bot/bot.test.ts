@@ -37,7 +37,7 @@ import { resolveLineIdentity, roleLabel, scopeForPrincipal } from "./identity";
 import { answerForMessage, describeBotFailure } from "./conversation";
 import { createBotHandler } from "./index";
 import { allTurns } from "./memory";
-import { alertAcknowledgement, alertNotification, user as userTable } from "../schema";
+import { alertAcknowledgement, alertNotification, chatPreference, user as userTable } from "../schema";
 import { eq } from "drizzle-orm";
 
 // The handler now writes a chat_turn per answer, so the real schema has to exist
@@ -299,7 +299,9 @@ describe("bot webhook handler", () => {
   });
 
   // P1: the typing indicator, the queue, the memory write, and history on the wire.
-  function harness(options: { delayMs?: number; answer?: string } = {}) {
+  function harness(
+    options: { delayMs?: number; answer?: string; branches?: { branchId: string; branchName: string }[] } = {}
+  ) {
     const adapter = {
       platform: "line" as const,
       sendText: vi.fn().mockResolvedValue("reply" as const),
@@ -316,7 +318,7 @@ describe("bot webhook handler", () => {
       });
     });
     const handler = createBotHandler(
-      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn().mockResolvedValue([]), fetchImpl },
+      { mcpUrl: "", mcpToken: "", lineChannelAccessToken: undefined, clickhouse: vi.fn().mockResolvedValue(options.branches ?? []), fetchImpl },
       adapter,
       mcp
     );
@@ -440,6 +442,100 @@ describe("bot webhook handler", () => {
     // The answer must still arrive, without the markdown the user complained about.
     expect(sent(adapter)).toContainEqual(["line-fallback", "หัวข้อ\nรายได้: 10 บาท"]);
     expect(adapter.sendText.mock.calls[0][2]).toEqual(expect.objectContaining({ replyToken: "rt-fb" }));
+  });
+
+  it("offers the branches this person may pick as a remembered preference", async () => {
+    const { adapter, handler } = harness({
+      branches: [
+        { branchId: "b1", branchName: "แม่โจ้" },
+        { branchId: "b2", branchName: "สุขุมวิท" }
+      ]
+    });
+    accessStore.findLiffUser.mockReturnValue({ id: "u2", name: "Manager", email: "m@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(manager);
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ตั้งสาขาประจำ" },
+      source: { userId: "line-pref-pick" },
+      replyToken: "rt-pick"
+    });
+
+    const [, text, options] = adapter.sendText.mock.calls[0] as [
+      string,
+      string,
+      { quickReplies?: { label: string; data?: string }[] }
+    ];
+    expect(text).toContain("เลือกสาขาประจำ");
+    // Only the manager's own branch is offered, and the button is a postback so the
+    // branch id is exact instead of a name the model would have to match.
+    expect(options.quickReplies).toEqual([{ label: "แม่โจ้", data: "pref:branch:b1" }]);
+    // This costs no model call.
+    expect(adapter.showLoading).not.toHaveBeenCalled();
+  });
+
+  it("remembers a branch the person may see, and refuses one they may not", async () => {
+    const branches = [
+      { branchId: "b1", branchName: "แม่โจ้" },
+      { branchId: "b2", branchName: "สุขุมวิท" }
+    ];
+    const { adapter, handler } = harness({ branches });
+    accessStore.findLiffUser.mockReturnValue({ id: "u2", name: "Manager", email: "m@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(manager);
+
+    await handler.handlePostbackEvent({
+      type: "postback",
+      postback: { data: "pref:branch:b1" },
+      source: { userId: "line-pref-set" },
+      replyToken: "rt-set"
+    });
+    expect(sent(adapter)).toContainEqual(["line-pref-set", expect.stringContaining("แม่โจ้")]);
+    expect(db.select().from(chatPreference).where(eq(chatPreference.lineUserId, "line-pref-set")).all()).toHaveLength(1);
+
+    // A postback is user input: b2 is not in this manager's scope and must not stick.
+    await handler.handlePostbackEvent({
+      type: "postback",
+      postback: { data: "pref:branch:b2" },
+      source: { userId: "line-pref-set" },
+      replyToken: "rt-set-2"
+    });
+    expect(adapter.sendText.mock.calls[1][1]).toContain("ไม่ใช่สาขาที่คุณเข้าถึงได้");
+    expect(db.select().from(chatPreference).where(eq(chatPreference.lineUserId, "line-pref-set")).all()).toHaveLength(1);
+  });
+
+  it("passes the remembered branch to the model and forgets it on request", async () => {
+    const branches = [{ branchId: "b1", branchName: "แม่โจ้" }];
+    const { adapter, handler, fetchImpl } = harness({ branches, answer: "ได้ครับ" });
+    accessStore.findLiffUser.mockReturnValue({ id: "u2", name: "Manager", email: "m@e.com" });
+    accessStore.resolveUserPrincipal.mockReturnValue(manager);
+
+    await handler.handlePostbackEvent({
+      type: "postback",
+      postback: { data: "pref:branch:b1" },
+      source: { userId: "line-pref-use" },
+      replyToken: "rt-use"
+    });
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ภาพรวมวันนี้" },
+      source: { userId: "line-pref-use" },
+      replyToken: "rt-use-2"
+    });
+
+    // The captured model request: the system prompt is the first message.
+    const request = (fetchImpl.mock.calls[0] as unknown[])[1] as { body?: unknown } | undefined;
+    const body = String(request?.body);
+    expect(body).toContain("สาขาประจำ: แม่โจ้ (b1)");
+
+    await handler.handleTextEvent({
+      type: "message",
+      message: { type: "text", text: "ลืมสาขาประจำ" },
+      source: { userId: "line-pref-use" },
+      replyToken: "rt-use-3"
+    });
+    expect(adapter.sendText.mock.calls.at(-1)?.[1]).toContain("ลืมสาขาประจำแล้ว");
+    expect(db.select().from(chatPreference).where(eq(chatPreference.lineUserId, "line-pref-use")).all()).toHaveLength(0);
   });
 
   it("welcomes a new follower with a free reply", async () => {

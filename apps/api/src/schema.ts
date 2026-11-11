@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -176,6 +176,26 @@ export const digestSettings = sqliteTable("digest_settings", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
 });
+
+/**
+ * What the chat remembers about a person between conversations.
+ *
+ * Only settings they stated on purpose ("สาขาประจำของฉันคือ…"), never inferred ones:
+ * a preference the system guessed is a preference the user cannot see, and the next
+ * answer would quietly be about the wrong branch.
+ */
+export const chatPreference = sqliteTable(
+  "chat_preference",
+  {
+    lineUserId: text("line_user_id").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.lineUserId, table.key] })
+  })
+);
 
 /** Who receives the digest. Added by hand; an empty table means nobody. */
 export const digestRecipient = sqliteTable("digest_recipient", {

@@ -26,6 +26,8 @@ export type ConversationContext = {
    * name one; the audit row records null rather than inventing an actor.
    */
   actorUserId?: string | null;
+  /** What this person asked the chat to remember, e.g. `สาขาประจำ: แม่โจ้ (b1)`. */
+  remembered?: string | null;
 };
 
 export type ConversationDeps = {
@@ -45,7 +47,8 @@ function buildSystemPrompt(ctx: ConversationContext, ownerPrompt: string, toolNa
     branches,
     toolNames,
     canViewRevenue: ctx.scope.canViewRevenue,
-    now: ctx.now ?? new Date()
+    now: ctx.now ?? new Date(),
+    remembered: ctx.remembered ?? null
   });
 }
 

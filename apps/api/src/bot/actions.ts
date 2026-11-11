@@ -19,6 +19,9 @@ import { readAlertRows } from "../alert-detail";
 export type ChatCommand =
   | { kind: "ack"; alertId: string }
   | { kind: "help" }
+  /** `pref:branch:<id>` sets the remembered branch; `pref:clear` forgets everything. */
+  | { kind: "pref"; action: "branch"; branchId: string }
+  | { kind: "pref"; action: "clear" }
   | { kind: "unknown"; raw: string };
 
 /**
@@ -32,6 +35,11 @@ export function parsePostbackData(data: string | undefined | null): ChatCommand 
   if (raw.startsWith("ack:")) {
     const alertId = raw.slice("ack:".length).trim();
     return alertId ? { kind: "ack", alertId } : { kind: "unknown", raw };
+  }
+  if (raw === "pref:clear") return { kind: "pref", action: "clear" };
+  if (raw.startsWith("pref:branch:")) {
+    const branchId = raw.slice("pref:branch:".length).trim();
+    return branchId ? { kind: "pref", action: "branch", branchId } : { kind: "unknown", raw };
   }
   return { kind: "unknown", raw };
 }
@@ -108,6 +116,13 @@ export function helpText(branchLabels: string[], menuLabels: string[]): string {
   if (menuLabels.length > 0) {
     lines.push("", `เมนูลัดในแผงด้านล่าง: ${menuLabels.join(" · ")}`);
   }
+  lines.push(
+    "",
+    "คำสั่งที่บอทจำได้:",
+    `- “${SET_BRANCH_PROMPT}” — เลือกสาขาประจำไว้ใช้ทุกครั้ง`,
+    `- “${FORGET_BRANCH_PROMPT}” — ลืมที่จำไว้`,
+    "- “รับทราบ” บนการ์ดแจ้งเตือน — ปิดการเตือนของชั่วโมงนั้น"
+  );
   lines.push("", "ถ้าต้องการตัวเลขที่ละเอียดขึ้น เปิดแอปจากปุ่มในเมนูได้เลย");
   return lines.join("\n");
 }
@@ -124,4 +139,57 @@ export function welcomeText(branchLabels: string[]): string {
     lines.push("", "บัญชีนี้ยังไม่ได้รับสิทธิ์ — พิมพ์ว่า 'ขอสิทธิ์ใช้งาน' เพื่อให้ผู้ดูแลอนุมัติ");
   }
   return lines.join("\n");
+}
+
+// ---- remembered preferences ----
+
+/** The text the person can type (or tap) to see the branch choices. */
+export const SET_BRANCH_PROMPT = "ตั้งสาขาประจำ";
+
+export function isSetBranchRequest(text: string): boolean {
+  const normalised = text.trim().replace(/\s+/g, " ");
+  return normalised === SET_BRANCH_PROMPT || normalised === "สาขาประจำ";
+}
+
+/** The picker: one postback button per branch the person may see. */
+export function branchChoiceReplies(branches: { branchId: string; branchName: string }[]): {
+  label: string;
+  data: string;
+}[] {
+  return branches.slice(0, 13).map((branch) => ({
+    label: branch.branchName,
+    data: `pref:branch:${branch.branchId}`
+  }));
+}
+
+export function branchPickerText(branches: { branchName: string }[]): string {
+  if (branches.length === 0) {
+    return "ยังไม่พบสาขาที่คุณเข้าถึงได้ — ลองติดต่อผู้ดูแลระบบ";
+  }
+  return [
+    "เลือกสาขาประจำของคุณจากปุ่มด้านล่าง",
+    "หลังจากนี้ ถามว่า “ภาพรวมวันนี้” บอทจะใช้สาขานี้ก่อน โดยไม่ต้องบอกซ้ำ",
+    "(เปลี่ยนหรือลืมได้ทุกเมื่อ — พิมพ์ “ลืมสาขาประจำ” หรือกดปุ่ม “ลืมสาขา”)"
+  ].join("\n");
+}
+
+export function rememberedBranchText(branchName: string): string {
+  return `จำไว้แล้ว: สาขาประจำคือ ${branchName} — ถาม “ภาพรวมวันนี้” ได้เลย ไม่ต้องระบุสาขาซ้ำ`;
+}
+
+export function forgottenText(cleared: number): string {
+  return cleared > 0 ? "ลืมสาขาประจำแล้ว" : "ยังไม่มีอะไรให้ลืม — ไม่เคยตั้งสาขาประจำไว้";
+}
+
+export function rememberedStateText(branchName: string | null): string {
+  return branchName
+    ? `สาขาประจำของคุณ: ${branchName}`
+    : `ยังไม่ได้ตั้งสาขาประจำ — พิมพ์ “${SET_BRANCH_PROMPT}” เพื่อเลือก`;
+}
+
+export const FORGET_BRANCH_PROMPT = "ลืมสาขาประจำ";
+
+export function isForgetBranchRequest(text: string): boolean {
+  const normalised = text.trim().replace(/\s+/g, " ");
+  return normalised === FORGET_BRANCH_PROMPT || normalised === "ลืมสาขา";
 }

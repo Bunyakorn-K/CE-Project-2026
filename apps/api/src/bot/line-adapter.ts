@@ -9,9 +9,11 @@ function quickReplyObject(items: QuickReply[] | undefined) {
   return {
     items: items.slice(0, MAX_QUICK_REPLIES).map((item) => ({
       type: "action" as const,
-      action: item.uri
-        ? { type: "uri" as const, label: item.label.slice(0, 20), uri: item.uri }
-        : { type: "message" as const, label: item.label.slice(0, 20), text: item.text ?? item.label }
+      action: item.data
+        ? { type: "postback" as const, label: item.label.slice(0, 20), data: item.data, displayText: item.label }
+        : item.uri
+          ? { type: "uri" as const, label: item.label.slice(0, 20), uri: item.uri }
+          : { type: "message" as const, label: item.label.slice(0, 20), text: item.text ?? item.label }
     }))
   };
 }

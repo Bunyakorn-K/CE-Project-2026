@@ -17,6 +17,15 @@ import {
 } from "./actions";
 import { menuKeyForRoles, richMenuDefinitions } from "../rich-menu";
 import { chatEnabled, evaluateChatLimit } from "./limit";
+import {
+  branchChoiceReplies,
+  branchPickerText,
+  forgottenText,
+  isForgetBranchRequest,
+  isSetBranchRequest,
+  rememberedBranchText
+} from "./actions";
+import { clearPreference, readPreference, rememberedLine, setPreference } from "./preferences";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
 import type { OutboundMessage } from "./adapter";
 import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
@@ -67,6 +76,25 @@ async function branchContextFor(scope: AccessScope, clickhouse: ClickHouseExecut
     return allowed.map((branch) => `${branch.branchName} (${branch.branchId})`).join(", ");
   } catch {
     return "";
+  }
+}
+
+/**
+ * The branch names this person may see, and a lookup from id to name. Failure is not
+ * fatal: without the warehouse we can still answer questions, we just cannot show a
+ * picker or name the remembered branch.
+ */
+async function visibleBranches(
+  scope: AccessScope,
+  clickhouse: ClickHouseExecutor
+): Promise<{ branchId: string; branchName: string }[]> {
+  try {
+    const branches = await listBranchNames(clickhouse);
+    return scope.branchIds.includes("*")
+      ? branches
+      : branches.filter((branch) => scope.branchIds.includes(branch.branchId));
+  } catch {
+    return [];
   }
 }
 
@@ -219,11 +247,34 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         return;
       }
 
+      // Two commands are answered by code, not by the model: setting a remembered
+      // branch and forgetting it. They are short, exact and must not cost a model
+      // call — a typo in the branch name must fail here, not in a prompt.
+      if (isSetBranchRequest(event.message.text)) {
+        const branches = await visibleBranches(identity.scope, deps.clickhouse);
+        await reply(
+          userId,
+          branchPickerText(branches),
+          event.replyToken,
+          branchChoiceReplies(branches)
+        );
+        return;
+      }
+      if (isForgetBranchRequest(event.message.text)) {
+        const cleared = clearPreference(userId);
+        await reply(userId, forgottenText(cleared), event.replyToken);
+        return;
+      }
+
       // Typing indicator first: the model plus a tool call takes seconds, and
       // silence reads as "broken". Free, and it covers the whole answer.
       void adapter.showLoading?.(userId);
 
-      const branchContext = await branchContextFor(identity.scope, deps.clickhouse);
+      // One warehouse call for both the prompt context and the id→name lookup the
+      // remembered preference needs.
+      const branchesForContext = await visibleBranches(identity.scope, deps.clickhouse);
+      const branchNameCache = new Map(branchesForContext.map((branch) => [branch.branchId, branch.branchName]));
+      const branchContext = branchesForContext.map((branch) => `${branch.branchName} (${branch.branchId})`).join(", ");
       const answer = await answerForMessage(
         {
           userText: event.message.text,
@@ -232,6 +283,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
           branchContext,
           scope: identity.scope,
           actorUserId: identity.principal.user.id,
+          remembered: rememberedLine(userId, (branchId) => branchNameCache.get(branchId) ?? null),
           now: new Date()
         },
         { mcp, fetchImpl: deps.fetchImpl }
@@ -318,6 +370,28 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         "บัญชี LINE นี้ยังไม่ได้รับสิทธิ์ใช้งาน LaundryTwin กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์",
         event.replyToken
       );
+      return;
+    }
+
+    if (command.kind === "pref") {
+      if (command.action === "clear") {
+        await reply(userId, forgottenText(clearPreference(userId)), event.replyToken);
+        return;
+      }
+      // The branch id came from a button, but a button payload is still user input:
+      // it is checked against this person's scope before it is stored.
+      const branches = await visibleBranches(identity.scope, deps.clickhouse);
+      const branch = branches.find((candidate) => candidate.branchId === command.branchId);
+      if (!branch) {
+        await reply(
+          userId,
+          "สาขานี้ไม่ใช่สาขาที่คุณเข้าถึงได้ — ไม่ได้บันทึกไว้",
+          event.replyToken
+        );
+        return;
+      }
+      setPreference(userId, "branch", branch.branchId);
+      await reply(userId, rememberedBranchText(branch.branchName), event.replyToken);
       return;
     }
 
