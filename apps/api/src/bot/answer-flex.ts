@@ -193,6 +193,12 @@ export type AnswerCardOptions = {
   accent?: string;
   /** Shown in small grey text at the bottom — the LIFF link or a caveat. */
   footer?: string;
+  /**
+   * The turn this card answers. When set, the card gets two buttons that post back
+   * `fb:up:<turnId>` / `fb:down:<turnId>` — the cheapest honest signal about whether
+   * the answer was any good, and one that costs no LINE message.
+   */
+  feedbackFor?: string;
 };
 
 /**
@@ -227,6 +233,39 @@ export function buildAnswerFlex(
 
   if (options.footer) {
     body.push(withMargin(text(options.footer, { size: "xxs", color: "#9CA3AF" }), "md"));
+  }
+
+  if (options.feedbackFor) {
+    const key = options.feedbackFor;
+    body.push(
+      withMargin(
+        {
+          type: "box",
+          layout: "horizontal",
+          spacing: "sm",
+          contents: [
+            {
+              type: "button",
+              style: "secondary",
+              height: "sm",
+              action: { type: "postback", label: "มีประโยชน์", data: `fb:up:${key}`, displayText: "มีประโยชน์" }
+            },
+            {
+              type: "button",
+              style: "secondary",
+              height: "sm",
+              action: {
+                type: "postback",
+                label: "ไม่ตรงคำถาม",
+                data: `fb:down:${key}`,
+                displayText: "ไม่ตรงคำถาม"
+              }
+            }
+          ]
+        },
+        "md"
+      )
+    );
   }
 
   const bubble: Record<string, unknown> = {

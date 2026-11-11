@@ -195,6 +195,14 @@ export function initializeDatabase() {
       created_at integer NOT NULL
     );
     CREATE INDEX IF NOT EXISTS eval_result_run_idx ON eval_result(run_id);
+    CREATE TABLE IF NOT EXISTS chat_feedback (
+      id text PRIMARY KEY NOT NULL,
+      turn_id text NOT NULL,
+      line_user_id text NOT NULL,
+      rating text NOT NULL,
+      created_at integer NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS chat_feedback_turn_idx ON chat_feedback(turn_id, line_user_id);
     CREATE TABLE IF NOT EXISTS ai_trace (
       id text PRIMARY KEY NOT NULL,
       turn_id text,

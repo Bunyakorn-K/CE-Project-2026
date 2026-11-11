@@ -223,6 +223,28 @@ export const evalResult = sqliteTable("eval_result", {
 });
 
 /**
+ * One tap on "มีประโยชน์" or "ไม่ตรงคำถาม" under an answer.
+ *
+ * WHY A TABLE AND NOT JUST A SCORE. The score is a number in an evaluator's tool; this
+ * is the only place the shop's own staff say whether the answer was right. It is keyed
+ * by turn, so tapping twice changes nothing, and it carries no text.
+ */
+export const chatFeedback = sqliteTable(
+  "chat_feedback",
+  {
+    id: text("id").primaryKey(),
+    turnId: text("turn_id").notNull(),
+    lineUserId: text("line_user_id").notNull(),
+    /** `up` or `down`. */
+    rating: text("rating").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+  },
+  (table) => ({
+    onePerTurn: uniqueIndex("chat_feedback_turn_idx").on(table.turnId, table.lineUserId)
+  })
+);
+
+/**
  * One row per span, kept locally.
  *
  * WHY BOTH THIS AND OTLP. The collector is optional and off by default; the shop's

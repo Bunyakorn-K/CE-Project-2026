@@ -18,6 +18,7 @@
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "../db";
 import { chatTurn } from "../schema";
+import { feedbackCounts } from "./feedback";
 
 export const CHAT_HOURLY_LIMIT = 20;
 export const CHAT_DAILY_LIMIT = 300;
@@ -112,6 +113,8 @@ export type ChatStats = {
   pushesToday: number;
   /** Pushes this month — they spend the same allowance the alerts do. */
   pushesThisMonth: number;
+  /** Thumbs from the people who were answered. */
+  feedbackToday: { up: number; down: number };
   limits: { hourly: number; daily: number; enabled: boolean };
 };
 
@@ -130,6 +133,7 @@ export function chatStats(now: Date = new Date(), env: NodeJS.ProcessEnv = proce
     repliesToday: today.filter((turn) => turn.delivered === "reply").length,
     pushesToday: today.filter((turn) => turn.delivered === "push").length,
     pushesThisMonth: month.filter((turn) => turn.delivered === "push").length,
+    feedbackToday: feedbackCounts(dayStart),
     limits: { hourly: CHAT_HOURLY_LIMIT, daily: CHAT_DAILY_LIMIT, enabled: chatEnabled(env) }
   };
 }

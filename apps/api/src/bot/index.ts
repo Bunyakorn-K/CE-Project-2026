@@ -26,6 +26,7 @@ import {
   rememberedBranchText
 } from "./actions";
 import { clearPreference, readPreference, rememberedLine, setPreference } from "./preferences";
+import { ALREADY_RATED, recordFeedback, thanksText, UNKNOWN_TURN } from "./feedback";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
 import type { OutboundMessage } from "./adapter";
 import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
@@ -154,14 +155,16 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     text: string,
     roleLabel: string,
     replyToken?: string,
-    quickReplies?: { label: string; text?: string; uri?: string }[]
+    quickReplies?: { label: string; text?: string; uri?: string }[],
+    /** The turn being answered, so the card's buttons can refer to it. */
+    turnId?: string
   ) {
     // At most two messages, cut at paragraph or sentence boundaries, never inside a
     // word — LINE shows a long answer as a wall, and refuses past 5,000 characters.
     const shaped = shapeAnswer(text);
     const first = shaped.parts[0] ?? text;
     const parsed = parseAnswer(first);
-    const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel) });
+    const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel), feedbackFor: turnId });
 
     const parts: OutboundMessage[] = [];
     if (flex) {
@@ -296,7 +299,8 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         answer.text,
         roleLabel(identity.principal),
         event.replyToken,
-        quickReplies
+        quickReplies,
+        answer.turnId
       );
 
       // The turn is the bot's memory and its record: without this row a follow-up
@@ -370,6 +374,16 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       await reply(
         userId,
         "บัญชี LINE นี้ยังไม่ได้รับสิทธิ์ใช้งาน LaundryTwin กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์",
+        event.replyToken
+      );
+      return;
+    }
+
+    if (command.kind === "feedback") {
+      const result = recordFeedback({ turnId: command.turnId, lineUserId: userId, rating: command.rating });
+      await reply(
+        userId,
+        result === "recorded" ? thanksText(command.rating) : result === "duplicate" ? ALREADY_RATED : UNKNOWN_TURN,
         event.replyToken
       );
       return;

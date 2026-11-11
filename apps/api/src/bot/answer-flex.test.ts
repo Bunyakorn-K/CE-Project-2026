@@ -135,3 +135,19 @@ describe("buildAnswerFlex", () => {
     expect(alt.endsWith("…")).toBe(true);
   });
 });
+
+describe("feedback buttons", () => {
+  const structured = parseAnswer("## ภาพรวมวันนี้\nรายได้: 1,240 บาท");
+
+  it("adds two postback buttons that name the turn", () => {
+    const card = JSON.stringify(buildAnswerFlex(structured, { feedbackFor: "turn-123" }));
+    expect(card).toContain("fb:up:turn-123");
+    expect(card).toContain("fb:down:turn-123");
+    expect(card).toContain("มีประโยชน์");
+  });
+
+  it("leaves the card alone when there is no turn to rate", () => {
+    const card = JSON.stringify(buildAnswerFlex(structured, {}));
+    expect(card).not.toContain("fb:");
+  });
+});

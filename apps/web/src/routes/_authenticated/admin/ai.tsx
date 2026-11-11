@@ -28,6 +28,7 @@ type ChatStats = {
   repliesToday: number;
   pushesToday: number;
   pushesThisMonth: number;
+  feedbackToday: { up: number; down: number };
   limits: { hourly: number; daily: number; enabled: boolean };
 };
 
@@ -300,6 +301,7 @@ function AiConsolePage() {
               {" (reply "}{statsQuery.data.stats.repliesToday}{" · push "}{statsQuery.data.stats.pushesToday}{")"}
               {" · push เดือนนี้ "}{statsQuery.data.stats.pushesThisMonth}{" (นับรวมเพดานเดียวกับ alert)"}
               {" · เพดาน "}{statsQuery.data.stats.limits.hourly}{"/ชม. · "}{statsQuery.data.stats.limits.daily}{"/วัน"}
+              {" · 👍 "}{statsQuery.data.stats.feedbackToday.up}{" 👎 "}{statsQuery.data.stats.feedbackToday.down}
             </p>
           )}
           <div className="ai-thread" role="log" aria-live="polite" aria-label="ข้อความสนทนา">

@@ -22,6 +22,8 @@ export type ChatCommand =
   /** `pref:branch:<id>` sets the remembered branch; `pref:clear` forgets everything. */
   | { kind: "pref"; action: "branch"; branchId: string }
   | { kind: "pref"; action: "clear" }
+  /** A tap on "มีประโยชน์" / "ไม่ตรงคำถาม" under an answer. */
+  | { kind: "feedback"; rating: "up" | "down"; turnId: string }
   | { kind: "unknown"; raw: string };
 
 /**
@@ -35,6 +37,12 @@ export function parsePostbackData(data: string | undefined | null): ChatCommand 
   if (raw.startsWith("ack:")) {
     const alertId = raw.slice("ack:".length).trim();
     return alertId ? { kind: "ack", alertId } : { kind: "unknown", raw };
+  }
+  if (raw.startsWith("fb:")) {
+    // `fb:up:<uuid>` — a turn id has no colons of its own, unlike an alert id.
+    const [, rating, turnId] = raw.split(":");
+    if ((rating === "up" || rating === "down") && turnId) return { kind: "feedback", rating, turnId };
+    return { kind: "unknown", raw };
   }
   if (raw === "pref:clear") return { kind: "pref", action: "clear" };
   if (raw.startsWith("pref:branch:")) {

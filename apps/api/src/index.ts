@@ -36,6 +36,7 @@ import { isCalendarDate } from "./calendar-date";
 import { registerAnalyticsRoutes, type AnalyticsDeps } from "./analytics/routes";
 import { parseAnalyticsRange } from "./analytics/scope";
 import { initTelemetry, withAnswerSpan } from "./telemetry";
+import { startRetentionLoop } from "./retention";
 import { listCases, listRuns, runEval } from "./eval";
 import { answerForMessage } from "./bot/conversation";
 import {
@@ -111,6 +112,8 @@ initializeDatabase();
 
 // Off unless OTEL_EXPORTER_OTLP_ENDPOINT is set; never fatal (see telemetry.ts).
 void initTelemetry();
+// Transcripts, spans and eval results all grow with every message; the disk does not.
+startRetentionLoop();
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = new Hono<{ Variables: AppVariables }>();

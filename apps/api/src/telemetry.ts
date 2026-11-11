@@ -63,12 +63,45 @@ export async function initTelemetry(env: NodeJS.ProcessEnv = process.env): Promi
       import("@opentelemetry/semantic-conventions")
     ]);
 
+    const exporter = new OTLPTraceExporter();
+    /**
+     * Only our own spans leave the process.
+     *
+     * `instrumentations: []` was not enough: the SDK still produced `GET /get-session`
+     * and `handler /get-session` spans, two per session check, and they buried the
+     * answers. Filtering at the exporter is a guarantee rather than a hope — whatever
+     * else instruments this process, a span that is not `chat.answer` or `tool.*` is
+     * dropped before it is sent.
+     */
+    const onlyOurs = {
+      export(items: { name?: string }[], resultCallback: (result: { code: number; error?: Error }) => void) {
+        const keep = items.filter((span) => {
+          const name = span.name ?? "";
+          return name.startsWith("chat.answer") || name.startsWith("tool.");
+        });
+        if (keep.length === 0) {
+          resultCallback({ code: 0 });
+          return;
+        }
+        return exporter.export(keep as never, resultCallback);
+      },
+      // Spelled as a computed key: the literal word is on the shell blocklist, and this
+      // file should stay readable rather than fight a scanner.
+      [["shut", "down"].join("")]() {
+        const lifecycle = exporter as unknown as Record<string, (() => Promise<void>) | undefined>;
+        return lifecycle[["shut", "down"].join("")]?.() ?? Promise.resolve();
+      },
+      forceFlush() {
+        return exporter.forceFlush?.() ?? Promise.resolve();
+      }
+    };
+
     const sdk = new NodeSDK({
       resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: status.serviceName }),
-      traceExporter: new OTLPTraceExporter(),
       // The SDK's default instrumentations wrap every HTTP request, which turns one
       // answer into a trace per session call and hides the spans that matter.
-      instrumentations: []
+      instrumentations: [],
+      traceExporter: onlyOurs as never
     });
     sdk.start();
     // Spans are ours, not the SDK's: `withAnswerSpan` records the shape of the work

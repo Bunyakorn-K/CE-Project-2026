@@ -69,6 +69,17 @@ describe("parsePostbackData", () => {
     expect(parsePostbackData(`ack:${ALERT}`)).toEqual({ kind: "ack", alertId: ALERT });
   });
 
+  it("reads a feedback tap and keeps the turn id whole", () => {
+    expect(parsePostbackData("fb:up:1f0c2e6a-1111-2222-3333-444455556666")).toEqual({
+      kind: "feedback",
+      rating: "up",
+      turnId: "1f0c2e6a-1111-2222-3333-444455556666"
+    });
+    expect(parsePostbackData("fb:down:x")).toMatchObject({ kind: "feedback", rating: "down" });
+    expect(parsePostbackData("fb:sideways:x")).toMatchObject({ kind: "unknown" });
+    expect(parsePostbackData("fb:up:")).toMatchObject({ kind: "unknown" });
+  });
+
   it("reads help and rejects anything it does not know", () => {
     expect(parsePostbackData("help")).toEqual({ kind: "help" });
     expect(parsePostbackData("ack:")).toMatchObject({ kind: "unknown" });
