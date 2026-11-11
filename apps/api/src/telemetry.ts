@@ -197,9 +197,10 @@ export async function withAnswerSpan<T>(
         input: Number(final["gen_ai.usage.input_tokens"] ?? attributes.inputTokens ?? 0),
         output: Number(final["gen_ai.usage.output_tokens"] ?? attributes.outputTokens ?? 0)
       };
+      const finalModel = String(final["gen_ai.request.model"] ?? attributes.model);
       span.setAttributes({
         "langfuse.observation.type": "generation",
-        "langfuse.observation.model.name": attributes.model,
+        "langfuse.observation.model.name": finalModel,
         "langfuse.observation.usage_details": JSON.stringify(usage)
       });
       persistTrace({

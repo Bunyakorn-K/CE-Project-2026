@@ -68,7 +68,8 @@ describe("local trace rows", () => {
     turnId: "turn-1",
     finalize: (result: unknown) => ({
       "llm.steps": (result as { steps: number }).steps,
-      "llm.input_tokens": 120
+      "gen_ai.usage.input_tokens": 120,
+      "gen_ai.request.model": "agnes-2.5-flash"
     })
   };
 
@@ -82,7 +83,9 @@ describe("local trace rows", () => {
     expect(rows[0].status).toBe("ok");
     const parsed = JSON.parse(rows[0].attributes) as Record<string, unknown>;
     expect(parsed["llm.steps"]).toBe(3);
-    expect(parsed["llm.input_tokens"]).toBe(120);
+    expect(parsed["gen_ai.usage.input_tokens"]).toBe(120);
+    // The model is replaced by the one that actually answered, not the placeholder.
+    expect(parsed["gen_ai.request.model"]).toBe("agnes-2.5-flash");
     // Never the question or the answer.
     expect(JSON.stringify(parsed)).not.toContain("ภาพรวมวันนี้");
   });

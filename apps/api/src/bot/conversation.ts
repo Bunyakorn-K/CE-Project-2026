@@ -131,7 +131,7 @@ export async function answerForMessage(
   // the trace; the counts are filled in on the way out.
   return withAnswerSpan(
     {
-      model: ctx.roleLabel,
+      model: "pending",
       steps: 0,
       toolCalls: 0,
       promptVersion: ASSISTANT_PROMPT_VERSION,
@@ -141,11 +141,14 @@ export async function answerForMessage(
       sessionId: ctx.lineUserId ? hashUser(ctx.lineUserId) : undefined,
       finalize: (answer) => {
         const typed = answer as ConversationAnswer;
+        // The model is only known once the answer arrives — `ctx.roleLabel` was a
+        // placeholder so the span had something to open with.
         return {
           "llm.steps": typed.steps,
           "llm.tool_calls": typed.toolCalls,
-          "llm.input_tokens": typed.inputTokens,
-          "llm.output_tokens": typed.outputTokens
+          "gen_ai.request.model": typed.model,
+          "gen_ai.usage.input_tokens": typed.inputTokens,
+          "gen_ai.usage.output_tokens": typed.outputTokens
         };
       }
     },
