@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db, initializeDatabase } from "./db";
 import { aiTrace } from "./schema";
 import { hashUser, initTelemetry, telemetryStatus, withAnswerSpan, withToolSpan } from "./telemetry";
@@ -133,5 +133,28 @@ describe("session pseudonym", () => {
     expect(first).toHaveLength(16);
     // A different salt gives a different pseudonym.
     expect(hashUser("U284d77fa27c1bf0be58fe91ad71618d3", { OTEL_HASH_SALT: "x" })).not.toBe(first);
+  });
+});
+
+describe("content recording", () => {
+  afterEach(() => {
+    delete process.env.OTEL_RECORD_CONTENT;
+  });
+
+  it("is off unless the owner says otherwise", async () => {
+    const { contentEnabled } = await import("./telemetry");
+    delete process.env.OTEL_RECORD_CONTENT;
+    expect(contentEnabled()).toBe(false);
+    process.env.OTEL_RECORD_CONTENT = "0";
+    expect(contentEnabled()).toBe(false);
+    process.env.OTEL_RECORD_CONTENT = "1";
+    expect(contentEnabled()).toBe(true);
+  });
+
+  it("truncates rather than dropping a long answer", async () => {
+    const { truncate, MAX_CONTENT_CHARS } = await import("./telemetry");
+    const long = "ก".repeat(MAX_CONTENT_CHARS + 500);
+    expect(truncate(long).length).toBe(MAX_CONTENT_CHARS + 1);
+    expect(truncate("สั้น")).toBe("สั้น");
   });
 });

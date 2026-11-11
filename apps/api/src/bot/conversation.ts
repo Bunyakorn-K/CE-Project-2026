@@ -5,7 +5,7 @@ import { runAuditedToolCall } from "../ai-audit";
 import { agenticAnswerWithMeta } from "../llm-client";
 import { randomUUID } from "node:crypto";
 import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
-import { withAnswerSpan, withToolSpan, hashUser } from "../telemetry";
+import { contentEnabled, withAnswerSpan, withToolSpan, hashUser, truncate } from "../telemetry";
 import { recentTurns } from "./memory";
 
 export type ConversationContext = {
@@ -148,7 +148,10 @@ export async function answerForMessage(
           "llm.tool_calls": typed.toolCalls,
           "gen_ai.request.model": typed.model,
           "gen_ai.usage.input_tokens": typed.inputTokens,
-          "gen_ai.usage.output_tokens": typed.outputTokens
+          "gen_ai.usage.output_tokens": typed.outputTokens,
+          // The whole answer is already on the customer's phone and in chat_turn; it
+          // leaves the machine only when the owner has said so out loud.
+          ...(contentEnabled() ? { "langfuse.observation.output": truncate(typed.text) } : {})
         };
       }
     },
@@ -212,7 +215,12 @@ async function answerOnce(
         execute: async () =>
           // Its own span, so "89 seconds" can be attributed to one call instead of
           // being one number for four.
-          withToolSpan(name, turnId, async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope)))
+          withToolSpan(
+            name,
+            turnId,
+            async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope)),
+            { args: toolArgs }
+          )
       });
     },
     temperature: settings.temperature,

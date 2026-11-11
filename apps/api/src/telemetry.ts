@@ -22,6 +22,21 @@ import { createHash, randomUUID } from "node:crypto";
 import { db } from "./db";
 import { aiTrace } from "./schema";
 
+/** Long enough for a real question and answer, short enough to stay cheap. */
+export const MAX_CONTENT_CHARS = 4000;
+
+export function truncate(value: string, max = MAX_CONTENT_CHARS): string {
+  return value.length <= max ? value : `${value.slice(0, max)}…`;
+}
+
+/**
+ * Is content recording on? Read from env at call time, so tests can flip it and a
+ * running process never has to restart to change its mind.
+ */
+export function contentEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.OTEL_RECORD_CONTENT ?? "0").trim() === "1";
+}
+
 export type TelemetryStatus = {
   enabled: boolean;
   endpoint: string | null;
@@ -219,7 +234,11 @@ export async function withAnswerSpan<T>(
 
   return tracer.startActiveSpan("chat.answer", async (span) => {
     span.setAttributes(metadata as Record<string, string | number>);
-    if (recordsContent && attributes.question) span.setAttribute("chat.question", attributes.question);
+    if (recordsContent && attributes.question) {
+      span.setAttribute("chat.question", attributes.question);
+      // Langfuse's Input pane reads this key; `chat.question` is ours and shows nothing.
+      span.setAttribute("langfuse.observation.input", JSON.stringify({ question: truncate(attributes.question) }));
+    }
     try {
       const result = await fn();
       const final = attributes.finalize ? attributes.finalize(result) : {};
@@ -270,7 +289,9 @@ export async function withAnswerSpan<T>(
 export async function withToolSpan<T>(
   tool: string,
   turnId: string | null,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  /** The arguments, kept out of the span unless content recording is on. */
+  content?: { args?: unknown }
 ): Promise<T> {
   const { trace, SpanStatusCode } = await import("@opentelemetry/api");
   const startedAt = Date.now();
@@ -282,9 +303,16 @@ export async function withToolSpan<T>(
 
   return trace.getTracer("laundrytwin").startActiveSpan(`tool.${tool}`, async (span) => {
     span.setAttributes(metadata);
+    const withContent = contentEnabled();
+    if (withContent && content?.args !== undefined) {
+      span.setAttribute("langfuse.observation.input", truncate(JSON.stringify(content.args)));
+    }
     try {
       const result = await fn();
       const text = typeof result === "string" ? result.length : 0;
+      if (withContent && typeof result === "string") {
+        span.setAttribute("langfuse.observation.output", truncate(result));
+      }
       persistTrace({ turnId, name: `tool.${tool}`, status: "ok", durationMs: Date.now() - startedAt, attributes: { ...metadata, "tool.result_chars": text } });
       return result;
     } catch (error) {
