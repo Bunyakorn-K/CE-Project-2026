@@ -75,6 +75,37 @@ OTEL_SERVICE_NAME=laundrytwin-api
 Restart the app; the log says `[telemetry] OTLP export enabled -> … (content: off)`.
 Traces appear as `chat.answer` spans with the attributes above and no text.
 
+### What was configured (2026-11-11)
+
+Langfuse Cloud, region JP (`https://jp.cloud.langfuse.com`), project "My Project". The
+three values live in `/opt/laundrytwin/.env` (mode 600) as
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=https://jp.cloud.langfuse.com/api/public/otel
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(publicKey:secretKey)>
+OTEL_SERVICE_NAME=laundrytwin-api
+```
+
+Verified by reading the trace back out of Langfuse's API, not by watching the log:
+
+```text
+chat.answer   GENERATION  4.791s
+model        nemotron-3-ultra-550b-a55b
+usage        input 6468 · output 195 · total 6663      (identical to chat_turn)
+session      set (salted pseudonym, not the LINE id)
+tool.get_revenue_daily   SPAN  0.013s
+```
+
+Two attribute bugs were found this way and fixed: the span opened with the role label
+as its model (`owner`), and the token keys were still `llm.*` so Langfuse read zeros.
+Both are now `gen_ai.*` plus `langfuse.observation.*`.
+
+**Deploy gotcha, learned the hard way.** `docker compose up -d app` without an
+`APP_IMAGE=` override uses the value in `/opt/laundrytwin/.env` — which was still naming
+an image from the previous day, so recreating the container silently rolled the API
+back a day. The env file now holds the tag that is actually running, and that is the
+line to update on every deploy.
+
 ### Verify it is off when it should be
 
 ```text
