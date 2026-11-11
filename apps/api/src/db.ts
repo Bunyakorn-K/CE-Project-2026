@@ -146,6 +146,7 @@ export function initializeDatabase() {
       model text NOT NULL DEFAULT '',
       steps integer NOT NULL DEFAULT 0,
       tool_calls integer NOT NULL DEFAULT 0,
+      tool_error integer NOT NULL DEFAULT 0,
       latency_ms integer NOT NULL DEFAULT 0,
       delivered text NOT NULL DEFAULT 'reply',
       created_at integer NOT NULL
@@ -265,6 +266,7 @@ export function initializeDatabase() {
   // Tokens are what turn a latency into a cost; they were not captured before L1.
   ensureColumn("chat_turn", "input_tokens", "integer NOT NULL DEFAULT 0");
   ensureColumn("chat_turn", "output_tokens", "integer NOT NULL DEFAULT 0");
+  ensureColumn("chat_turn", "tool_error", "integer NOT NULL DEFAULT 0");
 }
 
 /** Add a column only if the table does not have it yet. Idempotent by design. */

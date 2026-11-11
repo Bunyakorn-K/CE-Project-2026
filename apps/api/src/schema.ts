@@ -337,6 +337,12 @@ export const chatTurn = sqliteTable("chat_turn", {
   /** Tool round-trips the model actually used. */
   steps: integer("steps").notNull().default(0),
   toolCalls: integer("tool_calls").notNull().default(0),
+  /**
+   * Set when a tool answered with an error envelope. The row stays as a record but is
+   * never fed back as context: a model reads its own failed answer as a fact and
+   * repeats it — which is how "revenue is disabled" outlived the flag by eight turns.
+   */
+  toolError: integer("tool_error").notNull().default(0),
   latencyMs: integer("latency_ms").notNull().default(0),
   /** Tokens for the whole loop; 0 when the gateway does not report usage. */
   inputTokens: integer("input_tokens").notNull().default(0),

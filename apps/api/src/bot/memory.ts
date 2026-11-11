@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { asc, eq, lt } from "drizzle-orm";
+import { and, asc, eq, lt } from "drizzle-orm";
 import { db } from "../db";
 import { chatTurn } from "../schema";
 
@@ -45,6 +45,8 @@ export type AppendTurnInput = {
   inputTokens?: number;
   outputTokens?: number;
   delivered?: "reply" | "push";
+  /** True when a tool answered with an error, so this answer is not a fact. */
+  toolError?: boolean;
   at?: Date;
 };
 
@@ -62,6 +64,7 @@ export function appendTurn(input: AppendTurnInput): void {
       inputTokens: input.inputTokens ?? 0,
       outputTokens: input.outputTokens ?? 0,
       delivered: input.delivered ?? "reply",
+      toolError: input.toolError ? 1 : 0,
       createdAt: input.at ?? new Date()
     })
     .run();
@@ -72,13 +75,19 @@ export function appendTurn(input: AppendTurnInput): void {
  *
  * Scoped by LINE user id, not by account: the memory belongs to the person typing,
  * and someone who holds grants on two branches still has one conversation.
+ *
+ * Turns whose tools failed are skipped. An error envelope ("revenue_disabled") looks
+ * like an answer to a model, and once it is in the transcript the bot repeats it as
+ * fact for the next eight questions — it kept saying revenue was unavailable long
+ * after the flag had been turned back on. The row is still stored; it just is not
+ * evidence the next question may cite.
  */
 export function recentTurns(lineUserId: string, limit: number = CHAT_MEMORY_TURNS): ConversationTurn[] {
   if (limit <= 0) return [];
   const rows = db
     .select({ userText: chatTurn.userText, answerText: chatTurn.answerText })
     .from(chatTurn)
-    .where(eq(chatTurn.lineUserId, lineUserId))
+    .where(and(eq(chatTurn.lineUserId, lineUserId), eq(chatTurn.toolError, 0)))
     .orderBy(chatTurn.createdAt)
     .all();
 

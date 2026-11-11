@@ -8,6 +8,21 @@ import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } fro
 import { contentEnabled, withAnswerSpan, withToolSpan, hashUser, truncate } from "../telemetry";
 import { recentTurns } from "./memory";
 
+/**
+ * Does this tool result say "I failed"?
+ *
+ * MCP errors arrive as `{"error":{"code":…,"message":…}}` in a normal, successful
+ * response — nothing about the reply is exceptional, so only the payload says so.
+ */
+export function looksLikeToolError(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Boolean(parsed && typeof parsed === "object" && !Array.isArray(parsed) && "error" in parsed);
+  } catch {
+    return false;
+  }
+}
+
 export type ConversationContext = {
   userText: string;
   /** The LINE account asking — the memory is scoped to this, not to the account. */
@@ -89,6 +104,8 @@ export type ConversationAnswer = {
   turnId: string;
   inputTokens: number;
   outputTokens: number;
+  /** True when any tool answered with an error envelope (see memory.recentTurns). */
+  toolError: boolean;
 };
 
 /**
@@ -164,6 +181,9 @@ async function answerOnce(
   deps: ConversationDeps,
   turnId: string
 ): Promise<ConversationAnswer> {
+  // Tools that answered with an error, collected as they run: the turn is then marked
+  // so the failed answer never becomes what the next question is told.
+  const failedTools = new Set<string>();
   // The gateway config is now DB-driven (ai_settings) — the bot reads the
   // same baseURL/apiKey/model/prompt that the backoffice AI console manages.
   const settings = getAiSettingsWithKey();
@@ -177,7 +197,8 @@ async function answerOnce(
       promptVersion: ASSISTANT_PROMPT_VERSION,
       turnId,
       inputTokens: 0,
-      outputTokens: 0
+      outputTokens: 0,
+      toolError: false
     };
   }
 
@@ -218,7 +239,11 @@ async function answerOnce(
           withToolSpan(
             name,
             turnId,
-            async () => toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope)),
+            async () => {
+              const text = toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope));
+              if (looksLikeToolError(text)) failedTools.add(name);
+              return text;
+            },
             { args: toolArgs }
           )
       });
@@ -242,6 +267,7 @@ async function answerOnce(
     promptVersion: ASSISTANT_PROMPT_VERSION,
     turnId,
     inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens
+    outputTokens: result.outputTokens,
+    toolError: failedTools.size > 0
   };
 }

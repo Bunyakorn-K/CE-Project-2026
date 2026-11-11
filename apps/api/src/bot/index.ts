@@ -317,6 +317,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         latencyMs: Date.now() - startedAt,
         inputTokens: answer.inputTokens,
         outputTokens: answer.outputTokens,
+        toolError: answer.toolError,
         delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
       });
     } catch (error) {

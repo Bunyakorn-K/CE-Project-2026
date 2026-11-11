@@ -111,3 +111,16 @@ describe("purgeExpiredChatTurns", () => {
     expect(purgeExpiredChatTurns()).toBe(0);
   });
 });
+
+describe("memory skips answers that came from a failing tool", () => {
+  it("keeps the row but leaves it out of the context", () => {
+    const user = `U-mem-${Date.now()}`;
+    appendTurn({ lineUserId: user, userText: "รายได้เท่าไหร่", answerText: "ดึงไม่ได้ (Revenue tool disabled)", toolError: true });
+    appendTurn({ lineUserId: user, userText: "แล้วรอบซักล่ะ", answerText: "38 รอบ" });
+
+    const context = recentTurns(user);
+    expect(context.map((turn) => turn.content)).toEqual(["แล้วรอบซักล่ะ", "38 รอบ"]);
+    expect(turnCount(user)).toBe(2);
+    expect(allTurns(user).map((row) => row.toolError)).toEqual([1, 0]);
+  });
+});
