@@ -49,6 +49,8 @@ export type AppendTurnInput = {
   toolError?: boolean;
   /** The branches this answer was computed for — see `scope_key` in the schema. */
   scopeKey?: string;
+  /** "carousel" | "card" | "text" — what the person actually received. */
+  cardKind?: string;
   at?: Date;
 };
 
@@ -68,6 +70,7 @@ export function appendTurn(input: AppendTurnInput): void {
       delivered: input.delivered ?? "reply",
       toolError: input.toolError ? 1 : 0,
       scopeKey: input.scopeKey ?? "all",
+      cardKind: input.cardKind ?? "text",
       createdAt: input.at ?? new Date()
     })
     .run();

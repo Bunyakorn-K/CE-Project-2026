@@ -301,3 +301,174 @@ export function answerAltText(parsed: ParsedAnswer): string {
   const joined = parts.join(" · ");
   return joined.length <= ANSWER_ALT_LIMIT ? joined : `${joined.slice(0, ANSWER_ALT_LIMIT - 1)}…`;
 }
+
+
+// ---- a card per branch ----
+
+/**
+ * One branch's block, lifted out of an answer that covers several.
+ *
+ * The model already writes these blocks — a heading naming the branch, then
+ * `ชื่อ: ค่า` lines — because the prompt asks for one section per branch. Reading
+ * that shape back is what lets the same answer become a swipeable card per branch
+ * instead of one tall bubble with two branches' numbers stacked in it.
+ */
+export type AnswerSection = {
+  /** Null for the preamble before the first branch heading. */
+  title: string | null;
+  rows: AnswerRow[];
+  bullets: string[];
+  /** Prose that belonged to this section (a note under the numbers). */
+  notes: string[];
+};
+
+/** `สาขา: …`, `### สาขา …`, `Branch: …` — the headings that start a block. */
+const BRANCH_HEADING = /^(?:สาขา|สาขาที่|branch)\s*[:：]?\s*(.+)$/i;
+
+export function parseSections(answer: string): AnswerSection[] {
+  const lines = answer.replace(/\r\n/g, "\n").split("\n");
+  const sections: AnswerSection[] = [{ title: null, rows: [], bullets: [], notes: [] }];
+  let inFence = false;
+
+  for (const raw of lines) {
+    if (isFence(raw)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const line = raw.trim();
+    if (!line || /^[-—_]{3,}$/.test(line)) continue;
+
+    const heading = headingOf(raw);
+    if (heading) {
+      const branch = heading.match(BRANCH_HEADING);
+      if (branch) {
+        sections.push({ title: branch[1].trim(), rows: [], bullets: [], notes: [] });
+      } else {
+        sections.push({ title: heading, rows: [], bullets: [], notes: [] });
+      }
+      continue;
+    }
+
+    const current = sections[sections.length - 1];
+    const bullet = bulletOf(raw);
+    if (bullet && current.bullets.length < MAX_BULLETS) {
+      current.bullets.push(bullet);
+      continue;
+    }
+    const row = rowOf(raw);
+    if (row && current.rows.length < MAX_ROWS) {
+      current.rows.push(row);
+      continue;
+    }
+    if (current.notes.length < MAX_PROSE_LINES) current.notes.push(stripMarkdown(line));
+  }
+
+  return sections.filter((section) => section.title || section.rows.length > 0 || section.bullets.length > 0 || section.notes.length > 0);
+}
+
+/** How many of these sections actually name a branch. */
+export function branchSectionCount(sections: AnswerSection[]): number {
+  return sections.filter((section) => Boolean(section.title) && section.rows.length > 0).length;
+}
+
+function sectionBubble(section: AnswerSection, options: { accent: string; size: string; withFooter?: boolean; feedbackFor?: string; footer?: string }) {
+  const body: Record<string, unknown>[] = [];
+
+  section.notes.forEach((line, index) => {
+    body.push(withMargin(text(line, { size: "sm", color: "#374151" }), index === 0 ? undefined : "sm"));
+  });
+  section.rows.forEach((row, index) => {
+    body.push(withMargin(rowComponent(row), index === 0 && section.notes.length === 0 ? undefined : "sm"));
+  });
+  section.bullets.forEach((bullet, index) => {
+    body.push(withMargin(bulletComponent(bullet), index === 0 ? "md" : "xs"));
+  });
+
+  if (options.withFooter && options.footer) {
+    body.push(withMargin(text(options.footer, { size: "xxs", color: "#9CA3AF" }), "md"));
+  }
+  if (options.withFooter && options.feedbackFor) {
+    const key = options.feedbackFor;
+    body.push(
+      withMargin(
+        {
+          type: "box",
+          layout: "horizontal",
+          spacing: "sm",
+          contents: [
+            { type: "button", style: "secondary", height: "sm", action: { type: "postback", label: "มีประโยชน์", data: `fb:up:${key}`, displayText: "มีประโยชน์" } },
+            { type: "button", style: "secondary", height: "sm", action: { type: "postback", label: "ไม่ตรงคำถาม", data: `fb:down:${key}`, displayText: "ไม่ตรงคำถาม" } }
+          ]
+        },
+        "md"
+      )
+    );
+  }
+
+  const bubble: Record<string, unknown> = {
+    type: "bubble",
+    size: options.size,
+    body: { type: "box", layout: "vertical", spacing: "none", contents: body }
+  };
+  if (section.title) {
+    bubble.header = {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: options.accent,
+      paddingAll: "14px",
+      contents: [text(section.title, { size: "sm", color: "#FFFFFF", weight: "bold", wrap: true })]
+    };
+  }
+  return bubble;
+}
+
+/**
+ * A swipeable card per branch.
+ *
+ * `kilo` is deliberate: `mega` is a full screen, so a two-branch shop would still
+ * swipe through pages that look like the tall card this replaces; `kilo` shows the
+ * next bubble peeking, which is what tells a thumb that there is more to the right.
+ *
+ * LINE caps a carousel at twelve bubbles. Past that the extra sections are dropped
+ * rather than pushed into a second message: an answer that says "11 of 13 branches"
+ * is honest, and a second carousel is a second swipe through a list nobody asked to
+ * page through.
+ */
+export const CAROUSEL_MAX_BUBBLES = 12;
+
+export function buildBranchCarousel(
+  sections: AnswerSection[],
+  options: AnswerCardOptions = {}
+): FlexContents | null {
+  const accent = options.accent ?? "#1f6feb";
+  const usable = sections.filter((section) => section.title && (section.rows.length > 0 || section.bullets.length > 0));
+  if (usable.length < 2) return null;
+
+  const shown = usable.slice(0, CAROUSEL_MAX_BUBBLES);
+  const bubbles = shown.map((section, index) =>
+    sectionBubble(section, {
+      accent,
+      size: "kilo",
+      // The feedback buttons belong to the answer, not to a branch, so they ride on
+      // the last card rather than repeating on every swipe.
+      withFooter: index === shown.length - 1,
+      feedbackFor: options.feedbackFor,
+      footer: options.footer
+    })
+  );
+
+  return { type: "carousel", contents: bubbles } as unknown as FlexContents;
+}
+
+export function carouselAltText(sections: AnswerSection[]): string {
+  const titles = sections
+    .filter((section) => section.title)
+    .slice(0, 4)
+    .map((section) => {
+      const first = section.rows[0];
+      return first ? `${section.title} (${first.label} ${first.value})` : String(section.title);
+    });
+  const joined = titles.join(" · ");
+  return joined.length <= ANSWER_ALT_LIMIT ? joined : `${joined.slice(0, ANSWER_ALT_LIMIT - 1)}…`;
+}

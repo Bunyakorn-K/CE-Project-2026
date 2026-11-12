@@ -148,6 +148,7 @@ export function initializeDatabase() {
       tool_calls integer NOT NULL DEFAULT 0,
       tool_error integer NOT NULL DEFAULT 0,
       scope_key text NOT NULL DEFAULT 'all',
+      card_kind text NOT NULL DEFAULT 'text',
       latency_ms integer NOT NULL DEFAULT 0,
       delivered text NOT NULL DEFAULT 'reply',
       created_at integer NOT NULL
@@ -274,6 +275,7 @@ export function initializeDatabase() {
   ensureColumn("chat_turn", "output_tokens", "integer NOT NULL DEFAULT 0");
   ensureColumn("chat_turn", "tool_error", "integer NOT NULL DEFAULT 0");
   ensureColumn("chat_turn", "scope_key", "text NOT NULL DEFAULT 'all'");
+  ensureColumn("chat_turn", "card_kind", "text NOT NULL DEFAULT 'text'");
 }
 
 /** Add a column only if the table does not have it yet. Idempotent by design. */

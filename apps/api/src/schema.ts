@@ -369,6 +369,8 @@ export const chatTurn = sqliteTable("chat_turn", {
    * how a narrowed question came back with the other branch's numbers in it.
    */
   scopeKey: text("scope_key").notNull().default("all"),
+  /** What the person actually received: a branch carousel, one card, or plain text. */
+  cardKind: text("card_kind").notNull().default("text"),
   latencyMs: integer("latency_ms").notNull().default(0),
   /** Tokens for the whole loop; 0 when the gateway does not report usage. */
   inputTokens: integer("input_tokens").notNull().default(0),

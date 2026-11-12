@@ -31,8 +31,17 @@ import { narrowScopeToBranch } from "./scope";
 import { bahtOnly } from "./money";
 import { ALREADY_RATED, recordFeedback, thanksText, UNKNOWN_TURN } from "./feedback";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
-import type { OutboundMessage } from "./adapter";
-import { answerAltText, buildAnswerFlex, parseAnswer, stripMarkdown } from "./answer-flex";
+import type { DeliveryKind, OutboundMessage } from "./adapter";
+import {
+  answerAltText,
+  branchSectionCount,
+  buildAnswerFlex,
+  buildBranchCarousel,
+  carouselAltText,
+  parseAnswer,
+  parseSections,
+  stripMarkdown
+} from "./answer-flex";
 import { LineAdapter } from "./line-adapter";
 import { McpClient, type McpClientLike } from "./mcp-client";
 
@@ -161,13 +170,32 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     quickReplies?: { label: string; text?: string; uri?: string }[],
     /** The turn being answered, so the card's buttons can refer to it. */
     turnId?: string
-  ) {
+  ): Promise<{ status: DeliveryKind; kind: "carousel" | "card" | "text" }> {
     // At most two messages, cut at paragraph or sentence boundaries, never inside a
     // word — LINE shows a long answer as a wall, and refuses past 5,000 characters.
     const shaped = shapeAnswer(text);
     const first = shaped.parts[0] ?? text;
     const parsed = parseAnswer(first);
-    const flex = buildAnswerFlex(parsed, { accent: accentFor(roleLabel), feedbackFor: turnId });
+    const accent = accentFor(roleLabel);
+
+    // An answer that covers several branches becomes a card per branch, swiped
+    // sideways, instead of one tall bubble with every branch's numbers stacked in
+    // it. Read from the whole answer, not from the first chunk: the sections are
+    // the shape, and the chunking is about length.
+    const sections = parseSections(text);
+    const carousel = branchSectionCount(sections) >= 2 ? buildBranchCarousel(sections, { accent, feedbackFor: turnId }) : null;
+    if (carousel) {
+      if (adapter.sendFlex) {
+        try {
+          return { status: await adapter.sendFlex(userId, carouselAltText(sections), carousel, { replyToken, quickReplies }), kind: "carousel" };
+        } catch {
+          // fall through to text rather than sending nothing
+        }
+      }
+      return { status: await reply(userId, stripMarkdown(text), replyToken, quickReplies), kind: "text" };
+    }
+
+    const flex = buildAnswerFlex(parsed, { accent, feedbackFor: turnId });
 
     const parts: OutboundMessage[] = [];
     if (flex) {
@@ -192,22 +220,22 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     if (parts.length === 1) {
       if (flex && adapter.sendFlex) {
         try {
-          return await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken, quickReplies });
+          return { status: await adapter.sendFlex(userId, answerAltText(parsed), flex, { replyToken, quickReplies }), kind: "card" };
         } catch {
           // fall through to text
         }
       }
-      return reply(userId, stripMarkdown(first), replyToken, quickReplies);
+      return { status: await reply(userId, stripMarkdown(first), replyToken, quickReplies), kind: "text" };
     }
 
     if (adapter.sendMessages) {
       try {
-        return await adapter.sendMessages(userId, parts, { replyToken, quickReplies });
+        return { status: await adapter.sendMessages(userId, parts, { replyToken, quickReplies }), kind: flex ? "card" : "text" };
       } catch {
         // fall through to the single-message path below
       }
     }
-    return reply(userId, stripMarkdown(first), replyToken, quickReplies);
+    return { status: await reply(userId, stripMarkdown(first), replyToken, quickReplies), kind: "text" };
   }
 
   async function reply(
@@ -276,7 +304,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     // Suggestions on the first answer only: after that the person knows what to
     // type, and a keyboard full of chips on every message is noise.
     const quickReplies = turnCount(userId) === 0 ? FIRST_TURN_REPLIES : undefined;
-    const delivered = await deliver(userId, text, roleLabel(identity.principal), replyToken, quickReplies, answer.turnId);
+    const delivery = await deliver(userId, text, roleLabel(identity.principal), replyToken, quickReplies, answer.turnId);
 
     // The turn is the bot's memory and its record: without this row a follow-up
     // question has nothing to refer to, and nobody can see what the bot said.
@@ -294,7 +322,8 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       outputTokens: answer.outputTokens,
       toolError: answer.toolError,
       scopeKey,
-      delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
+      delivered: delivery.status === "reply" || delivery.status === "push" ? delivery.status : undefined,
+      cardKind: delivery.kind
     });
   }
 
