@@ -83,3 +83,59 @@ tests     793 API / 330 web / 117 ETL · build 0 · check 0
   first twelve and has to name the rest in words.
 - Chooses one branch at a time. "ขอทั้งสองสาขา" still works by not choosing — the model
   answers across the visible scope when the question names both.
+
+---
+
+# A swipeable card per branch
+
+**Commit:** `362c4c7` · image `laundrytwin:deploy-362c4c7-20261112`
+
+An answer that covers several branches used to arrive as one tall bubble with every
+branch's numbers stacked in it; the reader had to find where their branch ended. LINE's
+carousel is the right container: one bubble per branch, swiped sideways.
+
+## Reading the shape the answer already has
+
+The prompt asks for one block per branch, so `parseSections` reads that back rather
+than inventing a second format: a heading that names a branch (`สาขา: …`,
+`### สาขา: …`, `Branch: …`) starts a section, and `ชื่อ: ค่า` lines belong to it. Prose
+without such a heading does not become a branch.
+
+`buildBranchCarousel` returns `null` for a single branch — that is a card, not a
+carousel — and caps at LINE's twelve bubbles.
+
+## Two defects found while building it
+
+1. **The model asked a question the code had already settled.** A prompt rule told it
+   to ask "which branch?" on an unscoped overview, duplicating the picker and firing
+   even when the person had written "ทุกสาขา" — the reply was one sentence, no tools,
+   no card. Removed; the code decides the scope, the prompt only shapes the answer.
+2. **The first branch was written without `###`.** The model opens with `สาขา: …` and
+   continues with `### สาขา: …`. Reading only the heading form turned the first branch
+   into rows under an untitled section, which a carousel cannot show — the branch was
+   silently dropped. A bare `สาขา:` line now starts a section too.
+
+## Evidence
+
+```text
+LINE POST /v2/bot/message/validate/push   -> 200 {}   (the exact carousel)
+production turn                          card_kind=carousel
+answer parsed with the shipped code      sections=3  branchSections=3  bubbles=3
+bubble headers                           ตลาดโซนเหลือง | หลิ่งมื่น | สรุปรวม
+```
+
+`chat_turn.card_kind` records what the person actually received — `carousel`, `card` or
+`text` — because `deliver` now reports it rather than returning a bare delivery status.
+That is what made this verifiable from the database instead of from a screenshot.
+
+```text
+803 API / 330 web / 117 ETL · build 0 · check 0
+image laundrytwin:deploy-362c4c7-20261112 · health 200
+```
+
+## Known behaviour
+
+- A repeated question inside the same scope can be answered from the transcript without
+  a tool call (`steps 1, tool calls 0`) — the model echoes its previous card. The
+  numbers are then as old as that turn.
+- The carousel shows at most twelve branches; the rest are dropped, not paged.
