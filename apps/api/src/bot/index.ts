@@ -27,6 +27,7 @@ import {
 } from "./actions";
 import { clearPreference, readPreference, rememberedLine, setPreference } from "./preferences";
 import { ALL_BRANCHES, askWhichBranchText, branchScopeReplies, shouldAskWhichBranch } from "./branch-intent";
+import { narrowScopeToBranch } from "./scope";
 import { bahtOnly } from "./money";
 import { ALREADY_RATED, recordFeedback, thanksText, UNKNOWN_TURN } from "./feedback";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
@@ -244,13 +245,21 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     const branchContext = branches.map((branch) => `${branch.branchName} (${branch.branchId})`).join(", ");
     const remembered = prepared?.remembered ?? rememberedLine(userId, (branchId) => branchNameCache.get(branchId) ?? null);
 
+    // The tools run on the narrowed scope; the prompt line alone changed nothing.
+    const scope = narrowScopeToBranch({
+      scope: identity.scope,
+      rememberedBranchId: readPreference(userId, "branch"),
+      branches,
+      question
+    });
+
     const answer = await answerForMessage(
       {
         userText: question,
         lineUserId: userId,
         roleLabel: roleLabel(identity.principal),
         branchContext,
-        scope: identity.scope,
+        scope,
         actorUserId: identity.principal.user.id,
         remembered,
         now: new Date()

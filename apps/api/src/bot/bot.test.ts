@@ -322,7 +322,7 @@ describe("bot webhook handler", () => {
       adapter,
       mcp
     );
-    return { adapter, handler, fetchImpl };
+    return { adapter, handler, fetchImpl, mcp };
   }
 
 
@@ -421,6 +421,7 @@ describe("bot webhook handler", () => {
       expect(adapter.sendText.mock.calls[0][1] as string).not.toContain("ต้องการดูสาขาไหน");
     });
   });
+
 
   it("shows a typing indicator before it starts thinking", async () => {
     const { adapter, handler } = harness();
