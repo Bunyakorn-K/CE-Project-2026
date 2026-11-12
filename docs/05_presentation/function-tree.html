@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LaundryTwin — Functional Decomposition Tree</title>
+<style>
+  :root{
+    --bg:#0e1621;            /* deep marine — laundromat water/industry */
+    --panel:#162230;
+    --panel2:#1c2b3c;
+    --line:#2c3f52;
+    --ink:#e8eef5;           /* near-white text */
+    --muted:#8fa2b5;         /* muted blue-grey */
+    --accent:#38b6a0;        /* teal — brand accent (navy/teal per README) */
+    --accent2:#5cc8b6;
+    --gold:#d9a441;          /* warm highlight for leaf targets */
+    --bad:#e07a7a;           /* not-implemented/partial marker */
+    --chip:#2a3b4e;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans Thai",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5;
+    padding:40px 28px 80px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1250px;margin:0 auto;}
+
+  /* ---------- masthead ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px;}
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+    color:var(--accent2);text-transform:uppercase;margin-bottom:12px;
+  }
+  h1{font-size:30px;font-weight:650;letter-spacing:-.01em;max-width:640px;}
+  h1 .thin{color:var(--muted);font-weight:450;}
+  .sub{color:var(--muted);margin-top:10px;font-size:15px;max-width:760px;}
+  .sub code{font-family:var(--mono);color:var(--accent2);font-size:.9em;background:var(--chip);padding:1px 6px;border-radius:4px;}
+
+  /* ---------- legend ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;margin:18px 0 6px;font-size:13px;color:var(--muted);}
+  .legend .lbl{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+  .sw.fn{background:var(--accent);}
+  .sw.mod{background:#5b7fb8;}
+  .sw.qr{background:var(--gold);}
+  .sw.ph{background:#894fa3;}
+  .legend b{color:var(--ink);font-weight:600;}
+
+  /* ---------- tree ---------- */
+  .tree{display:flex;flex-direction:column;}
+  /* one level row */
+  .row{display:flex;gap:18px;}
+  .level{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;}
+  .level-head{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px;
+  }
+  .level-head .count{color:var(--accent2);}
+  .level-head .dim{color:#5a6f82;}
+  .level-head::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  .node{
+    background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:6px;padding:9px 12px;position:relative;transition:background .15s,border-color .15s;
+  }
+  .node:hover{background:var(--panel2);border-color:var(--accent2);}
+  .node .nid{font-family:var(--mono);font-size:11px;color:var(--accent2);display:block;margin-bottom:2px;}
+  .node .nm{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .node .meta{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45;}
+  .node .meta .qr{color:var(--gold);}
+  .node .meta .fid{color:#7fa0c9;}
+  .node .meta .sev{color:var(--muted);}
+
+  /* module variant */
+  .node.mod{border-left-color:#5b7fb8;}
+  .node.mod .nid{color:#8fb0e0;}
+  /* ph-2 variant */
+  .node.ph{border-left-color:#894fa3;opacity:.82;}
+  .node.ph .nid{color:#c49ad1;}
+
+  /* leaf evidence line */
+  .node .ev{
+    font-family:var(--mono);font-size:10.5px;color:#6f8397;margin-top:6px;
+    border-top:1px dashed var(--line);padding-top:5px;word-break:break-all;
+  }
+  .node .ev .tag{color:var(--accent2);}
+
+  /* connector line down to children — implied by layout, no explicit glyphs */
+  .legend-note{color:#5a6f82;font-size:12px;margin-top:20px;font-style:italic;}
+
+  /* status chips */
+  .chip{font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;letter-spacing:.03em;margin-left:6px;vertical-align:1px;}
+  .chip.on{background:rgba(56,182,160,.16);color:var(--accent2);border:1px solid rgba(56,182,160,.35);}
+  .chip.warn{background:rgba(224,122,122,.14);color:var(--bad);border:1px solid rgba(224,122,122,.35);}
+  .chip.phase{background:rgba(137,79,163,.16);color:#c49ad1;border:1px solid rgba(137,79,163,.35);}
+
+  /* footer note */
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:#5a6f82;font-size:12px;max-width:820px;line-height:1.6;}
+  footer b{color:var(--muted);}
+
+  @media (max-width:900px){
+    .row{flex-direction:column;gap:22px;}
+    body{padding:24px 16px 60px;}
+    h1{font-size:24px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">LaundryTwin · CE Senior Project 2026</div>
+    <h1>Functional Decomposition <span class="thin">— F-tree 3 ชั้น</span></h1>
+    <p class="sub">
+      แตกหน้าที่รวมของระบบออกเป็นหน้าที่ย่อย 3 ชั้น แล้วจับแต่ละกิ่งลงโมดูล (C)
+      พร้อมโยงกลับหา <code>QR</code> ที่ตอบสนอง — ทุกโหนดเป็น “หน้าที่” (กริยา+กรรม)
+      ไม่ใช่เทคโนโลยี ยกเว้นชั้นโมดูล <code>C</code> ที่จับกลุ่มตาม “ความลับ” ที่ซ่อนไว้
+      (อ้างอิง <code>system_functions.md</code>, <code>house_of_quality.md</code>, <code>RTM_matrix.md</code>)
+    </p>
+    <div class="legend">
+      <span><span class="swatch sw fn"></span><b>F</b> · หน้าที่ของระบบ (แตกย่อยได้)</span>
+      <span><span class="swatch sw mod"></span><b>C</b> · โมดูล/Component (จับกลุ่ม F)</span>
+      <span><span class="swatch sw qr"></span><b>QR</b> · เป้าหมายที่วัดได้ (โยงบน)</span>
+      <span><span class="swatch sw ph"></span>Phase 2 / baseline</span>
+      <span><span class="lbl">legacy→C→QR chain</span></span>
+    </div>
+  </header>
+
+  <!-- ================= ROW 1 : ลำดับชั้นบนสุด ================= -->
+  <div class="row">
+    <!-- L1 : Overall function -->
+    <div class="level">
+      <div class="level-head">L1 · Overall Function <span class="dim">/ หน้าที่รวม</span></div>
+      <div class="node">
+        <span class="nid">F-00 · OVERALL</span>
+        <div class="nm">ดูแลและวิเคราะห์ธุรกิจร้านซักรีด multi-branch แบบเรียลไทม์</div>
+        <div class="meta">กริยา+กรรม ของทั้งระบบ: รับข้อมูลจริง → แปลงเป็นภาพ+สัญญาณ → ให้ผู้ใช้ตัดสินใจได้</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ROW 2 : L2 หลัก 5 กิ่ง ================= -->
+  <div class="row" style="margin-top:34px;">
+    <div class="level">
+      <div class="level-head">L2 · ซิลสู่ข้อมูล <span class="count">F-05</span></div>
+    </div>
+    <div class="level">
+      <div class="level-head">L2 · สถานะเครื่อง <span class="count">F-01</span></div>
+    </div>
+    <div class="level">
+      <div class="level-head">L2 · วิเคราะห์ BI <span class="count">F-08</span></div>
+    </div>
+    <div class="level">
+      <div class="level-head">L2 · แจ้งเตือน <span class="count">F-02·F-10</span></div>
+    </div>
+    <div class="level">
+      <div class="level-head">L2 · AI + ปลอดภัย <span class="count">F-06·F-07·F-11</span></div>
+    </div>
+  </div>
+
+  <!-- ================= ROW 3 : L3 leaves ของ F-05 ================= -->
+  <div class="row" style="margin-top:6px;">
+    <!-- col 1 : F-05 subtrees -->
+    <div class="level" style="flex:2;">
+      <div class="node mod"><span class="nid">C-04 · WAREHOUSE</span><div class="nm">ETL → ClickHouse</div>
+        <div class="meta">ซ่อน: ตรรกะ validate/watermark/idempotent ของ pipeline</div>
+      </div>
+      <div class="node"><span class="nid">F-04</span><div class="nm">ส่ง streaming ให้ client ที่ real-time</div>
+        <div class="meta"><span class="chip phase">target/descoped</span> MQTT → ไม่ใช่เส้นทางปัจจุบัน (IRIS แทน)</div>
+        <div class="ev"><span class="tag">ev</span> descoped 2026-09-07 — manufacturing path</div>
+      </div>
+      <div class="node"><span class="nid">F-05.1</span><div class="nm">รับข้อมูลจาก IRIS gateway</div>
+        <div class="meta"><span class="qr">QR</span> ผ่านไป · ไปยัง <span class="fid">F-05.2</span></div>
+        <div class="ev"><span class="tag">ev</span> read-only integration, IRIS Postgres</div>
+      </div>
+      <div class="node"><span class="nid">F-05.2</span><div class="nm">validate + normalize (schema/units)</div>
+        <div class="meta">ปฏิเสธ payload ผิด + log เหตุผล</div>
+        <div class="ev"><span class="tag">ev</span> apps/etl/src — validated, idempotent</div>
+      </div>
+      <div class="node"><span class="nid">F-05.3</span><div class="nm">จัดเก็บ idempotent ลง warehouse</div>
+        <div class="meta"><span class="qr">QR-02</span> ต่อรอบ · watermark-based</div>
+        <div class="ev"><span class="tag">ev</span> fact_machine_usage ~8k rows</div>
+      </div>
+    </div>
+
+    <!-- col 2 : F-01 subtree -->
+    <div class="level" style="flex:1.6;">
+      <div class="node mod"><span class="nid">C-02 · API/REPORT</span><div class="nm">Hono API — digital twin</div>
+        <div class="meta">ซ่อน: ชั้น branch-scope + date validation</div>
+      </div>
+      <div class="node"><span class="nid">F-01.1</span><div class="nm">แสดงสถานะเครื่องล่าสุด (state/เวลาที่เหลือ/temp)</div>
+        <div class="meta"><span class="qr">QR-01</span> p95 ≤ 2s · <span class="fid">C-02</span></div>
+        <div class="ev"><span class="tag">ev</span> clickhouse-report + freshness flags</div>
+      </div>
+      <div class="node"><span class="nid">F-01.2</span><div class="nm">สืบทอด unknown/stale state — ไม่ประดิษฐ์ค่า</div>
+        <div class="meta">preserve unknown, ไม่ fabricate</div>
+        <div class="ev"><span class="tag">ev</span> TC-02.4 / TC-02.5</div>
+      </div>
+      <div class="node ph"><span class="nid">F-03</span><div class="nm">จัดแผนผังพื้นที่ + หาความสัมพันธ์ความผิดปกติ</div>
+        <div class="meta"><span class="chip phase">Phase2</span> floorplan + cluster anomaly</div>
+        <div class="ev"><span class="tag">ev</span> ยังไม่ได้ implement — target เท่านั้น</div>
+      </div>
+    </div>
+
+    <!-- col 3 : F-08 subtree -->
+    <div class="level" style="flex:1.6;">
+      <div class="node mod"><span class="nid">C-04 · ANALYTICS</span><div class="nm">ClickHouse aggregates</div>
+        <div class="meta">ซ่อน: SQL ของ KPI, integer satang</div>
+      </div>
+      <div class="node"><span class="nid">F-08.1</span><div class="nm">รวมรอบการใช้งาน (canonical cycle count)</div>
+        <div class="meta"><span class="qr">QR-02</span> status IN('paid','finished')</div>
+        <div class="ev"><span class="tag">ev</span> cardinality diagnostic, defect fixed</div>
+      </div>
+      <div class="node"><span class="nid">F-08.2</span><div class="nm">รวมรายได้ + utilization แยกสาขา/เวลา</div>
+        <div class="meta"><span class="qr">QR-03</span> รายได้ซ่อนจาก technician</div>
+        <div class="ev"><span class="tag">ev</span> analytics routes, scope gate</div>
+      </div>
+      <div class="node"><span class="nid">F-08.3</span><div class="nm">export สรุปที่ traceable ถึง source event</div>
+        <div class="meta"><span class="qr">QR-02</span> sum(trend)==totals</div>
+        <div class="ev"><span class="tag">ev</span> dashboard trend, redaction</div>
+      </div>
+    </div>
+
+    <!-- col 4 : F-02/F-10 subtree -->
+    <div class="level" style="flex:1.6;">
+      <div class="node mod"><span class="nid">C-03 · ALERT</span><div class="nm">alert-engine</div>
+        <div class="meta">ซ่อน: cooldown/dedup ต่อ branch:rule:severity</div>
+      </div>
+      <div class="node"><span class="nid">F-02.1</span><div class="nm">ประเมินแนวโน้มแก๊สต่ำ (pressure+temp+dryer)</div>
+        <div class="meta"><span class="qr">QR-04</span> arm engine · R06 prod DAG</div>
+        <div class="ev"><span class="tag">ev</span> gas-trend production measurement</div>
+      </div>
+      <div class="node"><span class="nid">F-10.1</span><div class="nm">ประเมิน rule + ส่ง LINE เตือน</div>
+        <div class="meta"><span class="qr">QR-04</span> 1 alert/cooldown</div>
+        <div class="ev"><span class="tag">ev</span> alert-engine.test.ts idempotent</div>
+      </div>
+      <div class="node"><span class="nid">F-09</span><div class="nm">ประเมินระดับเหรียญ + reset พร้อม audit</div>
+        <div class="meta"><span class="qr">QR-04</span> reset ผ่าน <span class="fid">coinbox_open</span> ที่ map แล้วเท่านั้น <span class="chip warn">partially blocked</span></div>
+        <div class="ev"><span class="tag">ev</span> blocked upstream contract — ไม่ infer จาก door status</div>
+      </div>
+    </div>
+
+    <!-- col 5 : AI + security -->
+    <div class="level" style="flex:1.8;">
+      <div class="node mod"><span class="nid">C-01 · MCP/ASSISTANT</span><div class="nm">LINE bot + MCP allow-list</div>
+        <div class="meta">ซ่อน: ขอบเขต server-derived scope, signed</div>
+      </div>
+      <div class="node"><span class="nid">F-12</span><div class="nm">รับบริบทภายนอก — สภาพอากาศ (weather)</div>
+        <div class="meta"><span class="chip phase">Phase2</span> normalize location/time → correlate กับ usage</div>
+        <div class="ev"><span class="tag">ev</span> TMD collector hourly → fact_weather_sample</div>
+      </div>
+      <div class="node"><span class="nid">F-11.1</span><div class="nm">แยก user intent → allow-listed tool</div>
+        <div class="meta"><span class="qr">QR-05</span> 6 tools เท่านั้น</div>
+        <div class="ev"><span class="tag">ev</span> analytics/mcp.test.ts</div>
+      </div>
+      <div class="node"><span class="nid">F-06.1</span><div class="nm">บังคับ RBAC + branch scope ฝั่ง server</div>
+        <div class="meta"><span class="qr">QR-03</span> 403 cross-branch</div>
+        <div class="ev"><span class="tag">ev</span> access-policy.test.ts, scope.test.ts</div>
+      </div>
+      <div class="node"><span class="nid">F-07.1</span><div class="nm">audit log การตั้งค่า/สิทธิ์/tool-call</div>
+        <div class="meta">กรุ๊ต/alert/settings มีแล้ว · AI audit บางส่วน</div>
+        <div class="ev"><span class="tag">ev</span> ai-audit ops record (partial)</div>
+      </div>
+      <div class="node ph"><span class="nid">F-13</span><div class="nm">public availability API (ลูกค้า)</div>
+        <div class="meta"><span class="chip phase">Phase2</span> rate-limited, ไม่มี revenue/raw</div>
+        <div class="ev"><span class="tag">ev</span> DTO ที่ปลอดภัย ยังไม่ deploy</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ROW 4 : C mapping layer ================= -->
+  <div style="margin-top:30px;">
+    <div class="level-head">Layer · โมดูล C <span class="dim">/ จับกลุ่มตาม “ความลับ” (ข้อมูลที่คาดว่าจะเปลี่ยนบ่อย)</span></div>
+  </div>
+  <div class="row" style="margin-top:6px;"> 
+    <div class="level">
+      <div class="node mod"><span class="nid">C-01</span><div class="nm">LINE bot + MCP assistant</div>
+        <div class="meta"><span class="fid">F-11</span> · ความลับ: ขอบเขต scope + registry ของ tool</div>
+      </div>
+    </div>
+    <div class="level">
+      <div class="node mod"><span class="nid">C-02</span><div class="nm">Hono API (auth/RBAC/report)</div>
+        <div class="meta"><span class="fid">F-01·F-06·F-07</span> · ความลับ: access-policy + date rule</div>
+      </div>
+    </div>
+    <div class="level">
+      <div class="node mod"><span class="nid">C-03</span><div class="nm">Alert engine</div>
+        <div class="meta"><span class="fid">F-02·F-10</span> · ความลับ: cooldown/dedup rule</div>
+      </div>
+    </div>
+    <div class="level">
+      <div class="node mod"><span class="nid">C-04</span><div class="nm">ETL → ClickHouse warehouse</div>
+        <div class="meta"><span class="fid">F-05·F-08</span> · ความลับ: KPI SQL + integer satang</div>
+      </div>
+    </div>
+    <div class="level">
+      <div class="node mod"><span class="nid">C-05</span><div class="nm">Web UI + Superset</div>
+        <div class="meta"><span class="fid">viewport</span> · ความลับ: charter/framework display</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-note">
+    ↑ แต่ละ leaf ที่ layer ล่าง ยิงกลับหา QR ที่ตอบสนอง และหยิบหลักฐานจากไฟล์ real ใน repo
+    (ไม่ใช่เส้นเชื่อมทึกทัก — ทุกตัวชี้ไฟล์ test / ops record ได้จริง)
+  </div>
+
+  <footer>
+    <b>ที่มา:</b> เนื้อหาอ้างจาก <code>docs/01_requirements/system_functions.md</code> (F-01…F-13),
+    <code>docs/01_requirements/house_of_quality.md</code> (CR/TC/QR ที่สร้างใหม่),
+    <code>docs/04_traceability/RTM_matrix.md</code> (Handbook chain completion) และข้อมูล deployment จริงใน README/ops-verification.
+    โครงสร้างนี้เป็น “documentation bridge” เท่านั้น — ไม่ใช่โมดูลโค้ดใหม่. Phase 2/blocked ระบุไว้ชัด ไม่อ้างว่าเสร็จ.
+  </footer>
+
+</div>
+</body>
+</html>
