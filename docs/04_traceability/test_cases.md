@@ -20,12 +20,12 @@ pnpm check
 pnpm build
 ```
 
-Current local automated result (2026-09-30): **384 tests green** —
-**270 API**, **53 web**, and **61 ETL**. This supersedes the 227 / 152 / 38 / 37
-result measured 2026-09-28 (web had fallen to 1 after the dead-code deletion
-removed `dashboard-metrics.test.ts`).
-The following focused checks also
-pass:
+Current local automated test count is recorded in **one place only** —
+[`AGENTS.md` §Verification](../AGENTS.md#verification) (**967 tests green on
+2026-11-09** — API 547, web 303, ETL 117). **Do not restate the number here.**
+This table is the *method*: `pnpm test`, `pnpm check`, `pnpm build` (plus the
+focused package checks below). The package-level coverage summary at the bottom
+of this file is indicative scope, not the current count.
 
 ```bash
 pnpm --filter @laundrytwin/api check
@@ -35,8 +35,8 @@ pnpm --filter @laundrytwin/web build
 pnpm --filter @laundrytwin/etl test
 ```
 
-The 384-test result is local automated evidence. Do not use it to claim
-production, LINE authentication, or browser E2E verification. Manual
+The test results above are **local automated evidence only**. Do not use them
+to claim production, LINE authentication, or browser E2E verification. Manual
 screenshot and browser QA of the active web router was performed on
 2026-09-28 at 390/430/1440 plus a 320–1920 width sweep, against a locally
 seeded ClickHouse, and found the real defects listed in the 2026-09-25
@@ -47,7 +47,7 @@ Responsive layout additionally has a committed Playwright suite,
 `apps/web/e2e/layout.pw.ts` (**11 tests**, `pnpm --filter
 @laundrytwin/web test:layout`). It is deliberately **not** part of `pnpm
 test` — specs are named `*.pw.ts` so vitest's glob cannot collect them — and
-is not counted in the 384 above. It runs against the built bundle with a
+is not counted in the total recorded in AGENTS.md §Verification. It runs against the built bundle with a
 stubbed API and needs no API process, ClickHouse, or SQLite.
 
 ## TC Matrix (US → local evidence)
@@ -185,15 +185,16 @@ requirements remain partial or unverified.
 
 ## Package-level coverage summary
 
-| Package | Count | Scope |
-| :--- | ---: | :--- |
-| `apps/api` | 270 | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
-| `apps/web` | 53 | Development API proxy configuration, branch scope, machine status mapping, dashboard view formatting, plus manual browser QA of the active router (2026-09-28) |
-| `apps/etl` | 61 | Schema, transform, null preservation, watermark/idempotency, ETL run, and weather collection |
-| **Total** | **384** | **Local automated evidence only** |
+| Package | Coverage scope (indicative — count lives in AGENTS.md §Verification) |
+| :--- | :--- |
+| `apps/api` | Auth, report/analytics gates, ClickHouse parameter binding/redaction/unknown state, MCP allow-list/scope/revenue flag, LINE bot, alerts, access control, and failure cases |
+| `apps/web` | Development API proxy configuration, branch scope, machine status mapping, dashboard view formatting, plus manual browser QA of the active router (2026-09-28) |
+| `apps/etl` | Schema, transform, null preservation, watermark/idempotency, ETL run, ML features, and weather collection |
 
-A separate Playwright layout suite adds 11 more tests outside `pnpm test`
-(see the note above); those are also local automated evidence only.
+All rows above are **local automated evidence only** (plus the separate
+Playwright layout suite outside `pnpm test`) — not production, LINE, or
+browser E2E. Current totals are recorded once in
+[`AGENTS.md` §Verification](../AGENTS.md#verification), not here.
 
 ## Maintenance rules
 
