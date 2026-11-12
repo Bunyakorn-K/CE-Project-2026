@@ -350,6 +350,16 @@ export function parseSections(answer: string): AnswerSection[] {
       continue;
     }
 
+    // `สาขา: …` without the markdown — the model writes the first block either way,
+    // and reading only the "###" form silently dropped the first branch's numbers
+    // on the floor (they became rows under an untitled section, which a carousel
+    // cannot show).
+    const bareBranch = stripMarkdown(line).match(BRANCH_HEADING);
+    if (bareBranch && bareBranch[1].trim().length > 2) {
+      sections.push({ title: bareBranch[1].trim(), rows: [], bullets: [], notes: [] });
+      continue;
+    }
+
     const current = sections[sections.length - 1];
     const bullet = bulletOf(raw);
     if (bullet && current.bullets.length < MAX_BULLETS) {

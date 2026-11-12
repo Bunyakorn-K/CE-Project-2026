@@ -85,3 +85,26 @@ describe("carouselAltText", () => {
     expect(alt).toContain("หลิ่งมื่น (รอบซัก 64 รอบ)");
   });
 });
+
+describe("a first branch written without the markdown", () => {
+  const ANSWER = `สาขา: about you.wash & dry แม่โจ้ - ตลาดโซนเหลือง
+รายได้: 1,090 บาท
+รอบซัก: 19 รอบ
+
+### สาขา: about you.wash & dry แม่โจ้ - หลิ่งมื่น
+รายได้: 4,980 บาท
+รอบซัก: 83 รอบ
+
+### สรุปรวม
+รายได้รวม: 6,070 บาท`;
+
+  it("keeps the branch instead of turning it into a row", () => {
+    const sections = parseSections(ANSWER);
+    expect(sections[0].title).toBe("about you.wash & dry แม่โจ้ - ตลาดโซนเหลือง");
+    expect(sections[0].rows[0]).toEqual({ label: "รายได้", value: "1,090 บาท" });
+  });
+
+  it("still counts three sections for a carousel", () => {
+    expect(branchSectionCount(parseSections(ANSWER))).toBe(3);
+  });
+});
