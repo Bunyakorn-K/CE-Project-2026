@@ -46,6 +46,7 @@ Two exceptions, both deliberate:
 | File | Purpose |
 |---|---|
 | [`system_requirement.md`](01_requirements/system_requirement.md) | requirements v2 |
+| [`house_of_quality.md`](01_requirements/house_of_quality.md) | **CE handbook layer: CR → TC → QR** (customer-facing chain) — bridge to `system_requirement.md` / RTM |
 | [`system_functions.md`](01_requirements/system_functions.md) | functional decomposition |
 | [`user_stories.md`](01_requirements/user_stories.md) | user stories |
 | [`cost-analysis.md`](01_requirements/cost-analysis.md) | self-hosting cost estimate |
