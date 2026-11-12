@@ -2,6 +2,15 @@
 
 **Document Purpose:** This document defines the quantifiable requirements (QR) and technical characteristics (TC) for the LaundryTwin platform, separated into MVP and Phase 2.
 
+> **Link to the CE handbook chain:** the customer-facing layer (CR/TC/QR codes
+> from the student handbook) lives in
+> [`house_of_quality.md`](house_of_quality.md). Each R-row below is the
+> *operational* requirement behind one or more CR. The mapping:
+> R01/R02 → CR-01 · R03 → CR-02 · R05/R06/R07 → CR-03 · R08 → CR-04 ·
+> R04/R09/R11/R12 → CR-05. QR numbers in the handbook sense are defined in
+> `house_of_quality.md` Step D; they are **not** renumbered here so this file
+> stays the single source of truth for operational requirements.
+
 | ID      | Priority  | Category                | Requirement                                          | Scope / Rules / Dependencies                                                                                                                                                                                         | Acceptance Criteria                                                                                                | Constraints / Notes                                                               |
 | :------ | :-------- | :---------------------- | :--------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |
 | **R01** | **MVP**   | Infrastructure          | Telemetry ingestion pipeline and validated telemetry data | Ingest validated telemetry, attach `branch_id` and `machine_id`, and log raw/normalized events idempotently. (Original MQTT-specific path was descoped 2026-09-07 — see Implementation status below; telemetry flows via the IRIS gateway path.)<br><br>**Dependencies:** telemetry payload, `register_map_version`, Cloud / Time-series DB           | Valid events appear in the database within 2 seconds at p95; invalid payloads are rejected and reasons are logged. | Do not claim production scale support beyond the test targets.                    |
