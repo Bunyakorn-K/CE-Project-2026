@@ -6,7 +6,7 @@ import type { PlatformAdapter } from "./adapter";
 import type { AccessScope } from "./identity";
 import { resolveLineIdentity, roleLabel } from "./identity";
 import { answerForMessage, describeBotFailure } from "./conversation";
-import { appendTurn, turnCount } from "./memory";
+import { appendTurn, rememberPendingQuestion, takePendingQuestion, turnCount } from "./memory";
 import {
   acknowledgeFromChat,
   acknowledgementReply,
@@ -26,6 +26,8 @@ import {
   rememberedBranchText
 } from "./actions";
 import { clearPreference, readPreference, rememberedLine, setPreference } from "./preferences";
+import { ALL_BRANCHES, askWhichBranchText, branchScopeReplies, shouldAskWhichBranch } from "./branch-intent";
+import { bahtOnly } from "./money";
 import { ALREADY_RATED, recordFeedback, thanksText, UNKNOWN_TURN } from "./feedback";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
 import type { OutboundMessage } from "./adapter";
@@ -219,6 +221,70 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     return adapter.sendText(userId, text, quickReplies ? { quickReplies } : {});
   }
 
+  type Authorised = Extract<ReturnType<typeof resolveLineIdentity>, { ok: true }>;
+
+  /**
+   * Ask the model, deliver the card, store the turn.
+   *
+   * Extracted because two paths end here: the message that arrives with enough
+   * scope to answer, and the branch tap that finishes a question the bot held
+   * back. `prepared` carries the branch list the caller already fetched, so the
+   * common path still makes exactly one warehouse call.
+   */
+  async function answerInto(
+    userId: string,
+    identity: Authorised,
+    question: string,
+    replyToken: string | undefined,
+    startedAt: number,
+    prepared?: { branches: { branchId: string; branchName: string }[]; remembered: string | null }
+  ): Promise<void> {
+    const branches = prepared?.branches ?? (await visibleBranches(identity.scope, deps.clickhouse));
+    const branchNameCache = new Map(branches.map((branch) => [branch.branchId, branch.branchName]));
+    const branchContext = branches.map((branch) => `${branch.branchName} (${branch.branchId})`).join(", ");
+    const remembered = prepared?.remembered ?? rememberedLine(userId, (branchId) => branchNameCache.get(branchId) ?? null);
+
+    const answer = await answerForMessage(
+      {
+        userText: question,
+        lineUserId: userId,
+        roleLabel: roleLabel(identity.principal),
+        branchContext,
+        scope: identity.scope,
+        actorUserId: identity.principal.user.id,
+        remembered,
+        now: new Date()
+      },
+      { mcp, fetchImpl: deps.fetchImpl }
+    );
+
+    // The prompt asks for baht; this makes it true whatever the model wrote.
+    const text = bahtOnly(answer.text);
+
+    // Suggestions on the first answer only: after that the person knows what to
+    // type, and a keyboard full of chips on every message is noise.
+    const quickReplies = turnCount(userId) === 0 ? FIRST_TURN_REPLIES : undefined;
+    const delivered = await deliver(userId, text, roleLabel(identity.principal), replyToken, quickReplies, answer.turnId);
+
+    // The turn is the bot's memory and its record: without this row a follow-up
+    // question has nothing to refer to, and nobody can see what the bot said.
+    appendTurn({
+      lineUserId: userId,
+      userText: question,
+      // Stored without markdown: this is what the next question is given as
+      // context, and a transcript full of `**` teaches the model to use it.
+      answerText: stripMarkdown(text),
+      model: answer.model,
+      steps: answer.steps,
+      toolCalls: answer.toolCalls,
+      latencyMs: Date.now() - startedAt,
+      inputTokens: answer.inputTokens,
+      outputTokens: answer.outputTokens,
+      toolError: answer.toolError,
+      delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
+    });
+  }
+
   async function answerOne(event: LineTextEvent): Promise<void> {
     const userId = event.source?.userId;
     if (!userId) return;
@@ -277,48 +343,20 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       // remembered preference needs.
       const branchesForContext = await visibleBranches(identity.scope, deps.clickhouse);
       const branchNameCache = new Map(branchesForContext.map((branch) => [branch.branchId, branch.branchName]));
-      const branchContext = branchesForContext.map((branch) => `${branch.branchName} (${branch.branchId})`).join(", ");
-      const answer = await answerForMessage(
-        {
-          userText: event.message.text,
-          lineUserId: userId,
-          roleLabel: roleLabel(identity.principal),
-          branchContext,
-          scope: identity.scope,
-          actorUserId: identity.principal.user.id,
-          remembered: rememberedLine(userId, (branchId) => branchNameCache.get(branchId) ?? null),
-          now: new Date()
-        },
-        { mcp, fetchImpl: deps.fetchImpl }
-      );
-      // Suggestions on the first answer only: after that the person knows what to
-      // type, and a keyboard full of chips on every message is noise.
-      const quickReplies = turnCount(userId) === 0 ? FIRST_TURN_REPLIES : undefined;
-      const delivered = await deliver(
-        userId,
-        answer.text,
-        roleLabel(identity.principal),
-        event.replyToken,
-        quickReplies,
-        answer.turnId
-      );
+      const remembered = rememberedLine(userId, (branchId) => branchNameCache.get(branchId) ?? null);
 
-      // The turn is the bot's memory and its record: without this row a follow-up
-      // question has nothing to refer to, and nobody can see what the bot said.
-      appendTurn({
-        lineUserId: userId,
-        userText: event.message.text,
-        // Stored without markdown: this is what the next question is given as
-        // context, and a transcript full of `**` teaches the model to use it.
-        answerText: stripMarkdown(answer.text),
-        model: answer.model,
-        steps: answer.steps,
-        toolCalls: answer.toolCalls,
-        latencyMs: Date.now() - startedAt,
-        inputTokens: answer.inputTokens,
-        outputTokens: answer.outputTokens,
-        toolError: answer.toolError,
-        delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
+      // A question about "the shop" from someone with two branches is a question
+      // the bot cannot scope by guessing. Ask, hold the question, and answer it
+      // when the tap arrives — see `branch-intent.ts` for why this is narrow.
+      if (shouldAskWhichBranch({ text: event.message.text, branches: branchesForContext, hasRememberedBranch: Boolean(remembered) })) {
+        rememberPendingQuestion({ lineUserId: userId, question: event.message.text });
+        await reply(userId, askWhichBranchText(branchesForContext), event.replyToken, branchScopeReplies(branchesForContext));
+        return;
+      }
+
+      await answerInto(userId, identity, event.message.text, event.replyToken, startedAt, {
+        branches: branchesForContext,
+        remembered
       });
     } catch (error) {
       console.error("LaundryTwin bot error", error);
@@ -398,6 +436,19 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       // The branch id came from a button, but a button payload is still user input:
       // it is checked against this person's scope before it is stored.
       const branches = await visibleBranches(identity.scope, deps.clickhouse);
+      // A tap may be finishing a question the bot held back rather than setting a
+      // preference; taking it is destructive so a double tap cannot answer twice.
+      const pending = takePendingQuestion(userId);
+
+      if (command.branchId === ALL_BRANCHES) {
+        if (pending) {
+          await answerInto(userId, identity, pending, event.replyToken, Date.now(), { branches, remembered: null });
+        } else {
+          await reply(userId, "ได้ครับ — จะตอบจากทุกสาขาที่คุณเข้าถึง", event.replyToken);
+        }
+        return;
+      }
+
       const branch = branches.find((candidate) => candidate.branchId === command.branchId);
       if (!branch) {
         await reply(
@@ -408,6 +459,16 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
         return;
       }
       setPreference(userId, "branch", branch.branchId);
+
+      if (pending) {
+        // One reply token, so the question wins: the card's own header names the
+        // branch, which says what "จำไว้แล้ว" would have said, and the person gets
+        // the answer they asked for in the same breath.
+        const remembered = rememberedLine(userId, (branchId) => branches.find((b) => b.branchId === branchId)?.branchName ?? null);
+        await answerInto(userId, identity, pending, event.replyToken, Date.now(), { branches, remembered });
+        return;
+      }
+
       await reply(userId, rememberedBranchText(branch.branchName), event.replyToken);
       return;
     }

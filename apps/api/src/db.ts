@@ -215,6 +215,11 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS ai_trace_turn_idx ON ai_trace(turn_id);
     CREATE INDEX IF NOT EXISTS ai_trace_created_idx ON ai_trace(created_at);
+    CREATE TABLE IF NOT EXISTS chat_pending (
+      line_user_id text PRIMARY KEY NOT NULL,
+      question text NOT NULL,
+      created_at integer NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS chat_preference (
       line_user_id text NOT NULL,
       key text NOT NULL,

@@ -325,6 +325,103 @@ describe("bot webhook handler", () => {
     return { adapter, handler, fetchImpl };
   }
 
+
+  describe("asks which branch before answering an overview", () => {
+    const TWO_BRANCHES = [
+      { branchId: "b1", branchName: "about you.wash & dry แม่โจ้ - หลิ่งมื่น" },
+      { branchId: "b2", branchName: "about you.wash & dry แม่โจ้ - ตลาดโขนเหลือง" }
+    ];
+
+    it("sends the picker instead of spending a model call", async () => {
+      const userAsk = `line-branch-ask-${Date.now()}`;
+      const { adapter, handler, fetchImpl } = harness({ branches: TWO_BRANCHES });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ภาพรวมวันนี้เป็นยังไง" },
+        source: { userId: userAsk },
+        replyToken: "rt-ask"
+      });
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      const text = adapter.sendText.mock.calls[0][1] as string;
+      expect(text).toContain("ต้องการดูสาขาไหน");
+      const options = adapter.sendText.mock.calls[0][2] as { quickReplies?: { label: string; data: string }[] };
+      expect(options.quickReplies?.map((reply) => reply.label)).toEqual([
+        TWO_BRANCHES[0].branchName,
+        TWO_BRANCHES[1].branchName,
+        "ทุกสาขา"
+      ]);
+    });
+
+    it("answers the held question when the branch is tapped", async () => {
+      const userTap = `line-branch-tap-${Date.now()}`;
+      const { adapter, handler, fetchImpl } = harness({ branches: TWO_BRANCHES, answer: "รายได้ 960 บาท" });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ภาพรวมวันนี้เป็นยังไง" },
+        source: { userId: userTap },
+        replyToken: "rt-ask-2"
+      });
+      adapter.sendText.mockClear();
+
+      await handler.handlePostbackEvent({
+        type: "postback",
+        postback: { data: "pref:branch:b1" },
+        source: { userId: userTap },
+        replyToken: "rt-tap"
+      });
+
+      expect(fetchImpl).toHaveBeenCalled();
+      // The answer arrives as a card, so the text lives in the flex payload and its
+      // alt text rather than in sendText.
+      const delivered = [
+        ...adapter.sendFlex.mock.calls.map((call) => JSON.stringify(call.slice(0, 3))),
+        ...adapter.sendText.mock.calls.map((call) => String(call[1]))
+      ].join("\n");
+      expect(delivered).toContain("960 บาท");
+      // The answer is what they asked for, not a note about the preference.
+      expect(delivered).not.toContain("จำไว้แล้ว");
+    });
+
+    it("does not ask twice: the second question answers", async () => {
+      const userMemory = `line-branch-memory-${Date.now()}`;
+      const { adapter, handler, fetchImpl } = harness({ branches: TWO_BRANCHES });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ภาพรวมวันนี้เป็นยังไง" },
+        source: { userId: userMemory },
+        replyToken: "rt-ask-3"
+      });
+      await handler.handlePostbackEvent({
+        type: "postback",
+        postback: { data: "pref:branch:b2" },
+        source: { userId: userMemory },
+        replyToken: "rt-tap-3"
+      });
+      fetchImpl.mockClear();
+      adapter.sendText.mockClear();
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ภาพรวมวันนี้เป็นยังไง" },
+        source: { userId: userMemory },
+        replyToken: "rt-ask-4"
+      });
+
+      expect(fetchImpl).toHaveBeenCalled();
+      expect(adapter.sendText.mock.calls[0][1] as string).not.toContain("ต้องการดูสาขาไหน");
+    });
+  });
+
   it("shows a typing indicator before it starts thinking", async () => {
     const { adapter, handler } = harness();
     accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });

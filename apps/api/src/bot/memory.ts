@@ -22,7 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, lt } from "drizzle-orm";
 import { db } from "../db";
-import { chatTurn } from "../schema";
+import { chatPending, chatTurn } from "../schema";
 
 /** Turns fed back as context. A turn is one question and its answer. */
 export const CHAT_MEMORY_TURNS = 8;
@@ -121,4 +121,36 @@ export function allTurns(lineUserId: string) {
     .where(eq(chatTurn.lineUserId, lineUserId))
     .orderBy(asc(chatTurn.createdAt))
     .all();
+}
+
+/**
+ * Hold a question while the person chooses a branch.
+ *
+ * Ten minutes, because the picker is a quick reply — it lives in the message the
+ * person is looking at. A tap an hour later is a different conversation, and
+ * answering the question it happened to sit under would surprise the reader.
+ */
+export const PENDING_QUESTION_MS = 10 * 60 * 1000;
+
+export function rememberPendingQuestion(input: { lineUserId: string; question: string; now?: Date }): void {
+  const now = input.now ?? new Date();
+  db.insert(chatPending)
+    .values({ lineUserId: input.lineUserId, question: input.question, createdAt: now })
+    .onConflictDoUpdate({
+      target: chatPending.lineUserId,
+      set: { question: input.question, createdAt: now }
+    })
+    .run();
+}
+
+/**
+ * The held question, once. Taking it deletes it: a second tap must not answer a
+ * question the first tap already answered.
+ */
+export function takePendingQuestion(lineUserId: string, now: Date = new Date()): string | null {
+  const row = db.select().from(chatPending).where(eq(chatPending.lineUserId, lineUserId)).get();
+  if (!row) return null;
+  db.delete(chatPending).where(eq(chatPending.lineUserId, lineUserId)).run();
+  if (now.getTime() - row.createdAt.getTime() > PENDING_QUESTION_MS) return null;
+  return row.question;
 }

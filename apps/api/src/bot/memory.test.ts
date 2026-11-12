@@ -9,6 +9,8 @@ import {
   appendTurn,
   purgeExpiredChatTurns,
   recentTurns,
+  rememberPendingQuestion,
+  takePendingQuestion,
   turnCount
 } from "./memory";
 
@@ -122,5 +124,28 @@ describe("memory skips answers that came from a failing tool", () => {
     expect(context.map((turn) => turn.content)).toEqual(["แล้วรอบซักล่ะ", "38 รอบ"]);
     expect(turnCount(user)).toBe(2);
     expect(allTurns(user).map((row) => row.toolError)).toEqual([1, 0]);
+  });
+});
+
+describe("the question held while a branch is chosen", () => {
+  it("comes back once and then is gone", () => {
+    const user = `U-pending-${Date.now()}`;
+    rememberPendingQuestion({ lineUserId: user, question: "ภาพรวมวันนี้เป็นยังไง" });
+    expect(takePendingQuestion(user)).toBe("ภาพรวมวันนี้เป็นยังไง");
+    expect(takePendingQuestion(user)).toBeNull();
+  });
+
+  it("expires rather than answering a stale question", () => {
+    const user = `U-pending-old-${Date.now()}`;
+    const longAgo = new Date(Date.now() - 11 * 60 * 1000);
+    rememberPendingQuestion({ lineUserId: user, question: "ภาพรวมเมื่อวาน", now: longAgo });
+    expect(takePendingQuestion(user)).toBeNull();
+  });
+
+  it("keeps only the newest question for one person", () => {
+    const user = `U-pending-new-${Date.now()}`;
+    rememberPendingQuestion({ lineUserId: user, question: "คำถามแรก" });
+    rememberPendingQuestion({ lineUserId: user, question: "คำถามที่สอง" });
+    expect(takePendingQuestion(user)).toBe("คำถามที่สอง");
   });
 });

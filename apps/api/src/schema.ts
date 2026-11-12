@@ -275,6 +275,24 @@ export const aiTrace = sqliteTable("ai_trace", {
  * a preference the system guessed is a preference the user cannot see, and the next
  * answer would quietly be about the wrong branch.
  */
+/**
+ * A question held while the person picks a branch.
+ *
+ * It is a row rather than a variable because the picker is a separate webhook
+ * request: the tap that answers arrives after the message that asked, possibly
+ * after a restart. One row per person — a new question replaces the held one,
+ * because answering an older question than the one on screen would be worse than
+ * answering none.
+ */
+export const chatPending = sqliteTable(
+  "chat_pending",
+  {
+    lineUserId: text("line_user_id").primaryKey(),
+    question: text("question").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+  }
+);
+
 export const chatPreference = sqliteTable(
   "chat_preference",
   {
