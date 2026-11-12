@@ -253,12 +253,15 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       question
     });
 
+    const scopeKey = scope.branchIds.includes("*") ? "all" : [...scope.branchIds].sort().join(",");
+
     const answer = await answerForMessage(
       {
         userText: question,
         lineUserId: userId,
         roleLabel: roleLabel(identity.principal),
         branchContext,
+        scopeKey,
         scope,
         actorUserId: identity.principal.user.id,
         remembered,
@@ -290,6 +293,7 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       inputTokens: answer.inputTokens,
       outputTokens: answer.outputTokens,
       toolError: answer.toolError,
+      scopeKey,
       delivered: delivered === "reply" || delivered === "push" ? delivered : undefined
     });
   }

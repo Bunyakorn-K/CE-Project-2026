@@ -24,6 +24,8 @@ export function looksLikeToolError(text: string): boolean {
 }
 
 export type ConversationContext = {
+  /** The branches this answer is scoped to; memory from another scope is skipped. */
+  scopeKey?: string;
   userText: string;
   /** The LINE account asking — the memory is scoped to this, not to the account. */
   lineUserId: string;
@@ -206,7 +208,7 @@ async function answerOnce(
   // The last few turns, so a follow-up can refer to what came before. Read per
   // message, not cached: the container restarts on deploy and the conversation
   // must survive that.
-  const history = ctx.messages ?? recentTurns(ctx.lineUserId);
+  const history = ctx.messages ?? recentTurns(ctx.lineUserId, undefined, ctx.scopeKey ?? "all");
   // The SDK executes tool calls itself; each MCP tool becomes an SDK tool
   // whose execute routes back to the MCP data server.
   // The base URL belongs in the log next to the failure: "502" is a deployment

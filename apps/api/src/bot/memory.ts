@@ -47,6 +47,8 @@ export type AppendTurnInput = {
   delivered?: "reply" | "push";
   /** True when a tool answered with an error, so this answer is not a fact. */
   toolError?: boolean;
+  /** The branches this answer was computed for — see `scope_key` in the schema. */
+  scopeKey?: string;
   at?: Date;
 };
 
@@ -65,6 +67,7 @@ export function appendTurn(input: AppendTurnInput): void {
       outputTokens: input.outputTokens ?? 0,
       delivered: input.delivered ?? "reply",
       toolError: input.toolError ? 1 : 0,
+      scopeKey: input.scopeKey ?? "all",
       createdAt: input.at ?? new Date()
     })
     .run();
@@ -81,13 +84,22 @@ export function appendTurn(input: AppendTurnInput): void {
  * fact for the next eight questions — it kept saying revenue was unavailable long
  * after the flag had been turned back on. The row is still stored; it just is not
  * evidence the next question may cite.
+ *
+ * Turns answered under a different branch scope are skipped for the same reason: a
+ * card headed "ทุกสาขา" with two branches' numbers is read by the model as "already
+ * answered", and a question narrowed to one branch comes back with the other one's
+ * figures in it.
  */
-export function recentTurns(lineUserId: string, limit: number = CHAT_MEMORY_TURNS): ConversationTurn[] {
+export function recentTurns(
+  lineUserId: string,
+  limit: number = CHAT_MEMORY_TURNS,
+  scopeKey: string = "all"
+): ConversationTurn[] {
   if (limit <= 0) return [];
   const rows = db
     .select({ userText: chatTurn.userText, answerText: chatTurn.answerText })
     .from(chatTurn)
-    .where(and(eq(chatTurn.lineUserId, lineUserId), eq(chatTurn.toolError, 0)))
+    .where(and(eq(chatTurn.lineUserId, lineUserId), eq(chatTurn.toolError, 0), eq(chatTurn.scopeKey, scopeKey)))
     .orderBy(chatTurn.createdAt)
     .all();
 

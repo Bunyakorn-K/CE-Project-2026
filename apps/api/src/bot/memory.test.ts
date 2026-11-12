@@ -149,3 +149,14 @@ describe("the question held while a branch is chosen", () => {
     expect(takePendingQuestion(user)).toBe("คำถามที่สอง");
   });
 });
+
+describe("memory is per branch scope", () => {
+  it("does not feed an all-branch answer to a one-branch question", () => {
+    const user = `U-scope-${Date.now()}`;
+    appendTurn({ lineUserId: user, userText: "ภาพรวมวันนี้", answerText: "ทุกสาขา: 81 รอบ", scopeKey: "all" });
+    appendTurn({ lineUserId: user, userText: "หลิ่งมื่นเมื่อวาน", answerText: "หลิ่งมื่น: 116 รอบ", scopeKey: "b1" });
+
+    expect(recentTurns(user, undefined, "b1").map((turn) => turn.content)).toEqual(["หลิ่งมื่นเมื่อวาน", "หลิ่งมื่น: 116 รอบ"]);
+    expect(recentTurns(user, undefined, "all").map((turn) => turn.content)).toEqual(["ภาพรวมวันนี้", "ทุกสาขา: 81 รอบ"]);
+  });
+});

@@ -361,6 +361,14 @@ export const chatTurn = sqliteTable("chat_turn", {
    * repeats it — which is how "revenue is disabled" outlived the flag by eight turns.
    */
   toolError: integer("tool_error").notNull().default(0),
+  /**
+   * Which branches the answer was computed for ("all", or the ids joined).
+   *
+   * A turn answered from every branch is not context for a question scoped to one:
+   * the model reads the wider answer as "already answered" and repeats it, which is
+   * how a narrowed question came back with the other branch's numbers in it.
+   */
+  scopeKey: text("scope_key").notNull().default("all"),
   latencyMs: integer("latency_ms").notNull().default(0),
   /** Tokens for the whole loop; 0 when the gateway does not report usage. */
   inputTokens: integer("input_tokens").notNull().default(0),
