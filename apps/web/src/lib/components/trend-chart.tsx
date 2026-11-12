@@ -61,7 +61,7 @@ export function TrendChart({
   const metric = requested === "revenue" && !mayViewRevenue ? "cycles" : requested;
 
   return (
-    <Card variant="transparent" className="trend-card rounded-xl border border-border bg-surface p-6 shadow-surface mb-4">
+    <Card variant="transparent" className="trend-card rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 mb-4">
       <Card.Content>
         <div className="flex items-baseline justify-between gap-3 items-center">
           <div>
@@ -131,7 +131,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
 
   return (
     <figure className="trend-figure m-0">
-      <div className="relative h-[220px] max-[639px]:h-[190px]" style={{ paddingLeft: CHART_PADDING.left }}>
+      <div className="relative h-[180px] md:h-[220px]" style={{ paddingLeft: CHART_PADDING.left }}>
         {/* The y-axis labels sit outside the plot area, each centred on its own
             gridline. They are HTML, so they stay Thai-shaped at any width. */}
         <ul className="trend-axis trend-axis--y m-0 list-none p-0 font-mono text-[11px] text-muted absolute inset-y-0 left-0 w-12" aria-hidden="true">
@@ -143,7 +143,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
         </ul>
 
         <svg
-          className="trend-svg block h-[220px] w-full overflow-visible max-[639px]:h-[190px]"
+          className="trend-svg block h-[180px] w-full overflow-visible md:h-[220px]"
           viewBox={`0 0 ${plotWidth} ${CHART_HEIGHT}`}
           height={CHART_HEIGHT}
           preserveAspectRatio="none"
@@ -195,7 +195,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
           {days.map((day, index) => (
             <li key={day.date} className="trend-day absolute inset-y-0 right-0 left-14">
               <svg
-                className="block h-[220px] w-full max-[639px]:h-[190px]"
+                className="block h-[180px] w-full md:h-[220px]"
                 viewBox={`0 0 ${plotWidth} ${CHART_HEIGHT}`}
                 height={CHART_HEIGHT}
                 preserveAspectRatio="none"

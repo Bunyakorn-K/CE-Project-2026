@@ -15,7 +15,7 @@ function TermsPage() {
     <main className="min-h-screen bg-background px-5 py-10 max-[639px]:px-4 max-[639px]:py-6">
       <article className="mx-auto w-full max-w-[820px] rounded-2xl border border-border bg-surface p-8 shadow-surface max-[639px]:p-5">
         <header className="grid gap-2 border-b border-border pb-5"><h1>ข้อกำหนดการใช้งาน (Terms of Use)</h1><p>LaundryTwin · อัปเดตล่าสุด: {UPDATED}</p></header>
-        <div className="grid gap-6 pt-6">
+        <div className="grid gap-4 md:gap-6 pt-6">
           <Block title="บริการ"><p>LaundryTwin เป็นพื้นที่ปฏิบัติการสำหรับติดตามข้อมูลร้านซักผ้าหลายสาขา รายงานการใช้งาน และหลักฐานที่มีแหล่งที่มา ผู้ใช้ต้องเข้าสู่ระบบด้วยบัญชีที่ได้รับอนุญาต</p></Block>
           <Block title="บัญชีและการเข้าถึง"><p>ระบบบันทึกบทบาทและขอบเขตสาขาไว้เพื่อใช้ตรวจสอบสิทธิ์ การจำกัดข้อมูลและการซ่อนรายได้เป็นความรับผิดชอบของเซิร์ฟเวอร์ แต่การตรวจสอบขอบเขตและ revenue redaction ใน production ยังไม่ถือเป็นคำรับรองที่เสร็จสมบูรณ์</p></Block>
           <Block title="ข้อมูลและความสด"><p>ข้อมูลอาจมาจากระบบเดิมของร้าน, IRIS, ClickHouse, ETL หรือแหล่งอื่น และอาจล่าช้า ไม่ครบ หรือไม่พร้อมใช้งาน ผู้ใช้ควรตรวจสอบช่วงเวลา แหล่งที่มา และ freshness ที่แสดงในหน้าจอก่อนใช้ตัดสินใจปฏิบัติการ</p></Block>

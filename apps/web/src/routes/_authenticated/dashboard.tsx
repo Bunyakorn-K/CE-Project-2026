@@ -333,29 +333,29 @@ function DashboardPage() {
   });
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4 md:gap-6">
       <Tabs
-        className="grid gap-6"
+        className="grid gap-4 md:gap-6"
         selectedKey={view}
         onSelectionChange={(key) => {
           const nextView = String(key);
           if (nextView === "dashboard" || nextView === "twin") applyContext({ view: nextView });
         }}
       >
-        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
-          <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6">
+          <div className="page-header flex flex-col items-start gap-3 md:flex-row md:items-end md:justify-between md:gap-5">
             <div>
-              <h1>ภาพรวมการดำเนินงาน</h1>
-              <p>ติดตามผลประกอบการและหลักฐานสถานะเครื่องในช่วงเวลาที่เลือก</p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-4" aria-live="polite">
+              <h1 className="text-[26px] leading-tight min-[640px]:text-[32px]">ภาพรวมการดำเนินงาน</h1>
+              <p className="mt-1 hidden line-clamp-2 sm:block">ติดตามผลประกอบการและหลักฐานสถานะเครื่องในช่วงเวลาที่เลือก</p>
+              <div className="mt-4 hidden flex-wrap items-center gap-2 text-xs text-muted md:flex" aria-live="polite">
                 <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(activeSource)}</span>
                 <span>{availabilityLabel(activeAvailability)}</span>
                 {activeRange && <strong>{formatDate(activeRange.from)} — {formatDate(activeRange.to)}</strong>}
                 <span>ดึงเมื่อ {formatDateTime(activeFetchedAt)}</span>
               </div>
             </div>
-            <Tabs.ListContainer className="min-w-[260px] max-w-[300px] max-[639px]:w-full max-[639px]:min-w-0">
-              <Tabs.List className="flex w-full max-w-[300px] items-center gap-1.5" aria-label="เลือกมุมมอง">
+            <Tabs.ListContainer className="w-full min-w-0 md:min-w-[260px] md:max-w-[300px]">
+              <Tabs.List className="flex w-full items-center gap-1.5 md:max-w-[300px]" aria-label="เลือกมุมมอง">
                 <Tabs.Tab id="dashboard">ภาพรวม<Tabs.Indicator /></Tabs.Tab>
                 <Tabs.Tab id="twin">Digital Twin<Tabs.Indicator /></Tabs.Tab>
               </Tabs.List>
@@ -363,8 +363,8 @@ function DashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-surface md:grid-cols-4" aria-label="ตัวกรองข้อมูล">
-          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted md:col-span-1">
+        <section className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-surface p-3 shadow-surface md:grid-cols-4 md:gap-3 md:p-4" aria-label="ตัวกรองข้อมูล">
+          <div className="col-span-2 grid min-w-0 gap-1 text-xs font-medium text-muted md:col-span-1 md:gap-1.5">
             <label htmlFor="dashboard-branch">สาขา</label>
             <select
               id="dashboard-branch"
@@ -376,15 +376,15 @@ function DashboardPage() {
               {(branchesQuery.data?.branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
           </div>
-          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
-            <label htmlFor="dashboard-from">ตั้งแต่วันที่</label>
+          <div className="grid min-w-0 gap-1 text-xs font-medium text-muted md:gap-1.5">
+            <label htmlFor="dashboard-from" className="sr-only md:not-sr-only">ตั้งแต่วันที่</label>
             <input id="dashboard-from" type="date" value={range.from} max={range.to} onChange={(event) => applyContext({ from: event.target.value })} />
           </div>
-          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
-            <label htmlFor="dashboard-to">ถึงวันที่</label>
+          <div className="grid min-w-0 gap-1 text-xs font-medium text-muted md:gap-1.5">
+            <label htmlFor="dashboard-to" className="sr-only md:not-sr-only">ถึงวันที่</label>
             <input id="dashboard-to" type="date" value={range.to} min={range.from} onChange={(event) => applyContext({ to: event.target.value })} />
           </div>
-          <div className="range-presets col-span-full flex flex-wrap gap-2" role="group" aria-label="เลือกช่วงเวลาที่ใช้บ่อย">
+          <div className="range-presets col-span-full flex flex-wrap gap-2 overflow-x-auto" role="group" aria-label="เลือกช่วงเวลาที่ใช้บ่อย">
             {RANGE_PRESETS.map((preset) => {
               const presetDates = presetRange(preset.days);
               const active = range.from === presetDates.from && range.to === presetDates.to;
@@ -392,7 +392,7 @@ function DashboardPage() {
                 <button
                   key={preset.id}
                   type="button"
-                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50${active ? " ring-2 ring-focus" : ""}`}
+                  className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-default px-3 text-sm font-medium md:h-10 md:px-4 text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50${active ? " ring-2 ring-focus" : ""}`}
                   aria-pressed={active}
                   onClick={() => applyContext({ ...presetDates })}
                 >
@@ -401,10 +401,10 @@ function DashboardPage() {
               );
             })}
           </div>
-          <p className="col-span-full text-[11px] leading-relaxed text-muted" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์ · ช่วงที่เลือกถูกเก็บไว้ใน URL เพื่อกลับมาดูซ้ำหรือแชร์ได้</p>
+          <p className="col-span-2 hidden text-[11px] leading-relaxed text-muted md:col-span-full md:block" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์ · ช่วงที่เลือกถูกเก็บไว้ใน URL เพื่อกลับมาดูซ้ำหรือแชร์ได้</p>
         </section>
 
-        <Tabs.Panel id="dashboard" className="grid gap-6">
+        <Tabs.Panel id="dashboard" className="grid gap-4 md:gap-6">
           {!validRange && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
           {/* The one error path on this page that offered no way forward: a
               failed branch list left the filter permanently empty with nothing to
@@ -424,7 +424,7 @@ function DashboardPage() {
           )}
           {dashData && (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted rounded-lg border border-border bg-surface-secondary px-3.5 py-3" aria-live="polite">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface-secondary px-3 py-2 text-[11px] text-muted" aria-live="polite">
                 <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(dashQuery.data?.source ?? null)}</span>
                 <span>{availabilityLabel(dashQuery.data?.availability ?? null)}</span>
                 <strong>{formatDate(dashData.from)} — {formatDate(dashData.to)}</strong>
@@ -443,8 +443,15 @@ function DashboardPage() {
               {summaryQuery.isError && (
                 <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted" role="status">สรุปผู้บริหารไม่พร้อมใช้งาน: {summaryQuery.error.message}</div>
               )}
+              <section className="kpi-grid grid grid-cols-2 gap-3 min-[768px]:grid-cols-4 md:gap-4" aria-label="ตัวชี้วัดหลัก">
+                <KpiCard cell={kpis.revenue} />
+                <KpiCard cell={kpis.cycles} />
+                <KpiCard cell={kpis.inventory} />
+                <KpiCard cell={kpis.branches} />
+              </section>
+
               {summary.kind === "text" && (
-                <section className="rounded-xl border border-border bg-surface p-6 shadow-surface" aria-label="สรุปสำหรับผู้บริหาร">
+                <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6" aria-label="สรุปสำหรับผู้บริหาร">
                   <div className="flex items-baseline justify-between gap-3">
                     <div>
                       <h2>สรุปสำหรับผู้บริหาร</h2>
@@ -463,12 +470,6 @@ function DashboardPage() {
                 </section>
               )}
 
-              <section className="kpi-grid grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1" aria-label="ตัวชี้วัดหลัก">
-                <KpiCard cell={kpis.revenue} />
-                <KpiCard cell={kpis.cycles} />
-                <KpiCard cell={kpis.inventory} />
-                <KpiCard cell={kpis.branches} />
-              </section>
 
               {/* Prior-period change. Stated as subtraction of two measured
                   totals against the named window, never as a forecast. An
@@ -513,7 +514,7 @@ function DashboardPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <span>{dashData.branches.length.toLocaleString("th-TH")} สาขาในขอบเขตข้อมูล</span>
-                    <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted min-w-0">
+                    <div className="grid min-w-0 gap-1 text-xs font-medium text-muted md:gap-1.5 min-w-0">
                       <label htmlFor="branch-sort">เรียงตาม</label>
                       <select
                         id="branch-sort"
@@ -528,7 +529,7 @@ function DashboardPage() {
                   </div>
                 </div>
                 {dashData.branches.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">{sortBranches(dashData.branches, branchSort).map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
+                  <div className="grid gap-2.5 md:gap-3 sm:grid-cols-2 md:gap-4 lg:grid-cols-3">{sortBranches(dashData.branches, branchSort).map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
                 ) : (
                   <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีข้อมูลผลประกอบการในช่วงเวลานี้</div>
                 )}
@@ -537,7 +538,7 @@ function DashboardPage() {
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel id="twin" className="grid gap-6">
+        <Tabs.Panel id="twin" className="grid gap-4 md:gap-6">
           <section>
             <div className="flex items-baseline justify-between gap-3">
               <div>
@@ -556,7 +557,7 @@ function DashboardPage() {
             )}
             {twinData && (
               <>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted rounded-lg border border-border bg-surface-secondary px-3.5 py-3" aria-live="polite">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface-secondary px-3 py-2 text-[11px] text-muted" aria-live="polite">
                   <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(twinData.source)}</span>
                   <span>{availabilityLabel(twinData.availability)}</span>
                   <strong>{formatDate(twinData.range.from)} — {formatDate(twinData.range.to)}</strong>
@@ -574,7 +575,7 @@ function DashboardPage() {
 
 function KpiCard({ cell }: { cell: MetricCell }) {
   return (
-    <Card variant="transparent" className="kpi-card min-h-[132px] rounded-xl border border-border bg-surface p-5 shadow-surface">
+    <Card variant="transparent" className="kpi-card min-h-[132px] rounded-xl border border-border bg-surface p-4 shadow-surface md:p-5">
       <Card.Content>
         <span className="block text-xs font-medium text-muted">{cell.label}</span>
         <strong className={`mt-3 block font-mono text-3xl font-semibold tabular-nums tracking-tight${cell.textValue ? " font-sans text-lg" : ""}`}>{cell.value}</strong>
@@ -588,7 +589,7 @@ function BranchCard({ branch, presence }: { branch: DashboardData["branches"][0]
   const cells = branchStatCells(branch, presence, formatCount, baht);
   const utilization = utilizationView(branch, presence);
   return (
-    <Card variant="transparent" className="branch-card rounded-xl border border-border bg-surface p-5 shadow-surface">
+    <Card variant="transparent" className="branch-card rounded-xl border border-border bg-surface p-4 shadow-surface md:p-5">
       <Card.Content>
         <div className="grid gap-2">
           <span className="font-mono text-[11px] text-muted">{branch.branchId.slice(0, 8)}</span>
@@ -638,7 +639,7 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
 
   return (
     <div className="grid gap-5">
-      <div className="stat-grid stat-grid--cards grid grid-cols-4 gap-3 max-[1023px]:grid-cols-2">
+      <div className="stat-grid stat-grid--cards grid grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">
         <div><span>เครื่องทั้งหมด</span><strong>{machines.length}</strong></div>
         <div><span>สถานะกำลังใช้งาน</span><strong>{running}</strong></div>
         <div>
@@ -671,7 +672,7 @@ function MachineGroup({ title, machines }: { title: string; machines: Machine[] 
   return (
     <div className="grid gap-2.5">
       <div className="flex items-baseline justify-between gap-3"><strong>{title}</strong><span>{machines.length.toLocaleString("th-TH")} เครื่อง</span></div>
-      <div className="grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         {machines.map((machine) => <MachineCard key={`${machine.branchId ?? "unknown-branch"}-${machine.machineId ?? machine.machineCode}`} machine={machine} />)}
       </div>
     </div>
@@ -683,7 +684,7 @@ function MachineCard({ machine }: { machine: Machine }) {
   const cycles = machineCycleFacts(machine);
   const freshness = machineFreshnessRow(machineAvailability(machine.freshness, machine.branchOpenState));
   return (
-    <Card variant="transparent" className="machine-card machine-floor-card min-h-[168px] rounded-xl border border-border bg-surface p-5 shadow-surface">
+    <Card variant="transparent" className="machine-card machine-floor-card min-h-[168px] rounded-xl border border-border bg-surface p-4 shadow-surface md:p-5">
       <Card.Content>
         <div className="machine-card-head flex items-start justify-between gap-3">
           <div>

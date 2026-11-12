@@ -102,15 +102,15 @@ function MachinesPage() {
   });
 
   return (
-    <div className="grid gap-6">
-      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
-        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
+    <div className="grid gap-4 md:gap-6">
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6">
+        <div className="page-header flex flex-col items-start gap-3 md:flex-row md:items-end md:justify-between md:gap-5">
           <div>
             <h1>สถานะเครื่องซักผ้า</h1>
             <p>ดู snapshot ล่าสุด แหล่งที่มา ความสด และค่าที่เครื่องรายงานโดยไม่อ้างว่าเป็นข้อมูลทันที</p>
           </div>
           {branches.length > 0 && (
-            <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted w-full max-w-[260px]">
+            <div className="grid min-w-0 gap-1 text-xs font-medium text-muted md:gap-1.5 w-full max-w-[260px]">
               <label htmlFor="machines-branch">สาขา</label>
               <select id="machines-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -151,7 +151,7 @@ function MachinesPage() {
           </div>
           <StateSourceNotice machines={liveQuery.data.machines} />
           {liveQuery.data.machines.length > 0 ? (
-            <div className="grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">{liveQuery.data.machines.map((machine) => <MachineCard key={machine.id} machine={machine} />)}</div>
+            <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">{liveQuery.data.machines.map((machine) => <MachineCard key={machine.id} machine={machine} />)}</div>
           ) : (
             <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่พบเครื่องในสาขานี้</div>
           )}
@@ -172,7 +172,7 @@ function MachineCard({ machine }: { machine: Machine }) {
   const freshness = liveFreshnessRow(availability);
   const fallback = freshnessMeta(availability);
   return (
-    <Card variant="transparent" className="machine-card min-h-[168px] rounded-xl border border-border bg-surface p-5 shadow-surface">
+    <Card variant="transparent" className="machine-card min-h-[168px] rounded-xl border border-border bg-surface p-4 shadow-surface md:p-5">
       <Card.Content>
         <div className="machine-card-head flex items-start justify-between gap-3">
           <div>

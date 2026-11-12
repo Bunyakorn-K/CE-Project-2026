@@ -189,8 +189,8 @@ function AiConsolePage() {
 
   if (!isOwner) {
     return (
-      <div className="grid gap-6">
-        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface grid justify-items-start gap-3 p-6">
+      <div className="grid gap-4 md:gap-6">
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 grid justify-items-start gap-3 p-6">
           <h1>เข้าถึงไม่ได้</h1>
           <p>AI Console ใช้ได้เฉพาะบัญชีบทบาทเจ้าของ</p>
           <Link to="/dashboard" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 w-fit">กลับภาพรวม</Link>
@@ -203,9 +203,9 @@ function AiConsolePage() {
   const hasApiKey = settingsQuery.data?.settings.hasApiKey === true;
 
   return (
-    <div className="grid gap-6">
-      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
-        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
+    <div className="grid gap-4 md:gap-6">
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6">
+        <div className="page-header flex flex-col items-start gap-3 md:flex-row md:items-end md:justify-between md:gap-5">
           <div>
             <h1>AI Console</h1>
             <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
@@ -213,7 +213,7 @@ function AiConsolePage() {
         </div>
       </section>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>Provider และ Gateway</h2><span>API key ไม่เคยถูกส่งกลับจากเซิร์ฟเวอร์</span></div>
           {settingsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดการตั้งค่า AI</div>}
@@ -251,7 +251,7 @@ function AiConsolePage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>System prompt</h2><span>ใช้ทั้งหน้านี้และแชท LINE ของผู้ช่วย</span></div>
           <label className="sr-only" htmlFor="ai-system-prompt">System prompt</label>
@@ -274,7 +274,7 @@ function AiConsolePage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           {evalQuery.data && evalQuery.data.runs.length > 0 ? (
             <div className="mt-4 rounded-xl border border-border p-4">

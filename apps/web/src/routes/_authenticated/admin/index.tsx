@@ -108,8 +108,8 @@ export function AdminHome() {
 
   if (!isOwner) {
     return (
-      <div className="grid gap-6">
-        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface grid justify-items-start gap-3 p-6">
+      <div className="grid gap-4 md:gap-6">
+        <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 grid justify-items-start gap-3 p-6">
           <h1>เข้าถึงไม่ได้</h1>
           <p>หน้าผู้ดูแลใช้ได้เฉพาะบัญชีบทบาทเจ้าของ</p>
           <Link to="/dashboard" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 w-fit">กลับภาพรวม</Link>
@@ -129,9 +129,9 @@ export function AdminHome() {
   const branchName = (id: string | null) => branchScope(id).label;
 
   return (
-    <div className="grid gap-6">
-      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
-        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
+    <div className="grid gap-4 md:gap-6">
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6">
+        <div className="page-header flex flex-col items-start gap-3 md:flex-row md:items-end md:justify-between md:gap-5">
           <div>
             <h1>การจัดการสิทธิ์</h1>
             <p>อนุมัติคำขอเข้าใช้งาน ตรวจสอบสิทธิ์ที่ใช้งานอยู่ และจัดการการตั้งค่า AI</p>
@@ -146,14 +146,14 @@ export function AdminHome() {
       {grantMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}
       {grantMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">ให้สิทธิ์แล้ว</div>}
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>คำขอเข้าใช้งาน</h2><span>รอผู้ดูแลอนุมัติ</span></div>
           {branchesQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดสาขาเพื่อกำหนดขอบเขตได้: {branchesQuery.error.message}</div>}
           {requestsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดคำขอเข้าใช้งาน</div>}
           {requestsQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดคำขอเข้าใช้งานได้: {requestsQuery.error.message}</div>}
           {requestsQuery.data && requestsQuery.data.requests.length === 0 && <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีคำขอเข้าใช้งานที่รออนุมัติ</div>}
-          <div className="grid gap-3">
+          <div className="grid gap-2.5 md:gap-3">
             {requestsQuery.data?.requests.map((request) => (
               <AccessRequestRow
                 key={request.id}
@@ -167,7 +167,7 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>ให้สิทธิ์ผู้ใช้ที่มีบัญชีแล้ว</h2><span>เพิ่มขอบเขตโดยไม่ต้องรอคำขอ</span></div>
           <p>ใช้เมื่อผู้ใช้เข้าสู่ระบบด้วยตัวเองแล้ว แต่ต้องจำกัดสิทธิ์ให้เหลือเฉพาะสาขาที่ดูแล</p>
@@ -179,19 +179,19 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>สิทธิ์ที่ใช้งานอยู่</h2><span>เพิกถอนจากเซิร์ฟเวอร์ทันที</span></div>
           {grantsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดสิทธิ์</div>}
           {grantsQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดสิทธิ์ได้: {grantsQuery.error.message}</div>}
           {grantsQuery.data && grantsQuery.data.grants.length === 0 && <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีสิทธิ์ที่ใช้งานอยู่</div>}
           <div className="md:hidden">
-            <ul className="admin-list grid gap-3" aria-label="สิทธิ์ที่ใช้งานอยู่">
+            <ul className="admin-list grid gap-2.5 md:gap-3" aria-label="สิทธิ์ที่ใช้งานอยู่">
               {grantsQuery.data?.grants.map((grant) => {
                 const scope = branchScope(grant.branchId);
                 return (
-                  <li key={grant.id} data-grant-card className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5">
-                    <div className="grid gap-3">
+                  <li key={grant.id} data-grant-card className="grid gap-2.5 md:gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5">
+                    <div className="grid gap-2.5 md:gap-3">
                       <div><span>ผู้ใช้</span><strong className="text-sm font-semibold text-foreground">{grant.userName}</strong><small className="break-all font-mono text-xs text-muted">{grant.userEmail}</small></div>
                       <div><span>บทบาท</span><strong className="text-sm font-semibold text-foreground">{roleLabel(grant.role)}</strong></div>
                       <div><span>ขอบเขต</span><strong className={scope.isCode ? "font-mono text-xs text-muted" : "text-sm font-semibold text-foreground"}>{scope.label}</strong></div>
@@ -222,7 +222,7 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>AI Console</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
@@ -230,7 +230,7 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>การแจ้งเตือน LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>กำหนดความถี่ในการแจ้งซ้ำและเพดานข้อความต่อเดือน พร้อมดูโควตาที่ใช้ไปแล้ว</p>
@@ -238,7 +238,7 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6 min-w-0">
         <Card.Content>
           <div className="flex items-baseline justify-between gap-3"><h2>เมนู LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>แผงเมนูในแชท LINE แยกตามบทบาท และปุ่มซิงก์เมนูกับ LINE</p>
@@ -268,7 +268,7 @@ function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending
 
   return (
     <form
-      className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
+      className="grid gap-2.5 md:gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
       onSubmit={(event) => {
         event.preventDefault();
         const request = buildGrantRequest({ email, role, branchId });
@@ -310,7 +310,7 @@ function AccessRequestRow({ request, branches, pending, onApprove }: { request: 
   }, [branchId, branches]);
   return (
     <form
-      className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
+      className="grid gap-2.5 md:gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
       onSubmit={(event) => {
         event.preventDefault();
         onApprove(role, role === "owner" ? null : branchId);

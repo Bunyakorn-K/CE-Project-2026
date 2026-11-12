@@ -118,7 +118,7 @@ function LoginPage() {
           </div>
 
           <div className="my-5 flex items-center gap-2.5 text-[11px] text-muted">หรือใช้บัญชีอีเมล</div>
-          <Form onSubmit={onSubmit} className="grid gap-3">
+          <Form onSubmit={onSubmit} className="grid gap-2.5 md:gap-3">
             <TextField isRequired name="email" type="email" value={email} onChange={setEmail}>
               <Label>อีเมล</Label>
               <Input autoComplete="email" placeholder="อีเมล" variant="secondary" />
