@@ -18,9 +18,32 @@ local code and test evidence, not production E2E verification.
 | **AI executive summary** | US-05 | R04, R08 | F-11 (Safe Analytics Function Calling) | **MVP** |
 | **Rule-based maintenance alert** | US-08 | R05, R10 | F-10 | **MVP** |
 | **AI smart promotion** | US-06 | R09 | No F-ID assigned here; see F-12 ambiguity note | _Phase 2_ |
-| **Spatial anomaly diagnostics** | US-08 | R10 | F-03 (Spatial Layout & Error Correlation) | _Phase 2_ |
+| **Spatial anomaly diagnostics** | US-12 | R10 | F-03 (Spatial Layout & Error Correlation) | _Phase 2_ |
 | **Customer web view** | US-07 | R11 | F-13 (Public Machine Status API) | _Phase 2_ |
 | **Weather demand analysis** | US-06 | R12 | F-12 (External Context — Weather API) | _Phase 2_ |
+
+### Handbook chain completion (CR → TC → QR → F → C → T)
+
+The student handbook requires the full chain `CR → TC → QR → F → C → T`.
+`CR/TC/QR` definitions live in
+[`house_of_quality.md`](../01_requirements/house_of_quality.md) (customer-facing
+layer). This block closes the two missing legs — **C (component/module)** and
+**T (test/verification)** — so every CR above has an evidence endpoint and no
+T is left without a QR origin (no orphan either way, per handbook ch.7).
+
+| CR (House of Quality) | QR | C (component/module) | T (verification, evidence file) | Status |
+|---|---|---|---|---|
+| CR-01 (machine status) | QR-01 (p95 ≤ 2 s) | C-02 Hono API / report layer (`apps/api/src/report/`) | `report/clickhouse-report.test.ts`, `index.test.ts` (authorized branch request + range validation) | Local evidence, prod E2E pending |
+| CR-02 (BI: revenue/cycles/util) | QR-02 (cycle = row count `paid`+`finished`) | C-02 + C-04 ClickHouse (`apps/api/src/analytics/`, `apps/etl/`) | cycle-cardinality diagnostic + `clickhouse-report.test.ts` | ✅ Defect found+fixed, canonical def set |
+| CR-03 (early warning) | QR-04 (1 alert/cooldown) | C-03 Alert engine (`apps/api/src/alert-engine.ts`) | `alert-engine.test.ts` (idempotency, cooldown, recipient scope); gas-trend `ops-verification-2026-11-09-gas-trend-production.md` | Local + production DAG evidence |
+| CR-04 (scoped AI summary) | QR-05 (allow-listed MCP tools only) | C-01 MCP analytics server (`apps/api/src/analytics/mcp.ts`) | `analytics/mcp.test.ts`, `bot/bot.test.ts` (scope signed, revenue off by default) | Local evidence; full audit table partial |
+| CR-05 (multi-branch isolation + public API) | QR-03 (403 / redacted on cross-branch) | C-02 access-policy gate + C-01 scope (`apps/api/src/access-store.ts`, `access-policy.ts`) | `access-policy.test.ts`, `scope.test.ts`, `index.test.ts` (401/403/BRANCH_FORBIDDEN), `US-07` F-13 public API | Local evidence; public endpoint not yet deployed |
+
+*C mapping derives from the deployed architecture (README "Current application
+architecture"): C-01 = LINE bot + MCP assistant, C-02 = Hono API (auth/RBAC/
+report), C-03 = alert engine, C-04 = ETL→ClickHouse warehouse, C-05 = web UI +
+Superset. This is a documentation bridge, not a new module in code.*
+
 
 ### F-12 ambiguity
 
