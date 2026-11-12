@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summaryAvailabilityLabel, summarySourceLabel, summaryView } from "./summary-view";
+import { summaryAvailabilityLabel, summarySegments, summarySourceLabel, summaryView } from "./summary-view";
 
 describe("summaryView", () => {
   it("renders the server sentence when the window has usage rows", () => {
@@ -67,5 +67,27 @@ describe("summaryAvailabilityLabel", () => {
     expect(label).not.toBe(summaryAvailabilityLabel("usage-derived"));
     expect(label).not.toContain("degraded");
     expect(label).toMatch(/ไม่ทราบ/);
+  });
+});
+describe("summarySegments", () => {
+  const sentence = "รอบรายงานนี้มี 624 รอบ จาก 18 เครื่อง · ยอดชำระสำเร็จ ฿33,540.00 · มี 3 รายการที่ต้องติดตาม.";
+
+  it("marks every measurement and nothing else", () => {
+    const measured = summarySegments(sentence).filter((segment) => segment.tone !== "plain").map((segment) => segment.text);
+    expect(measured).toEqual(["624 รอบ", "18 เครื่อง", "฿33,540.00", "3 รายการ"]);
+  });
+
+  it("keeps the sentence readable when the parts are joined again", () => {
+    expect(summarySegments(sentence).map((segment) => segment.text).join("")).toBe(sentence);
+  });
+
+  it("treats a number in a problem fragment as attention rather than a total", () => {
+    const segment = summarySegments("ข้อมูลสดไม่พร้อม 2 เครื่อง").find((part) => part.text === "2 เครื่อง");
+    expect(segment?.tone).toBe("attention");
+  });
+
+  it("does not style a bare number with no unit", () => {
+    const plain = summarySegments("รอบรายงานนี้มี 624 จากทุกสาขา").every((segment) => segment.tone === "plain");
+    expect(plain).toBe(true);
   });
 });

@@ -65,3 +65,46 @@ export function summaryAvailabilityLabel(availability: string | null | undefined
   if (availability === "available") return "ข้อมูลพร้อมใช้งาน";
   return availabilityLabel(availability);
 }
+/**
+ * The sentence, split into parts that can be emphasised.
+ *
+ * The server joins four or five fragments with a middot and sends one string, and
+ * the summary can also arrive from IRIS — so the page cannot assume a shape it
+ * did not build. It reads what it was given instead: numbers with a unit are the
+ * measurements, `฿` leads an amount, and a fragment that talks about a problem
+ * marks its own numbers as the ones worth looking at.
+ *
+ * A number is never restyled by position or by order; only by what it says.
+ */
+export type SummaryTone = "plain" | "metric" | "money" | "attention";
+
+export type SummarySegment = { text: string; tone: SummaryTone };
+
+/** A measurement: a digit run, optionally with a Thai unit, or a `฿` amount. */
+const MEASUREMENT = /฿\s?[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)?\s*(?:%|รอบ|เครื่อง|รายการ|บาท|นาที|สาขา)/g;
+
+/** Fragments whose numbers are a warning rather than a total. */
+const ATTENTION = /ไม่พร้อม|ล่าช้า|ต้องติดตาม|ผิดปกติ|ตกต่ำ|เกินกำหนด/;
+
+export function summarySegments(text: string): SummarySegment[] {
+  const out: SummarySegment[] = [];
+  const fragments = text.split("·").map((fragment) => fragment.trim()).filter(Boolean);
+
+  fragments.forEach((fragment, index) => {
+    if (index > 0) out.push({ text: " · ", tone: "plain" });
+    const attention = ATTENTION.test(fragment);
+    let cursor = 0;
+
+    for (const match of fragment.matchAll(MEASUREMENT)) {
+      const start = match.index ?? 0;
+      if (start > cursor) out.push({ text: fragment.slice(cursor, start), tone: "plain" });
+      const value = match[0];
+      out.push({ text: value, tone: value.startsWith("฿") ? "money" : attention ? "attention" : "metric" });
+      cursor = start + value.length;
+    }
+
+    if (cursor < fragment.length) out.push({ text: fragment.slice(cursor), tone: "plain" });
+  });
+
+  return out;
+}

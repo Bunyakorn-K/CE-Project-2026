@@ -37,9 +37,11 @@ import {
 } from "../../lib/machine-facts";
 import {
   summaryAvailabilityLabel,
+  summarySegments,
   summarySourceLabel,
   summaryView,
-  type SummaryEnvelope
+  type SummaryEnvelope,
+  type SummaryTone
 } from "../../lib/summary-view";
 import { machineAvailability } from "../../lib/branch-availability-view";
 import { TrendChart } from "../../lib/components/trend-chart";
@@ -60,6 +62,15 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   }),
   component: DashboardPage
 });
+
+/** How each kind of measured value reads, once: a total is ink, money is the
+ *  brand, and a number in a warning fragment is a warning. */
+const SUMMARY_TONE: Record<SummaryTone, string> = {
+  plain: "",
+  metric: "font-semibold tabular-nums text-foreground",
+  money: "font-semibold tabular-nums text-accent",
+  attention: "font-semibold tabular-nums text-warning-soft-foreground"
+};
 
 type Source = "clickhouse" | "demo";
 type Availability = "usage-derived" | "available" | string;
@@ -452,13 +463,15 @@ function DashboardPage() {
 
               {summary.kind === "text" && (
                 <section className="rounded-xl border border-border bg-surface p-4 shadow-surface md:p-6" aria-label="สรุปสำหรับผู้บริหาร">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div>
-                      <h2>สรุปสำหรับผู้บริหาร</h2>
-                      <p className="mt-1.5 text-xs leading-relaxed text-muted">เรียงจากตัวเลขชุดเดียวกับการ์ดด้านล่างด้วยกฎคงที่ ไม่ใช่ข้อความที่โมเดลเขียน</p>
-                    </div>
-                  </div>
-                  <p className="max-w-[62ch] text-[17px] font-medium leading-relaxed">{summary.text}</p>
+                  <h2 className="mb-2">สรุปสำหรับผู้บริหาร</h2>
+                  {/* The sentence is measured, not written: every coloured part is a
+                      number the server already counted, and the tone comes from what
+                      the number says rather than from its position. */}
+                  <p className="max-w-[62ch] text-[15px] leading-relaxed text-muted md:text-[17px]">
+                    {summarySegments(summary.text).map((segment, index) => (
+                      <span key={index} className={SUMMARY_TONE[segment.tone]}>{segment.text}</span>
+                    ))}
+                  </p>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted" aria-live="polite">
                     <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{summarySourceLabel(summaryQuery.data?.source)}</span>
                     <span>{summaryAvailabilityLabel(summaryQuery.data?.availability)}</span>
