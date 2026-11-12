@@ -204,9 +204,9 @@ function AnalyticsPage() {
   const totalCycles = utilizationRows.reduce((sum, row) => sum + row.cycles, 0);
 
   return (
-    <div className="page-content">
-      <section className="surface-card surface-card--dark">
-        <div className="page-header">
+    <div className="grid gap-6">
+      <section className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface">
+        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
           <div>
             <h1>พื้นที่วิเคราะห์ข้อมูล</h1>
             <p>ตรวจสอบรายได้ รอบซัก การใช้งาน อุณหภูมิ ช่วงเวลาที่ไม่หนาแน่น อากาศเทียบรอบซัก และหลักฐานการแจ้งเตือนในขอบเขตที่เซิร์ฟเวอร์อนุญาต</p>
@@ -214,37 +214,37 @@ function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="filter-panel" aria-label="ตัวกรองข้อมูลวิเคราะห์">
-        <div className="filter-field filter-field--branch">
+      <section className="analytics-section grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-surface md:grid-cols-4" aria-label="ตัวกรองข้อมูลวิเคราะห์">
+        <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted md:col-span-1">
           <label htmlFor="analytics-branch">สาขา</label>
           <select id="analytics-branch" value={branchId} disabled={branchesQuery.isLoading} onChange={(event) => setBranchId(event.target.value)}>
             <option value="">ทุกสาขาที่มีสิทธิ์</option>
             {(branchesQuery.data?.branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
           </select>
         </div>
-        <div className="filter-field">
+        <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
           <label htmlFor="analytics-from">ตั้งแต่วันที่</label>
           <input id="analytics-from" type="date" value={range.from} max={range.to} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
         </div>
-        <div className="filter-field">
+        <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
           <label htmlFor="analytics-to">ถึงวันที่</label>
           <input id="analytics-to" type="date" value={range.to} min={range.from} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
         </div>
-        <p className="filter-note" role="status">เซิร์ฟเวอร์ตรวจสอบบทบาท สาขา และช่วงวันที่ซ้ำอีกครั้ง</p>
+        <p className="col-span-full text-[11px] leading-relaxed text-muted" role="status">เซิร์ฟเวอร์ตรวจสอบบทบาท สาขา และช่วงวันที่ซ้ำอีกครั้ง</p>
       </section>
 
-      {!validRange && <div className="error-message">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
-      {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}
+      {!validRange && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
+      {branchesQuery.isError && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</div>}
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>รายได้รายวัน</h2><span>ต้องใช้บทบาท Owner หรือ Manager</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>รายได้รายวัน</h2><span>ต้องใช้บทบาท Owner หรือ Manager</span></div>
           {!canViewRevenue ? (
-            <div className="state-message">ไม่มีสิทธิ์ดูรายได้ และไม่ได้ส่งคำขอ revenue ไปยังเซิร์ฟเวอร์</div>
+            <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีสิทธิ์ดูรายได้ และไม่ได้ส่งคำขอ revenue ไปยังเซิร์ฟเวอร์</div>
           ) : revenueQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดรายได้รายวัน</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดรายได้รายวัน</div>
           ) : revenueQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดรายได้รายวันได้: {revenueQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดรายได้รายวันได้: {revenueQuery.error.message}</div>
           ) : revenueQuery.data && (
             <AnalyticsResult query={revenueQuery} empty="ไม่มีข้อมูลรายได้ในช่วงเวลานี้">
               <DataTable headers={["วันที่", "สาขา", "รายได้", "รอบซัก"]}>
@@ -255,10 +255,10 @@ function AnalyticsPage() {
                       <td>{formatDate(row.date)}</td>
                       <td>{row.branchName}</td>
                       <td>
-                        <div className="data-bar-value"><strong>{baht(row.revenueSatang)}</strong><span>{percentage}% ของสูงสุดในชุดข้อมูล</span></div>
-                        <div className="data-bar" role="progressbar" aria-label={`${row.branchName} ${formatDate(row.date)} รายได้ ${baht(row.revenueSatang)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div>
+                        <div className="flex items-baseline justify-between gap-3 max-[639px]:grid max-[639px]:gap-1"><strong>{baht(row.revenueSatang)}</strong><span>{percentage}% ของสูงสุดในชุดข้อมูล</span></div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-tertiary" role="progressbar" aria-label={`${row.branchName} ${formatDate(row.date)} รายได้ ${baht(row.revenueSatang)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div>
                       </td>
-                      <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
+                      <td className="font-mono tabular-nums whitespace-nowrap">{row.cycles.toLocaleString("th-TH")}</td>
                     </tr>
                   );
                 })}
@@ -268,19 +268,19 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>รอบซักและระยะเวลาเฉลี่ย</h2></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>รอบซักและระยะเวลาเฉลี่ย</h2></div>
           {cyclesQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดรอบซักรายวัน</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดรอบซักรายวัน</div>
           ) : cyclesQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดรอบซักรายวันได้: {cyclesQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดรอบซักรายวันได้: {cyclesQuery.error.message}</div>
           ) : cyclesQuery.data && (
             <AnalyticsResult query={cyclesQuery} empty="ไม่มีข้อมูลรอบซักในช่วงเวลานี้">
               <DataTable headers={["วันที่", "สาขา", "รอบซัก", "ระยะเวลาเฉลี่ย"]}>
                 {cyclesQuery.data.data.map((row) => (
                   <tr key={`${row.branchId}-${row.date}`}>
-                    <td>{formatDate(row.date)}</td><td>{row.branchName}</td><td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td><td className="numeric-cell">{Number.isFinite(row.avgDurationMin) ? `${row.avgDurationMin.toFixed(1)} นาที` : "ไม่ทราบ"}</td>
+                    <td>{formatDate(row.date)}</td><td>{row.branchName}</td><td className="font-mono tabular-nums whitespace-nowrap">{row.cycles.toLocaleString("th-TH")}</td><td className="font-mono tabular-nums whitespace-nowrap">{Number.isFinite(row.avgDurationMin) ? `${row.avgDurationMin.toFixed(1)} นาที` : "ไม่ทราบ"}</td>
                   </tr>
                 ))}
               </DataTable>
@@ -289,16 +289,16 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>สรุปการใช้งาน</h2><span>จากชั่วโมงและเครื่องที่มีข้อมูล</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>สรุปการใช้งาน</h2><span>จากชั่วโมงและเครื่องที่มีข้อมูล</span></div>
           {utilizationQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดข้อมูลการใช้งาน</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดข้อมูลการใช้งาน</div>
           ) : utilizationQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลการใช้งานได้: {utilizationQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดข้อมูลการใช้งานได้: {utilizationQuery.error.message}</div>
           ) : utilizationQuery.data && (
             <AnalyticsResult query={utilizationQuery} empty="ไม่มีข้อมูลการใช้งานในช่วงเวลานี้">
-              <fieldset className="metric-strip">
+              <fieldset className="stat-grid stat-grid--cards mb-4 grid grid-cols-4 gap-2.5 max-[900px]:grid-cols-2 max-[639px]:grid-cols-1">
                 <legend className="sr-only">สรุปการใช้งาน</legend>
                 <div><span>เวลาใช้งานรวม</span><strong>{totalDuration.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</strong></div>
                 <div><span>รอบที่นับได้</span><strong>{totalCycles.toLocaleString("th-TH")}</strong></div>
@@ -309,9 +309,9 @@ function AnalyticsPage() {
                   const percentage = utilizationMax > 0 ? Math.round((row.totalDurationMin / utilizationMax) * 100) : 0;
                   return (
                     <tr key={`${row.machineId}-${row.hourBucket}`}>
-                      <td>{formatDateTime(row.hourBucket)}</td><td className="data-code">{row.machineCode}</td>
-                      <td><div className="data-bar-value"><strong>{row.totalDurationMin.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</strong></div><div className="data-bar" role="progressbar" aria-label={`${row.machineCode} ใช้งาน ${row.totalDurationMin} นาที`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div></td>
-                      <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
+                      <td>{formatDateTime(row.hourBucket)}</td><td className="font-mono text-[11px] text-muted">{row.machineCode}</td>
+                      <td><div className="flex items-baseline justify-between gap-3 max-[639px]:grid max-[639px]:gap-1"><strong>{row.totalDurationMin.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</strong></div><div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-tertiary" role="progressbar" aria-label={`${row.machineCode} ใช้งาน ${row.totalDurationMin} นาที`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div></td>
+                      <td className="font-mono tabular-nums whitespace-nowrap">{row.cycles.toLocaleString("th-TH")}</td>
                     </tr>
                   );
                 })}
@@ -321,18 +321,18 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>สรุปอุณหภูมิ</h2><span>เฉพาะ sample ที่มีค่าอุณหภูมิ</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>สรุปอุณหภูมิ</h2><span>เฉพาะ sample ที่มีค่าอุณหภูมิ</span></div>
           {temperatureQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดข้อมูลอุณหภูมิ</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดข้อมูลอุณหภูมิ</div>
           ) : temperatureQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลอุณหภูมิได้: {temperatureQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดข้อมูลอุณหภูมิได้: {temperatureQuery.error.message}</div>
           ) : temperatureQuery.data && (
             <AnalyticsResult query={temperatureQuery} empty="ไม่มีข้อมูลอุณหภูมิในช่วงเวลานี้">
-              {temperature.coverage && <div className="state-message" role="status">{temperature.coverage}</div>}
-              {temperature.scopeNote && <p className="section-description">{temperature.scopeNote}</p>}
-              <fieldset className="metric-strip">
+              {temperature.coverage && <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted" role="status">{temperature.coverage}</div>}
+              {temperature.scopeNote && <p className="mt-1.5 text-xs leading-relaxed text-muted">{temperature.scopeNote}</p>}
+              <fieldset className="stat-grid stat-grid--cards mb-4 grid grid-cols-4 gap-2.5 max-[900px]:grid-cols-2 max-[639px]:grid-cols-1">
                 <legend className="sr-only">สรุปอุณหภูมิ</legend>
                 <div><span>ค่าเฉลี่ย{temperature.coversFullRange ? "" : " (บางส่วน)"}</span><strong>{temperature.average === null ? "ไม่พร้อมใช้งาน" : `${temperature.average.toFixed(1)}°C`}</strong></div>
                 <div><span>ต่ำสุด{temperature.coversFullRange ? "" : " (บางส่วน)"}</span><strong>{temperature.min === null ? "ไม่พร้อมใช้งาน" : `${temperature.min.toFixed(1)}°C`}</strong></div>
@@ -342,7 +342,7 @@ function AnalyticsPage() {
               <DataTable headers={["เวลา", "เครื่อง", "อุณหภูมิ", "Phase"]}>
                 {temperatureRows.slice(-8).reverse().map((row) => (
                   <tr key={`${row.machineId}-${row.occurredAt}-${row.phase}`}>
-                    <td>{formatDateTime(row.occurredAt)}</td><td className="data-code">{row.machineCode}</td><td className="numeric-cell">{row.temperatureC === null ? "ไม่ทราบ" : `${row.temperatureC.toFixed(1)}°C`}</td><td>{row.phase || "ไม่ทราบ"}</td>
+                    <td>{formatDateTime(row.occurredAt)}</td><td className="font-mono text-[11px] text-muted">{row.machineCode}</td><td className="font-mono tabular-nums whitespace-nowrap">{row.temperatureC === null ? "ไม่ทราบ" : `${row.temperatureC.toFixed(1)}°C`}</td><td>{row.phase || "ไม่ทราบ"}</td>
                   </tr>
                 ))}
               </DataTable>
@@ -351,23 +351,23 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>ช่วงเวลาที่ไม่หนาแน่น</h2><span>สรุปจากช่วงวันที่ที่เลือกแล้ว ไม่ใช่การทำนาย</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>ช่วงเวลาที่ไม่หนาแน่น</h2><span>สรุปจากช่วงวันที่ที่เลือกแล้ว ไม่ใช่การทำนาย</span></div>
           {offPeakQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดช่วงเวลา</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดช่วงเวลา</div>
           ) : offPeakQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดช่วงเวลาได้: {offPeakQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดช่วงเวลาได้: {offPeakQuery.error.message}</div>
           ) : offPeakQuery.data && (
             <AnalyticsResult query={offPeakQuery} empty={offPeakEmptyReason(offPeakQuery.data.meta.rules as unknown as OffPeakRules | undefined)}>
               <DataTable headers={["อันดับ", "วัน", "ช่วงเวลา", "รอบซัก", "เวลาใช้งาน"]}>
                 {offPeakQuery.data.data.map((row) => (
                   <tr key={`${row.branchId}-${row.dayOfWeek}-${row.hourOfDay}`}>
-                    <td className="numeric-cell">{row.rank}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.rank}</td>
                     <td>{weekdayLabel(row.weekday, row.dayOfWeek)}</td>
-                    <td className="data-code">{hourRangeLabel(row.hourOfDay)}</td>
-                    <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
-                    <td className="numeric-cell">{row.totalDurationMin.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</td>
+                    <td className="font-mono text-[11px] text-muted">{hourRangeLabel(row.hourOfDay)}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.cycles.toLocaleString("th-TH")}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.totalDurationMin.toLocaleString("th-TH", { maximumFractionDigits: 1 })} นาที</td>
                   </tr>
                 ))}
               </DataTable>
@@ -376,13 +376,13 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card analytics-section">
+      <Card variant="transparent" className="analytics-section rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>อากาศและรอบซัก</h2><span>ความสัมพันธ์เท่านั้น ไม่ใช่การทำนาย และตรวจสอบที่มาของข้อมูลอากาศไม่ได้</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>อากาศและรอบซัก</h2><span>ความสัมพันธ์เท่านั้น ไม่ใช่การทำนาย และตรวจสอบที่มาของข้อมูลอากาศไม่ได้</span></div>
           {weatherQuery.isLoading ? (
-            <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดข้อมูลอากาศ</div>
+            <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดข้อมูลอากาศ</div>
           ) : weatherQuery.isError ? (
-            <div className="error-message" role="alert">ไม่สามารถโหลดข้อมูลอากาศได้: {weatherQuery.error.message}</div>
+            <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดข้อมูลอากาศได้: {weatherQuery.error.message}</div>
           ) : weatherQuery.data && (
             <AnalyticsResult query={weatherQuery} empty="ไม่มีข้อมูลอากาศในช่วงวันที่ที่เลือก">
               <DataTable headers={["วันที่", "สาขา", "รอบซัก", "อุณหภูมิเฉลี่ย", "ความชื้น", "ปริมาณฝน", "ไม่มีค่า"]}>
@@ -390,11 +390,11 @@ function AnalyticsPage() {
                   <tr key={`${row.branchName}-${row.date}`}>
                     <td>{formatDate(row.date)}</td>
                     <td>{row.branchName}</td>
-                    <td className="numeric-cell">{row.cycles.toLocaleString("th-TH")}</td>
-                    <td className="numeric-cell">{row.avgTempC === null ? "ไม่ทราบ" : `${row.avgTempC.toFixed(1)}°C`}</td>
-                    <td className="numeric-cell">{row.avgHumidityPct === null ? "ไม่ทราบ" : `${row.avgHumidityPct.toFixed(0)}%`}</td>
-                    <td className="numeric-cell">{row.totalRainMm === null ? "ไม่ทราบ" : `${row.totalRainMm.toFixed(1)} มม.`}</td>
-                    <td className="numeric-cell">{row.missingTemp.toLocaleString("th-TH")}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.cycles.toLocaleString("th-TH")}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.avgTempC === null ? "ไม่ทราบ" : `${row.avgTempC.toFixed(1)}°C`}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.avgHumidityPct === null ? "ไม่ทราบ" : `${row.avgHumidityPct.toFixed(0)}%`}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.totalRainMm === null ? "ไม่ทราบ" : `${row.totalRainMm.toFixed(1)} มม.`}</td>
+                    <td className="font-mono tabular-nums whitespace-nowrap">{row.missingTemp.toLocaleString("th-TH")}</td>
                   </tr>
                 ))}
               </DataTable>
@@ -403,26 +403,26 @@ function AnalyticsPage() {
         </Card.Content>
       </Card>
 
-      <section className="alert-section">
-        <div className="section-heading">
-          <div><h2>การแจ้งเตือนและหลักฐาน</h2><p className="section-description">รับทราบได้เฉพาะการแจ้งเตือนที่มีสาขาและอยู่ในขอบเขตของคุณ</p></div>
-          {alertsQuery.data && <span className="source-pill">{sourceLabel(alertsQuery.data.source)}</span>}
+      <section className="analytics-section min-w-0">
+        <div className="flex items-baseline justify-between gap-3">
+          <div><h2>การแจ้งเตือนและหลักฐาน</h2><p className="mt-1.5 text-xs leading-relaxed text-muted">รับทราบได้เฉพาะการแจ้งเตือนที่มีสาขาและอยู่ในขอบเขตของคุณ</p></div>
+          {alertsQuery.data && <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(alertsQuery.data.source)}</span>}
         </div>
-        {alertsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดการแจ้งเตือน</div>}
-        {alertsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดการแจ้งเตือนได้: {alertsQuery.error.message}</div>}
+        {alertsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดการแจ้งเตือน</div>}
+        {alertsQuery.isError && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดการแจ้งเตือนได้: {alertsQuery.error.message}</div>}
         {alertsQuery.data && alertsQuery.data.availability === "unavailable" && (
-          <div className="state-message">{alertUnavailableReason(alertsQuery.data)}</div>
+          <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">{alertUnavailableReason(alertsQuery.data)}</div>
         )}
-        {alertsQuery.data && alertsQuery.data.availability !== "unavailable" && alertsQuery.data.alerts.length === 0 && <div className="state-message">ไม่มีการแจ้งเตือนในช่วงเวลานี้</div>}
+        {alertsQuery.data && alertsQuery.data.availability !== "unavailable" && alertsQuery.data.alerts.length === 0 && <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีการแจ้งเตือนในช่วงเวลานี้</div>}
         {alertsQuery.data && alertsQuery.data.availability !== "unavailable" && (
-          <div className="data-context evidence-strip" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted rounded-lg border border-border bg-surface-secondary px-3.5 py-3" aria-live="polite">
             <span>ดึงเมื่อ {formatDateTime(alertsQuery.data.fetchedAt)}</span>
             <strong>{formatDate(range.from)} — {formatDate(range.to)}</strong>
           </div>
         )}
-        {acknowledgeMutation.isError && <div className="error-message" role="alert">รับทราบการแจ้งเตือนไม่สำเร็จ: {acknowledgeMutation.error.message}</div>}
-        {acknowledgeMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">รับทราบการแจ้งเตือนแล้ว</div>}
-        <div className="alert-stack">
+        {acknowledgeMutation.isError && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">รับทราบการแจ้งเตือนไม่สำเร็จ: {acknowledgeMutation.error.message}</div>}
+        {acknowledgeMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">รับทราบการแจ้งเตือนแล้ว</div>}
+        <div className="grid gap-3">
           {alertsQuery.data?.alerts.map((alert) => (
             <AlertRow
               key={alert.id}
@@ -443,8 +443,8 @@ function AnalyticsResult<T>({ query, empty, children }: { query: { data?: Analyt
   const truncated = query.data?.meta.truncation;
   return (
     <>
-      <div className="data-context analytics-meta" aria-live="polite">
-        <span className="source-pill">{sourceLabel(query.data?.meta.dataSource ?? null)}</span>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted mb-4 rounded-lg border border-border bg-surface-secondary px-3 py-2.5" aria-live="polite">
+        <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(query.data?.meta.dataSource ?? null)}</span>
         {query.data && (
           // A capped response must not be labelled with the full requested
           // range: that is exactly the claim the truncation notice retracts.
@@ -457,15 +457,15 @@ function AnalyticsResult<T>({ query, empty, children }: { query: { data?: Analyt
         <span>โหลดข้อมูลเมื่อ {formatDateTime(query.dataUpdatedAt || null)}</span>
         {query.data?.meta.caveats?.map((caveat) => <span key={caveat}>{caveat}</span>)}
       </div>
-      {query.data?.data.length ? children : <div className="state-message">{empty}</div>}
+      {query.data?.data.length ? children : <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">{empty}</div>}
     </>
   );
 }
 
 function DataTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
-    <section className="table-scroll" aria-label={`ตาราง ${headers.join(" ")}`}>
-      <table className="data-table"><thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{children}</tbody></table>
+    <section className="w-full overflow-x-auto rounded-lg border border-border" aria-label={`ตาราง ${headers.join(" ")}`}>
+      <table className="w-full min-w-[620px] border-collapse text-sm"><thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{children}</tbody></table>
     </section>
   );
 }
@@ -475,25 +475,25 @@ function AlertRow({ alert, pending, onAcknowledge }: { alert: Alert; pending: bo
   const acknowledged = Boolean(alert.acknowledgedLocally || alert.acknowledgedAt);
   const evidence = Object.keys(alert.evidence ?? {}).length > 0 ? JSON.stringify(alert.evidence) : "ไม่มีหลักฐานเพิ่มเติม";
   return (
-    <Card variant="transparent" className="surface-card alert-row">
+    <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface rounded-xl border border-border bg-surface p-5 shadow-surface">
       <Card.Content>
-        <div className="alert-row-head">
+        <div className="flex items-start justify-between gap-5 max-[639px]:flex-col max-[639px]:gap-3">
           <div>
-            <div className="alert-row-title"><span className={`status-pill ${severity.className}`}>{severity.label}</span><h3>{alert.title}</h3></div>
+            <div className="flex flex-wrap items-center gap-2"><span className={`status-pill ${severity.className}`}>{severity.label}</span><h3>{alert.title}</h3></div>
             {alert.detail && <p>{alert.detail}</p>}
-            <dl className="evidence-grid">
+            <dl className="stat-grid mt-3.5 grid grid-cols-4 gap-2.5 max-[900px]:grid-cols-2 max-[639px]:grid-cols-1">
               <div><dt>เครื่อง</dt><dd>{alert.machineId ?? "ไม่ระบุ"}</dd></div>
               <div><dt>กฎ</dt><dd>{alert.ruleId ?? "ไม่ระบุ"}</dd></div>
               <div><dt>เวอร์ชันกฎ</dt><dd>{alert.ruleVersion ?? "ไม่ระบุ"}</dd></div>
               <div><dt>ตรวจพบเมื่อ</dt><dd><time dateTime={alert.detectedAt}>{formatDateTime(alert.detectedAt)}</time></dd></div>
             </dl>
-            <details className="evidence-details"><summary>ดูหลักฐาน</summary><pre>{evidence}</pre></details>
-            {alert.tags.length > 0 && <span className="data-code">#{alert.tags.join(" #")}</span>}
+            <details className="mt-3"><summary>ดูหลักฐาน</summary><pre>{evidence}</pre></details>
+            {alert.tags.length > 0 && <span className="font-mono text-[11px] text-muted">#{alert.tags.join(" #")}</span>}
           </div>
-          <div className="alert-row-meta">
-            {acknowledged ? <span className="status-pill status-pill--success">รับทราบแล้ว</span> : alert.branchId ? (
-              <button type="button" className="secondary-button" disabled={pending} onClick={onAcknowledge}>{pending ? "กำลังรับทราบ…" : "รับทราบ"}</button>
-            ) : <span className="state-message">ไม่มีสาขาสำหรับรับทราบ</span>}
+          <div className="grid flex-none justify-items-end gap-2 font-mono text-[11px] text-muted max-[639px]:justify-items-start">
+            {acknowledged ? <span className="status-pill inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold leading-tight status-pill--success border-success/30 bg-success-soft text-success-soft-foreground">รับทราบแล้ว</span> : alert.branchId ? (
+              <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" disabled={pending} onClick={onAcknowledge}>{pending ? "กำลังรับทราบ…" : "รับทราบ"}</button>
+            ) : <span className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีสาขาสำหรับรับทราบ</span>}
           </div>
         </div>
       </Card.Content>

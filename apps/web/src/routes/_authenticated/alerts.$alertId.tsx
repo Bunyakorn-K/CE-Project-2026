@@ -46,7 +46,7 @@ function AlertDetailPage() {
   });
 
   if (query.isLoading) {
-    return <div className="flex min-h-[60vh] items-center justify-center text-default-500">กำลังโหลด…</div>;
+    return <div className="flex min-h-[60vh] items-center justify-center text-muted">กำลังโหลด…</div>;
   }
 
   if (query.isError || !query.data) {
@@ -54,10 +54,10 @@ function AlertDetailPage() {
     return (
       <div className="mx-auto w-full max-w-2xl p-6">
         <p className="text-danger">{message}</p>
-        <p className="mt-2 text-small text-default-500">
+        <p className="mt-2 text-sm text-muted">
           ลิงก์นี้เปิดได้เฉพาะผู้ที่ได้รับการแจ้งเตือน หรือผู้ที่มีสิทธิ์ในสาขาของการแจ้งเตือนนั้น
         </p>
-        <Link to="/dashboard" className="mt-4 inline-block text-primary underline">
+        <Link to="/dashboard" className="mt-4 inline-block text-accent underline">
           กลับหน้าแดชบอร์ด
         </Link>
       </div>
@@ -94,7 +94,7 @@ function AlertDetailPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 sm:p-6">
-      <Link to="/dashboard" className="text-small text-default-500 underline">
+      <Link to="/dashboard" className="text-sm text-muted underline">
         ← กลับแดชบอร์ด
       </Link>
 
@@ -108,26 +108,26 @@ function AlertDetailPage() {
         </p>
       </header>
 
-      <section className="mt-5 rounded-large border border-default-200 p-4">
-        <h2 className="mb-3 text-small font-semibold text-default-600">ข้อมูลที่ใช้ตัดสิน</h2>
+      <section className="mt-5 rounded-xl border border-border p-4">
+        <h2 className="mb-3 text-sm font-semibold text-muted">ข้อมูลที่ใช้ตัดสิน</h2>
         <dl className="grid gap-2">
           {rows.map((row) => (
-            <div key={row.label} className="flex items-baseline justify-between gap-4 border-b border-default-100 pb-2 last:border-0">
-              <dt className="text-small text-default-500">{row.label}</dt>
-              <dd className="text-right text-small font-semibold break-all">{row.value}</dd>
+            <div key={row.label} className="flex items-baseline justify-between gap-4 border-b border-border pb-2 last:border-0">
+              <dt className="text-sm text-muted">{row.label}</dt>
+              <dd className="text-right text-sm font-semibold break-all">{row.value}</dd>
             </div>
           ))}
         </dl>
       </section>
 
-      <section className="mt-4 rounded-large border border-default-200 p-4">
-        <h2 className="mb-2 text-small font-semibold text-default-600">ข้อความที่ส่งไป</h2>
-        <pre className="whitespace-pre-wrap break-words text-small text-default-700">{alert.message}</pre>
+      <section className="mt-4 rounded-xl border border-border p-4">
+        <h2 className="mb-2 text-sm font-semibold text-muted">ข้อความที่ส่งไป</h2>
+        <pre className="whitespace-pre-wrap break-words text-sm text-foreground">{alert.message}</pre>
       </section>
 
-      <section className="mt-4 rounded-large border border-default-200 p-4">
-        <h2 className="mb-2 text-small font-semibold text-default-600">ข้อมูลดิบ (evidence)</h2>
-        <pre className="max-h-72 overflow-auto rounded-medium bg-default-100 p-3 text-tiny">{rawEvidenceJson(alert)}</pre>
+      <section className="mt-4 rounded-xl border border-border p-4">
+        <h2 className="mb-2 text-sm font-semibold text-muted">ข้อมูลดิบ (evidence)</h2>
+        <pre className="max-h-72 overflow-auto rounded-lg bg-surface-secondary p-3 text-xs">{rawEvidenceJson(alert)}</pre>
       </section>
 
       {alert.branchId ? (
@@ -136,14 +136,14 @@ function AlertDetailPage() {
             type="button"
             onClick={acknowledge}
             disabled={ackState === "saving" || ackState === "done"}
-            className="rounded-medium bg-primary px-4 py-2 text-small font-semibold text-primary-foreground disabled:opacity-60"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
           >
             {ackState === "done" ? "รับทราบแล้ว" : ackState === "saving" ? "กำลังบันทึก…" : "รับทราบการแจ้งเตือนนี้"}
           </button>
           {ackState === "done" ? (
-            <p className="mt-2 text-tiny text-default-500">ระบบจะไม่แจ้งเตือนซ้ำสำหรับรายการนี้</p>
+            <p className="mt-2 text-xs text-muted">ระบบจะไม่แจ้งเตือนซ้ำสำหรับรายการนี้</p>
           ) : null}
-          {ackError ? <p className="mt-2 text-tiny text-danger">{ackError}</p> : null}
+          {ackError ? <p className="mt-2 text-xs text-danger">{ackError}</p> : null}
         </div>
       ) : null}
     </div>

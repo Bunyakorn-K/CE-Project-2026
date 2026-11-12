@@ -108,11 +108,11 @@ export function AdminHome() {
 
   if (!isOwner) {
     return (
-      <div className="page-content">
-        <section className="surface-card restricted-state">
+      <div className="grid gap-6">
+        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface grid justify-items-start gap-3 p-6">
           <h1>เข้าถึงไม่ได้</h1>
           <p>หน้าผู้ดูแลใช้ได้เฉพาะบัญชีบทบาทเจ้าของ</p>
-          <Link to="/dashboard" className="secondary-button w-fit">กลับภาพรวม</Link>
+          <Link to="/dashboard" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 w-fit">กลับภาพรวม</Link>
         </section>
       </div>
     );
@@ -129,9 +129,9 @@ export function AdminHome() {
   const branchName = (id: string | null) => branchScope(id).label;
 
   return (
-    <div className="page-content">
-      <section className="surface-card surface-card--dark">
-        <div className="page-header">
+    <div className="grid gap-6">
+      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
+        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
           <div>
             <h1>การจัดการสิทธิ์</h1>
             <p>อนุมัติคำขอเข้าใช้งาน ตรวจสอบสิทธิ์ที่ใช้งานอยู่ และจัดการการตั้งค่า AI</p>
@@ -139,21 +139,21 @@ export function AdminHome() {
         </div>
       </section>
 
-      {approveMutation.isError && <div className="error-message" role="alert">อนุมัติคำขอไม่สำเร็จ: {approveMutation.error.message}</div>}
-      {approveMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">อนุมัติคำขอแล้ว</div>}
-      {revokeMutation.isError && <div className="error-message" role="alert">เพิกถอนสิทธิ์ไม่สำเร็จ: {revokeMutation.error.message}</div>}
-      {revokeMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">เพิกถอนสิทธิ์แล้ว</div>}
-      {grantMutation.isError && <div className="error-message" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}
-      {grantMutation.isSuccess && <div className="feedback-message feedback-message--success" role="status">ให้สิทธิ์แล้ว</div>}
+      {approveMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">อนุมัติคำขอไม่สำเร็จ: {approveMutation.error.message}</div>}
+      {approveMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">อนุมัติคำขอแล้ว</div>}
+      {revokeMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">เพิกถอนสิทธิ์ไม่สำเร็จ: {revokeMutation.error.message}</div>}
+      {revokeMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">เพิกถอนสิทธิ์แล้ว</div>}
+      {grantMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}
+      {grantMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">ให้สิทธิ์แล้ว</div>}
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>คำขอเข้าใช้งาน</h2><span>รอผู้ดูแลอนุมัติ</span></div>
-          {branchesQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดสาขาเพื่อกำหนดขอบเขตได้: {branchesQuery.error.message}</div>}
-          {requestsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดคำขอเข้าใช้งาน</div>}
-          {requestsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดคำขอเข้าใช้งานได้: {requestsQuery.error.message}</div>}
-          {requestsQuery.data && requestsQuery.data.requests.length === 0 && <div className="state-message">ไม่มีคำขอเข้าใช้งานที่รออนุมัติ</div>}
-          <div className="admin-list">
+          <div className="flex items-baseline justify-between gap-3"><h2>คำขอเข้าใช้งาน</h2><span>รอผู้ดูแลอนุมัติ</span></div>
+          {branchesQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดสาขาเพื่อกำหนดขอบเขตได้: {branchesQuery.error.message}</div>}
+          {requestsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดคำขอเข้าใช้งาน</div>}
+          {requestsQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดคำขอเข้าใช้งานได้: {requestsQuery.error.message}</div>}
+          {requestsQuery.data && requestsQuery.data.requests.length === 0 && <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีคำขอเข้าใช้งานที่รออนุมัติ</div>}
+          <div className="grid gap-3">
             {requestsQuery.data?.requests.map((request) => (
               <AccessRequestRow
                 key={request.id}
@@ -167,9 +167,9 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>ให้สิทธิ์ผู้ใช้ที่มีบัญชีแล้ว</h2><span>เพิ่มขอบเขตโดยไม่ต้องรอคำขอ</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>ให้สิทธิ์ผู้ใช้ที่มีบัญชีแล้ว</h2><span>เพิ่มขอบเขตโดยไม่ต้องรอคำขอ</span></div>
           <p>ใช้เมื่อผู้ใช้เข้าสู่ระบบด้วยตัวเองแล้ว แต่ต้องจำกัดสิทธิ์ให้เหลือเฉพาะสาขาที่ดูแล</p>
           <GrantForm
             branches={branches}
@@ -179,41 +179,41 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>สิทธิ์ที่ใช้งานอยู่</h2><span>เพิกถอนจากเซิร์ฟเวอร์ทันที</span></div>
-          {grantsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดสิทธิ์</div>}
-          {grantsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดสิทธิ์ได้: {grantsQuery.error.message}</div>}
-          {grantsQuery.data && grantsQuery.data.grants.length === 0 && <div className="state-message">ไม่มีสิทธิ์ที่ใช้งานอยู่</div>}
+          <div className="flex items-baseline justify-between gap-3"><h2>สิทธิ์ที่ใช้งานอยู่</h2><span>เพิกถอนจากเซิร์ฟเวอร์ทันที</span></div>
+          {grantsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดสิทธิ์</div>}
+          {grantsQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดสิทธิ์ได้: {grantsQuery.error.message}</div>}
+          {grantsQuery.data && grantsQuery.data.grants.length === 0 && <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีสิทธิ์ที่ใช้งานอยู่</div>}
           <div className="md:hidden">
-            <ul className="admin-list" aria-label="สิทธิ์ที่ใช้งานอยู่">
+            <ul className="admin-list grid gap-3" aria-label="สิทธิ์ที่ใช้งานอยู่">
               {grantsQuery.data?.grants.map((grant) => {
                 const scope = branchScope(grant.branchId);
                 return (
-                  <li key={grant.id} data-grant-card className="access-request-form">
-                    <div className="grant-facts">
-                      <div><span>ผู้ใช้</span><strong className="grant-value">{grant.userName}</strong><small className="data-code">{grant.userEmail}</small></div>
-                      <div><span>บทบาท</span><strong className="grant-value">{roleLabel(grant.role)}</strong></div>
-                      <div><span>ขอบเขต</span><strong className={scope.isCode ? "data-code" : "grant-value"}>{scope.label}</strong></div>
-                      <div><span>ให้สิทธิ์เมื่อ</span><strong className="data-code">{formatDate(grant.grantedAt)}</strong></div>
+                  <li key={grant.id} data-grant-card className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5">
+                    <div className="grid gap-3">
+                      <div><span>ผู้ใช้</span><strong className="text-sm font-semibold text-foreground">{grant.userName}</strong><small className="break-all font-mono text-xs text-muted">{grant.userEmail}</small></div>
+                      <div><span>บทบาท</span><strong className="text-sm font-semibold text-foreground">{roleLabel(grant.role)}</strong></div>
+                      <div><span>ขอบเขต</span><strong className={scope.isCode ? "font-mono text-xs text-muted" : "text-sm font-semibold text-foreground"}>{scope.label}</strong></div>
+                      <div><span>ให้สิทธิ์เมื่อ</span><strong className="font-mono text-xs text-muted">{formatDate(grant.grantedAt)}</strong></div>
                     </div>
-                    <button type="button" className="danger-button w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                    <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50 w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
                   </li>
                 );
               })}
             </ul>
           </div>
-          <div className="table-scroll hidden md:block">
-            <table className="data-table admin-table">
+          <div className="w-full overflow-x-auto rounded-lg border border-border hidden md:block">
+            <table className="admin-table w-full min-w-[620px] border-collapse text-sm">
               <thead><tr><th scope="col">ผู้ใช้</th><th scope="col">บทบาท</th><th scope="col">ขอบเขต</th><th scope="col">ให้สิทธิ์เมื่อ</th><th scope="col">การจัดการ</th></tr></thead>
               <tbody>
                 {grantsQuery.data?.grants.map((grant) => (
                   <tr key={grant.id}>
-                    <td><strong>{grant.userName}</strong><span className="table-subtext">{grant.userEmail}</span></td>
+                    <td><strong>{grant.userName}</strong><span className="mt-1 block text-[11px] text-muted">{grant.userEmail}</span></td>
                     <td>{roleLabel(grant.role)}</td>
                     <td>{branchName(grant.branchId)}</td>
                     <td>{formatDate(grant.grantedAt)}</td>
-                    <td><button type="button" className="danger-button" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button></td>
+                    <td><button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -222,27 +222,27 @@ export function AdminHome() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>AI Console</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>AI Console</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
-          <Link to="/admin/ai" className="secondary-button mt-4 w-fit">เปิด AI Settings</Link>
+          <Link to="/admin/ai" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 mt-4 w-fit">เปิด AI Settings</Link>
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>การแจ้งเตือน LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>การแจ้งเตือน LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>กำหนดความถี่ในการแจ้งซ้ำและเพดานข้อความต่อเดือน พร้อมดูโควตาที่ใช้ไปแล้ว</p>
-          <Link to="/admin/alerts" className="secondary-button mt-4 w-fit">เปิดการตั้งค่าการแจ้งเตือน</Link>
+          <Link to="/admin/alerts" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 mt-4 w-fit">เปิดการตั้งค่าการแจ้งเตือน</Link>
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>เมนู LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>เมนู LINE</h2><span>สำหรับเจ้าของเท่านั้น</span></div>
           <p>แผงเมนูในแชท LINE แยกตามบทบาท และปุ่มซิงก์เมนูกับ LINE</p>
-          <Link to="/admin/line" className="secondary-button mt-4 w-fit">เปิดเมนู LINE</Link>
+          <Link to="/admin/line" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 mt-4 w-fit">เปิดเมนู LINE</Link>
         </Card.Content>
       </Card>
     </div>
@@ -268,7 +268,7 @@ function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending
 
   return (
     <form
-      className="access-request-form"
+      className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
       onSubmit={(event) => {
         event.preventDefault();
         const request = buildGrantRequest({ email, role, branchId });
@@ -277,7 +277,7 @@ function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending
         setEmail("");
       }}
     >
-      <div className="grant-fields grant-fields--email">
+      <div className="grid items-end gap-2.5 md:grid-cols-[minmax(170px,1fr)_minmax(170px,1fr)_auto] md:grid-cols-[minmax(220px,1.4fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto]">
         <label>
           <span>อีเมลผู้ใช้</span>
           <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="user@example.com" required />
@@ -297,7 +297,7 @@ function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending
             {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
           </select>
         </label>
-        <button type="submit" className="primary-button" disabled={pending || !canSubmitGrant({ email, role, branchId })}>{pending ? "กำลังให้สิทธิ์…" : "ให้สิทธิ์"}</button>
+        <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" disabled={pending || !canSubmitGrant({ email, role, branchId })}>{pending ? "กำลังให้สิทธิ์…" : "ให้สิทธิ์"}</button>
       </div>
     </form>
   );
@@ -310,17 +310,17 @@ function AccessRequestRow({ request, branches, pending, onApprove }: { request: 
   }, [branchId, branches]);
   return (
     <form
-      className="access-request-form"
+      className="grid gap-3.5 rounded-xl border border-border bg-surface-secondary p-3.5"
       onSubmit={(event) => {
         event.preventDefault();
         onApprove(role, role === "owner" ? null : branchId);
       }}
     >
-      <div className="request-identity">
-        <div><span>ผู้ขอใช้งาน</span><strong>{request.displayName}</strong><small className="data-code">LINE: {request.lineUserId}</small></div>
+      <div className="flex items-start justify-between gap-4 max-[639px]:flex-col">
+        <div><span>ผู้ขอใช้งาน</span><strong>{request.displayName}</strong><small className="font-mono text-[11px] text-muted">LINE: {request.lineUserId}</small></div>
         <div><span>ส่งคำขอเมื่อ</span><strong>{formatDate(request.requestedAt)}</strong></div>
       </div>
-      <div className="grant-fields">
+      <div className="grid items-end gap-2.5 md:grid-cols-[minmax(170px,1fr)_minmax(170px,1fr)_auto]">
         <label>
           <span>บทบาท</span>
           <select value={role} onChange={(event) => setRole(event.target.value as Role)}>
@@ -336,7 +336,7 @@ function AccessRequestRow({ request, branches, pending, onApprove }: { request: 
             {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
           </select>
         </label>
-        <button type="submit" className="primary-button" disabled={pending || (role !== "owner" && !branchId)}>{pending ? "กำลังอนุมัติ…" : "อนุมัติคำขอ"}</button>
+        <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" disabled={pending || (role !== "owner" && !branchId)}>{pending ? "กำลังอนุมัติ…" : "อนุมัติคำขอ"}</button>
       </div>
     </form>
   );

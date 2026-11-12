@@ -2,24 +2,20 @@
 name: LaundryTwin Operations Workspace
 description: Calm, evidence-first operations UI for commercial laundry teams.
 colors:
-  canvas: "#f4f7f6"
-  surface: "#ffffff"
-  surface-muted: "#edf4f2"
-  brand: "#0f6269"
-  brand-dark: "#123b40"
-  ink: "#12353a"
-  ink-soft: "#4e686b"
-  muted: "#829496"
-  border: "#d7e3e0"
-  border-strong: "#b8ccca"
-  success: "#087a5b"
-  success-bg: "#e5f6ee"
-  warning: "#9a5a00"
-  warning-bg: "#fff4d6"
-  danger: "#b42318"
-  danger-bg: "#fdecea"
-  info: "#2166a8"
-  info-bg: "#eaf2fb"
+  # HeroUI v3 semantic tokens. The app does not define a second palette; the
+  # brand is `accent` and everything else is the library's own scale.
+  background: "oklch(0.9702 0 0)"
+  foreground: "oklch(0.2103 0.0059 285.89)"
+  surface: "oklch(100% 0 0)"
+  surface-secondary: "oklch(0.9524 0.0013 286.37)"
+  surface-tertiary: "oklch(0.9373 0.0013 286.37)"
+  muted: "oklch(0.5517 0.0138 285.94)"
+  border: "oklch(90% 0.004 286.32)"
+  accent: "oklch(0.47 0.07 197)"
+  accent-foreground: "oklch(0.99 0 0)"
+  success: "oklch(0.7329 0.1935 150.81)"
+  warning: "oklch(0.7819 0.1585 72.33)"
+  danger: "oklch(0.6532 0.2328 25.74)"
 typography:
   display:
     fontFamily: "Noto Sans Thai, Avenir Next, Helvetica Neue, system-ui, sans-serif"
@@ -116,6 +112,31 @@ components:
 ---
 
 # Design System: LaundryTwin Operations Workspace
+
+## The palette is HeroUI's
+
+This file used to describe a second design system: its own `--ink`/`--canvas`/`--brand`
+palette, its own `.surface-card` and `.primary-button` classes, and a `--surface` that
+silently overrode HeroUI's. The result was a product built on HeroUI that looked like
+neither HeroUI nor a deliberate alternative — components rendered in our colours with
+our spacing, and the library's own scale never reached the screen.
+
+There is one palette now. `src/styles.css` imports `@heroui/styles` and overrides
+exactly three things: `--accent` (the teal brand), `--accent-foreground`, and
+`--radius`. Everything else — surfaces, borders, muted text, status colours, focus
+rings, shadows — is the library's. Pages are built from HeroUI components (`Card`,
+`Button`, `Chip`, `Tabs`, `Table`, `TextField`) and Tailwind utilities over those
+tokens, not from bespoke classes.
+
+Two consequences worth knowing before editing:
+
+- **Do not add a `:root` variable that HeroUI already defines.** Unlayered `:root`
+  beats the library's `@layer base`, so a stray `--surface` repaints every component
+  on the page. That is exactly the bug this rewrite removed.
+- **Element defaults live in one `@layer components` block** in `styles.css`, written
+  with `:where()` so their specificity is zero and any utility class or component
+  style wins. They exist so a page does not repeat `text-sm text-muted` on every
+  paragraph.
 
 ## Overview
 

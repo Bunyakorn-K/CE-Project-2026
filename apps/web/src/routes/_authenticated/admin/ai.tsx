@@ -189,11 +189,11 @@ function AiConsolePage() {
 
   if (!isOwner) {
     return (
-      <div className="page-content">
-        <section className="surface-card restricted-state">
+      <div className="grid gap-6">
+        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface grid justify-items-start gap-3 p-6">
           <h1>เข้าถึงไม่ได้</h1>
           <p>AI Console ใช้ได้เฉพาะบัญชีบทบาทเจ้าของ</p>
-          <Link to="/dashboard" className="secondary-button w-fit">กลับภาพรวม</Link>
+          <Link to="/dashboard" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50 w-fit">กลับภาพรวม</Link>
         </section>
       </div>
     );
@@ -203,9 +203,9 @@ function AiConsolePage() {
   const hasApiKey = settingsQuery.data?.settings.hasApiKey === true;
 
   return (
-    <div className="page-content">
-      <section className="surface-card surface-card--dark">
-        <div className="page-header">
+    <div className="grid gap-6">
+      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
+        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
           <div>
             <h1>AI Console</h1>
             <p>ตั้งค่า gateway โมเดล และทดสอบผู้ช่วยแบบข้อความผ่านเซิร์ฟเวอร์</p>
@@ -213,14 +213,14 @@ function AiConsolePage() {
         </div>
       </section>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>Provider และ Gateway</h2><span>API key ไม่เคยถูกส่งกลับจากเซิร์ฟเวอร์</span></div>
-          {settingsQuery.isLoading && <div className="loading-state compact" role="status"><span className="loading-orbit" />กำลังโหลดการตั้งค่า AI</div>}
-          {settingsQuery.isError && <div className="error-message" role="alert">ไม่สามารถโหลดการตั้งค่า AI ได้: {settingsQuery.error.message}</div>}
+          <div className="flex items-baseline justify-between gap-3"><h2>Provider และ Gateway</h2><span>API key ไม่เคยถูกส่งกลับจากเซิร์ฟเวอร์</span></div>
+          {settingsQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดการตั้งค่า AI</div>}
+          {settingsQuery.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ไม่สามารถโหลดการตั้งค่า AI ได้: {settingsQuery.error.message}</div>}
           {settingsQuery.data && (
             <form
-              className="settings-form"
+              className="grid max-w-[900px] gap-3.5 md:grid-cols-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 const payload: Record<string, unknown> = {
@@ -234,35 +234,35 @@ function AiConsolePage() {
                 saveMutation.mutate(payload);
               }}
             >
-              <label className="field-control" htmlFor="ai-base-url"><span>Base URL แบบ OpenAI-compatible</span><input id="ai-base-url" type="url" required value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://gateway.example" /></label>
-              <label className="field-control" htmlFor="ai-api-key"><span>API key {hasApiKey ? "· มี key ที่บันทึกไว้แล้ว เว้นว่างเพื่อคงเดิม" : "· ยังไม่ได้ตั้งค่า"}</span><input id="ai-api-key" type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={hasApiKey ? "คงค่าเดิม" : "ใส่ API key"} /></label>
-              <label className="field-control" htmlFor="ai-model"><span>โมเดลเริ่มต้น</span><select id="ai-model" required value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}>{modelOptions.length === 0 && <option value="">ยังไม่มีโมเดลที่ค้นพบ</option>}{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>
-              <label className="field-control" htmlFor="ai-temperature"><span>Temperature ({form.temperature}/100)</span><input id="ai-temperature" type="range" min={0} max={100} value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value) }))} /></label>
-                <label className="field-control" htmlFor="ai-max-steps"><span>จำนวนรอบเรียกเครื่องมือต่อคำตอบ ({form.maxSteps})</span><input id="ai-max-steps" type="number" min={1} max={6} value={form.maxSteps} onChange={(event) => setForm((current) => ({ ...current, maxSteps: Number(event.target.value) }))} /><span className="text-tiny text-default-500">1 = ตอบได้แต่ไม่เรียกข้อมูล · 4 = พอสำหรับเทียบสองสาขา</span></label>
-              <div className="form-actions">
-                <Button type="submit" className="primary-button" isDisabled={saveMutation.isPending}>{saveMutation.isPending ? "กำลังบันทึก…" : "บันทึกการตั้งค่า"}</Button>
-                <Button type="button" className="secondary-button" onPress={() => void queryClient.invalidateQueries({ queryKey: ["ai", "models"] })} isDisabled={!hasApiKey || modelsQuery.isFetching}>{modelsQuery.isFetching ? "กำลังโหลดโมเดล…" : "รีเฟรชโมเดล"}</Button>
+              <label className="grid gap-1.5" htmlFor="ai-base-url"><span>Base URL แบบ OpenAI-compatible</span><input id="ai-base-url" type="url" required value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://gateway.example" /></label>
+              <label className="grid gap-1.5" htmlFor="ai-api-key"><span>API key {hasApiKey ? "· มี key ที่บันทึกไว้แล้ว เว้นว่างเพื่อคงเดิม" : "· ยังไม่ได้ตั้งค่า"}</span><input id="ai-api-key" type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={hasApiKey ? "คงค่าเดิม" : "ใส่ API key"} /></label>
+              <label className="grid gap-1.5" htmlFor="ai-model"><span>โมเดลเริ่มต้น</span><select id="ai-model" required value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}>{modelOptions.length === 0 && <option value="">ยังไม่มีโมเดลที่ค้นพบ</option>}{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>
+              <label className="grid gap-1.5" htmlFor="ai-temperature"><span>Temperature ({form.temperature}/100)</span><input id="ai-temperature" type="range" min={0} max={100} value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value) }))} /></label>
+                <label className="grid gap-1.5" htmlFor="ai-max-steps"><span>จำนวนรอบเรียกเครื่องมือต่อคำตอบ ({form.maxSteps})</span><input id="ai-max-steps" type="number" min={1} max={6} value={form.maxSteps} onChange={(event) => setForm((current) => ({ ...current, maxSteps: Number(event.target.value) }))} /><span className="text-xs text-muted">1 = ตอบได้แต่ไม่เรียกข้อมูล · 4 = พอสำหรับเทียบสองสาขา</span></label>
+              <div className="col-span-full flex flex-wrap items-center gap-2.5">
+                <Button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" isDisabled={saveMutation.isPending}>{saveMutation.isPending ? "กำลังบันทึก…" : "บันทึกการตั้งค่า"}</Button>
+                <Button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onPress={() => void queryClient.invalidateQueries({ queryKey: ["ai", "models"] })} isDisabled={!hasApiKey || modelsQuery.isFetching}>{modelsQuery.isFetching ? "กำลังโหลดโมเดล…" : "รีเฟรชโมเดล"}</Button>
               </div>
-              {modelsQuery.isError && <p className="error-message" role="alert">โหลดรายชื่อโมเดลไม่สำเร็จ: {modelsQuery.error.message}</p>}
-              {saveMutation.isError && <p className="error-message" role="alert">บันทึกไม่สำเร็จ: {saveMutation.error.message}</p>}
-              {saveMutation.isSuccess && <p className="feedback-message feedback-message--success" role="status">บันทึกการตั้งค่าแล้ว</p>}
+              {modelsQuery.isError && <p className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">โหลดรายชื่อโมเดลไม่สำเร็จ: {modelsQuery.error.message}</p>}
+              {saveMutation.isError && <p className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">บันทึกไม่สำเร็จ: {saveMutation.error.message}</p>}
+              {saveMutation.isSuccess && <p className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">บันทึกการตั้งค่าแล้ว</p>}
             </form>
           )}
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
-          <div className="section-heading"><h2>System prompt</h2><span>ใช้ทั้งหน้านี้และแชท LINE ของผู้ช่วย</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>System prompt</h2><span>ใช้ทั้งหน้านี้และแชท LINE ของผู้ช่วย</span></div>
           <label className="sr-only" htmlFor="ai-system-prompt">System prompt</label>
-          <textarea id="ai-system-prompt" className="field-control field-textarea" value={form.systemPrompt} onChange={(event) => setForm((current) => ({ ...current, systemPrompt: event.target.value }))} placeholder="คุณคือผู้ช่วยข้อมูลของระบบ LaundryTwin" />
-          <p className="kpi-detail">ตัวแปรเทมเพลต: <code>{"{{role}}"}</code> <code>{"{{branches}}"}</code> <code>{"{{tools}}"}</code> — เซิร์ฟเวอร์แทนค่าให้จากสิทธิ์ของผู้ใช้จริงเสมอ ประกอบด้วย <code>{"{{tools}}"}</code> ในแชท LINE จะเป็นเครื่องมือวิเคราะห์ที่ส่งให้จริง ส่วนหน้านี้เป็น plain chat จึงไม่มีเครื่องมือ</p>
-          <p className="kpi-detail">
+          <textarea id="ai-system-prompt" className="grid gap-1.5 min-h-[180px] resize-y p-3" value={form.systemPrompt} onChange={(event) => setForm((current) => ({ ...current, systemPrompt: event.target.value }))} placeholder="คุณคือผู้ช่วยข้อมูลของระบบ LaundryTwin" />
+          <p className="mt-2 block text-xs text-muted">ตัวแปรเทมเพลต: <code>{"{{role}}"}</code> <code>{"{{branches}}"}</code> <code>{"{{tools}}"}</code> — เซิร์ฟเวอร์แทนค่าให้จากสิทธิ์ของผู้ใช้จริงเสมอ ประกอบด้วย <code>{"{{tools}}"}</code> ในแชท LINE จะเป็นเครื่องมือวิเคราะห์ที่ส่งให้จริง ส่วนหน้านี้เป็น plain chat จึงไม่มีเครื่องมือ</p>
+          <p className="mt-2 block text-xs text-muted">
             prompt ที่ส่งจริง = ข้อความข้างบน (persona) + <strong>กฎระบบ</strong> ที่ต่อท้ายอัตโนมัติ
             จึงแก้ persona ให้ขัดกับกฎไม่ได้
           </p>
           {settingsQuery.data?.prompt && (
-            <details className="kpi-detail">
+            <details className="mt-2 block text-xs text-muted">
               <summary>
                 ดูกฎระบบที่ต่อท้าย (v{settingsQuery.data.prompt.version}) — แก้ไขไม่ได้
               </summary>
@@ -274,15 +274,15 @@ function AiConsolePage() {
         </Card.Content>
       </Card>
 
-      <Card variant="transparent" className="surface-card admin-section">
+      <Card variant="transparent" className="rounded-xl border border-border bg-surface p-6 shadow-surface min-w-0">
         <Card.Content>
           {evalQuery.data && evalQuery.data.runs.length > 0 ? (
-            <div className="mt-4 rounded-large border border-default-200 p-4">
-              <h3 className="text-small font-semibold text-default-600">ชุดทดสอบย้อนหลัง (golden set)</h3>
-              <p className="mt-1 text-tiny text-default-500">
+            <div className="mt-4 rounded-xl border border-border p-4">
+              <h3 className="text-sm font-semibold text-muted">ชุดทดสอบย้อนหลัง (golden set)</h3>
+              <p className="mt-1 text-xs text-muted">
                 {evalQuery.data.cases.length} คำถาม · วัดด้วยกฎ ไม่ใช่โมเดลตัดสิน — ใช้เทียบก่อน/หลังเปลี่ยนโมเดล
               </p>
-              <ul className="mt-2 space-y-1 text-small">
+              <ul className="mt-2 space-y-1 text-sm">
                 {evalQuery.data.runs.map((run) => (
                   <li key={run.runId}>
                     {new Date(run.startedAt).toLocaleString("th-TH")} · {run.model} · ผ่าน {run.passed}/{run.total} ·
@@ -293,9 +293,9 @@ function AiConsolePage() {
             </div>
           ) : null}
 
-          <div className="section-heading"><h2>ทดสอบการสนทนา</h2><span>{threadId ? `Thread: ${threadId}` : "เริ่ม thread ใหม่"}</span></div>
+          <div className="flex items-baseline justify-between gap-3"><h2>ทดสอบการสนทนา</h2><span>{threadId ? `Thread: ${threadId}` : "เริ่ม thread ใหม่"}</span></div>
           {statsQuery.data && (
-            <p className="kpi-detail">
+            <p className="mt-2 block text-xs text-muted">
               {statsQuery.data.stats.limits.enabled ? "ผู้ช่วยเปิดใช้งาน" : "ผู้ช่วยปิดอยู่ (CHAT_ENABLED=false)"}
               {" · วันนี้ "}{statsQuery.data.stats.turnsToday}{" ครั้ง"}
               {" (reply "}{statsQuery.data.stats.repliesToday}{" · push "}{statsQuery.data.stats.pushesToday}{")"}
@@ -304,20 +304,20 @@ function AiConsolePage() {
               {" · 👍 "}{statsQuery.data.stats.feedbackToday.up}{" 👎 "}{statsQuery.data.stats.feedbackToday.down}
             </p>
           )}
-          <div className="ai-thread" role="log" aria-live="polite" aria-label="ข้อความสนทนา">
-            {historyQuery.isLoading && <p className="state-message">กำลังโหลดประวัติสนทนา</p>}
-            {historyQuery.isError && <p className="error-message">โหลดประวัติสนทนาไม่สำเร็จ: {historyQuery.error.message}</p>}
-            {!historyQuery.isLoading && messages.length === 0 && <p className="state-message">ส่งข้อความเพื่อทดสอบ gateway ที่ตั้งค่าไว้</p>}
+          <div className="grid max-h-[440px] gap-2.5 overflow-y-auto rounded-xl border border-border bg-surface-secondary p-3.5" role="log" aria-live="polite" aria-label="ข้อความสนทนา">
+            {historyQuery.isLoading && <p className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">กำลังโหลดประวัติสนทนา</p>}
+            {historyQuery.isError && <p className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground">โหลดประวัติสนทนาไม่สำเร็จ: {historyQuery.error.message}</p>}
+            {!historyQuery.isLoading && messages.length === 0 && <p className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ส่งข้อความเพื่อทดสอบ gateway ที่ตั้งค่าไว้</p>}
             {messages.map((message, index) => <div key={`${message.role}-${message.createdAt ?? index}-${message.content.slice(0, 20)}`} className={`chat-message chat-message--${message.role}`}><strong>{message.role === "user" ? "คุณ" : message.role === "assistant" ? "ผู้ช่วย" : "ระบบ"}</strong><p>{message.content}</p>{message.trace ? (<small>{"ที่มาของคำตอบ: "}{message.trace.model}{" · "}{message.trace.steps}{" รอบ"}{" · "}{message.trace.toolCalls}{" tool calls"}{message.trace.tools.length > 0 ? ` (${message.trace.tools.join(", ")})` : ""}{" · "}{message.trace.latencyMs}{" ms"}{" · สาขา: "}{message.trace.scope.branches}{message.trace.scope.canViewRevenue ? "" : " · ไม่เห็นรายได้"}{" · prompt "}{message.trace.promptVersion}</small>) : message.model ? (<small>{message.model}</small>) : null}</div>)}
-            {chatMutation.isPending && <p className="state-message" role="status">กำลังรอคำตอบ…</p>}
+            {chatMutation.isPending && <p className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted" role="status">กำลังรอคำตอบ…</p>}
           </div>
-          <form className="chat-form" onSubmit={(event) => { event.preventDefault(); if (chatInput.trim() && !chatMutation.isPending) chatMutation.mutate(chatInput.trim()); }}>
+          <form className="mt-3 flex flex-wrap items-center gap-2.5" onSubmit={(event) => { event.preventDefault(); if (chatInput.trim() && !chatMutation.isPending) chatMutation.mutate(chatInput.trim()); }}>
             <label className="sr-only" htmlFor="ai-chat-input">ข้อความถาม AI</label>
             <input id="ai-chat-input" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="ถามเกี่ยวกับรายได้ รอบซัก หรือข้อมูลเครื่อง" />
-            <Button type="submit" className="primary-button" isDisabled={!chatInput.trim() || chatMutation.isPending}>{chatMutation.isPending ? "กำลังส่ง…" : "ส่งข้อความ"}</Button>
+            <Button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" isDisabled={!chatInput.trim() || chatMutation.isPending}>{chatMutation.isPending ? "กำลังส่ง…" : "ส่งข้อความ"}</Button>
           </form>
-          {chatMutation.isError && <p className="error-message" role="alert">ส่งข้อความไม่สำเร็จ: {chatMutation.error.message}</p>}
-          <p className="ai-limitation">
+          {chatMutation.isError && <p className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ส่งข้อความไม่สำเร็จ: {chatMutation.error.message}</p>}
+          <p className="mt-3.5 rounded-lg border border-warning/30 bg-warning-soft px-3.5 py-3 text-xs leading-relaxed text-warning-soft-foreground">
             หน้านี้ทดสอบระบบเต็มรูปแบบเหมือน LINE: scope จากสิทธิ์ของคุณ, MCP tools ชุดเดียวกับบอท,
             กฎระบบ (วันที่/สาขา/ห้ามเดาตัวเลข) และ audit row ต่อ tool call — ต่างกันแค่ประวัติสนทนามาจาก thread นี้ ไม่ใช่ memory ของ LINE
           </p>

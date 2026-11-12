@@ -53,21 +53,21 @@ function liffFailureMessage(phase: Phase, detail: string | null): string {
 function LiffGateMessage({ phase, message, onRetry }: { phase: Phase; message: string; onRetry?: () => void }) {
   const heading = phase === "init" ? "เริ่ม LINE LIFF ไม่สำเร็จ" : phase === "exchange" ? "แลกเปลี่ยนข้อมูล LINE ไม่สำเร็จ" : "ตรวจสอบเซสชันไม่สำเร็จ";
   return (
-    <main className="public-page liff-public-page">
-      <section className="public-card liff-message-card" role="alert" aria-live="assertive">
+    <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4 grid min-h-screen place-items-center bg-background p-6">
+      <section className="liff-message-card w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="alert" aria-live="assertive">
         <span className="brand-symbol" aria-hidden="true">LT</span>
         <h1>{heading}</h1>
         <p>{message}</p>
         {/* When a fresh token is what is needed, re-login is the action. A reload
             would re-run the identical exchange against the same stale token. */}
-        <button type="button" onClick={onRetry ?? (() => window.location.reload())} className="primary-button">
+        <button type="button" onClick={onRetry ?? (() => window.location.reload())} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50">
           {onRetry ? "เข้าสู่ระบบด้วย LINE อีกครั้ง" : "ลองใหม่"}
         </button>
         {/* The way out for anyone the LINE button cannot help.
             This card replaces the whole page, so without this a visitor whose
             problem is not LINE — no LINE client, a browser they cannot use it
             in — is left with a retry of the request that just failed. */}
-        <p className="liff-message-alt">
+        <p className="text-sm text-muted">
           <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
         </p>
       </section>
@@ -111,18 +111,18 @@ function rateLimitedMessage(retryAfterSeconds: number | null): string {
  */
 function LiffTerminalCard() {
   return (
-    <main className="public-page liff-public-page">
-      <section className="public-card liff-message-card" role="alert">
+    <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4 grid min-h-screen place-items-center bg-background p-6">
+      <section className="liff-message-card w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="alert">
         <span className="brand-symbol" aria-hidden="true">LT</span>
         <h1>LINE ส่งข้อมูลที่ยืนยันไม่ได้ซ้ำ ๆ</h1>
         <p>
           ลองเข้าสู่ระบบใหม่หลายครั้งแล้ว แต่ LINE ยังส่งข้อมูลที่ใช้ยืนยันตัวตนไม่ได้
           ถ้าเครื่องนี้ตั้งเวลาไว้ผิด (นาฬิกาเครื่องคลาดเคลื่อนจากเวลาจริง) ให้แก้เวลาเครื่องแล้วเปิดหน้านี้ใหม่
         </p>
-        <button type="button" onClick={closeLiffWindow} className="primary-button">
+        <button type="button" onClick={closeLiffWindow} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50">
           ปิดหน้านี้
         </button>
-        <p className="liff-message-alt">
+        <p className="text-sm text-muted">
           <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
         </p>
       </section>
@@ -713,7 +713,7 @@ export function LiffGate({ children }: PropsWithChildren) {
       return <>{children}</>;
 
     case "loading":
-      return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;
+      return <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4 grid min-h-screen place-items-center bg-background p-6"><section className="liff-message-card w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" /><h1>กำลังตรวจสอบ LINE</h1><p>กำลังเตรียมเซสชันและตรวจสอบสิทธิ์เข้าใช้งาน</p></section></main>;
 
     case "stale":
       return (
@@ -734,15 +734,15 @@ export function LiffGate({ children }: PropsWithChildren) {
 
     case "denied":
       return (
-        <main className="public-page liff-public-page">
-          <section className="public-card liff-message-card" role="alert">
+        <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4 grid min-h-screen place-items-center bg-background p-6">
+          <section className="liff-message-card w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="alert">
             <span className="brand-symbol" aria-hidden="true">LT</span>
             <h1>บัญชีนี้ไม่ได้รับสิทธิ์เข้าใช้งาน</h1>
             {/* The API's own distinction, kept: ACCESS_NOT_GRANTED is a
                 permanent answer about this account, not an expired session, and
                 a re-login button here would imply otherwise. */}
             <p>สิทธิ์ของบัญชี LINE นี้ถูกถอนหรือยังไม่ได้รับอนุมัติจากผู้ดูแลระบบ — หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อผู้ดูแลร้าน</p>
-            <p className="liff-message-alt">
+            <p className="text-sm text-muted">
               <a href="/login">เข้าสู่ระบบด้วยอีเมลแทน</a>
             </p>
           </section>
@@ -750,6 +750,6 @@ export function LiffGate({ children }: PropsWithChildren) {
       );
 
     case "pending":
-      return <main className="public-page liff-public-page"><section className="public-card liff-message-card" role="status"><span className="status-pill status-pill--warning">รอการอนุมัติ</span><h1>ส่งคำขอเข้าใช้งานแล้ว</h1><p>กรุณารอผู้ดูแลระบบอนุมัติสิทธิ์ แล้วเปิดหน้านี้อีกครั้ง</p></section></main>;
+      return <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4 grid min-h-screen place-items-center bg-background p-6"><section className="liff-message-card w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="status"><span className="status-pill inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold leading-tight status-pill--warning border-warning/30 bg-warning-soft text-warning-soft-foreground">รอการอนุมัติ</span><h1>ส่งคำขอเข้าใช้งานแล้ว</h1><p>กรุณารอผู้ดูแลระบบอนุมัติสิทธิ์ แล้วเปิดหน้านี้อีกครั้ง</p></section></main>;
   }
 }

@@ -21,7 +21,7 @@ function AdminLayout() {
   }, []);
 
   if (status === "checking" || user === null) {
-    return <div className="flex min-h-screen items-center justify-center text-default-500">Loading…</div>;
+    return <div className="flex min-h-screen items-center justify-center text-muted">Loading…</div>;
   }
 
   const isOwner = hasOwnerGrant(user);

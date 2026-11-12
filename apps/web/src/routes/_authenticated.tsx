@@ -37,8 +37,8 @@ function AuthenticatedLayout() {
     if (status === "ready" && user === null) void navigate({ to: "/login", replace: true });
   }, [navigate, status, user]);
 
-  if (status === "loading") return <main className="public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><span className="loading-orbit" /><h1>กำลังตรวจสอบเซสชัน</h1><p>กำลังโหลดสิทธิ์และขอบเขตของคุณ</p></section></main>;
-  if (user === null) return <main className="public-page"><section className="public-card liff-message-card" role="status" aria-live="polite"><h1>กำลังพาไปหน้าเข้าสู่ระบบ</h1><p>เซสชันไม่พร้อมใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง</p></section></main>;
+  if (status === "loading") return <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4"><section className="w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" /><h1>กำลังตรวจสอบเซสชัน</h1><p>กำลังโหลดสิทธิ์และขอบเขตของคุณ</p></section></main>;
+  if (user === null) return <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4"><section className="w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5 grid justify-items-start gap-3" role="status" aria-live="polite"><h1>กำลังพาไปหน้าเข้าสู่ระบบ</h1><p>เซสชันไม่พร้อมใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง</p></section></main>;
 
   return <AppShell><Outlet /></AppShell>;
 }

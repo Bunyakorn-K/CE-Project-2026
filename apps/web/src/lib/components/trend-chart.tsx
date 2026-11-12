@@ -61,21 +61,21 @@ export function TrendChart({
   const metric = requested === "revenue" && !mayViewRevenue ? "cycles" : requested;
 
   return (
-    <Card variant="transparent" className="surface-card trend-card">
+    <Card variant="transparent" className="trend-card rounded-xl border border-border bg-surface p-6 shadow-surface mb-4">
       <Card.Content>
-        <div className="section-heading trend-card-head">
+        <div className="flex items-baseline justify-between gap-3 items-center">
           <div>
             <h2>แนวโน้มรายวัน</h2>
-            <p className="section-description">
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">
               {TREND_METRICS[metric].label}จากแถว usage รายวัน · {from} — {to}
             </p>
           </div>
-          <div className="trend-metric-switch" role="group" aria-label="เลือกข้อมูลที่แสดง">
+          <div className="trend-metric-switch flex flex-none gap-1.5" role="group" aria-label="เลือกข้อมูลที่แสดง">
             {(Object.keys(TREND_METRIC_LABELS) as TrendMetricId[]).map((id) => (
               <button
                 key={id}
                 type="button"
-                className={`secondary-button${metric === id ? " secondary-button--active" : ""}`}
+                className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50${metric === id ? " ring-2 ring-focus" : ""}`}
                 aria-pressed={metric === id}
                 disabled={id === "revenue" && !mayViewRevenue}
                 title={id === "revenue" && !mayViewRevenue ? "ไม่มีสิทธิ์ดูรายได้" : undefined}
@@ -90,13 +90,13 @@ export function TrendChart({
         {state.kind === "chart" ? (
           <>
             <TrendPlot days={state.days} metric={metric} />
-            {state.note && <p className="trend-note">{state.note}</p>}
+            {state.note && <p className="trend-note mt-2.5 rounded-lg border border-dashed border-border bg-surface-secondary px-2.5 py-2 text-xs leading-relaxed text-muted">{state.note}</p>}
           </>
         ) : (
           // Never an empty plot area. "This source cannot say" and "there was
           // nothing in this window" are different sentences, and collapsing them
           // is how an unmeasurable source becomes a branch that did no business.
-          <p className="state-message trend-placeholder" role="status">
+          <p className="trend-placeholder rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted m-0" role="status">
             {state.message}
           </p>
         )}
@@ -115,8 +115,8 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
   // the frame says which of the two it is instead of implying either.
   if (!geometry.hasValues) {
     return (
-      <figure className="trend-figure">
-        <p className="state-message trend-placeholder" role="status">
+      <figure className="trend-placeholder m-0">
+        <p className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted m-0" role="status">
           {`${config.label}ไม่พร้อมใช้งาน · ไม่มีค่าของ${config.label}สำหรับช่วงเวลานี้`}
         </p>
       </figure>
@@ -130,20 +130,20 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
   const yOf = (value: number) => geometry.baselineY - (value / geometry.maxValue) * plotHeight;
 
   return (
-    <figure className="trend-figure">
-      <div className="trend-plot" style={{ paddingLeft: CHART_PADDING.left }}>
+    <figure className="trend-figure m-0">
+      <div className="relative h-[220px] max-[639px]:h-[190px]" style={{ paddingLeft: CHART_PADDING.left }}>
         {/* The y-axis labels sit outside the plot area, each centred on its own
             gridline. They are HTML, so they stay Thai-shaped at any width. */}
-        <ul className="trend-axis trend-axis--y" aria-hidden="true">
+        <ul className="trend-axis trend-axis--y m-0 list-none p-0 font-mono text-[11px] text-muted absolute inset-y-0 left-0 w-12" aria-hidden="true">
           {geometry.ticks.map((tick) => (
-            <li key={tick} className="trend-axis-label" style={{ top: yOf(tick) }}>
+            <li key={tick} className="trend-axis-label whitespace-nowrap" style={{ top: yOf(tick) }}>
               {config.format(tick)}
             </li>
           ))}
         </ul>
 
         <svg
-          className="trend-svg"
+          className="trend-svg block h-[220px] w-full overflow-visible max-[639px]:h-[190px]"
           viewBox={`0 0 ${plotWidth} ${CHART_HEIGHT}`}
           height={CHART_HEIGHT}
           preserveAspectRatio="none"
@@ -151,7 +151,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
           aria-hidden="true"
         >
           {geometry.ticks.map((tick) => (
-            <line key={tick} className="trend-gridline" x1={0} x2={plotWidth} y1={yOf(tick)} y2={yOf(tick)} />
+            <line key={tick} className="stroke-border [stroke-width:1] [vector-effect:non-scaling-stroke]" x1={0} x2={plotWidth} y1={yOf(tick)} y2={yOf(tick)} />
           ))}
 
           {/* A gap is a neutral tick on the baseline, and the line simply stops
@@ -160,7 +160,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
           {geometry.gaps.map((gap) => (
             <line
               key={gap.date}
-              className="trend-gap"
+              className="trend-gap stroke-border [stroke-width:2] [stroke-linecap:round] [vector-effect:non-scaling-stroke]"
               x1={gap.x - plotLeft}
               x2={gap.x - plotLeft}
               y1={geometry.baselineY - 5}
@@ -172,7 +172,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
             segment.kind === "point" ? (
               <circle
                 key={segment.points[0].date}
-                className="trend-dot"
+                className="fill-accent"
                 cx={segment.points[0].x - plotLeft}
                 cy={segment.points[0].y}
                 r={3}
@@ -180,7 +180,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
             ) : (
               <polyline
                 key={segment.points[0].date}
-                className="trend-line"
+                className="trend-line fill-none stroke-accent [stroke-width:2] [stroke-linecap:round] [stroke-linejoin:round] [vector-effect:non-scaling-stroke]"
                 points={segment.points.map((point) => `${point.x - plotLeft},${point.y}`).join(" ")}
               />
             )
@@ -191,11 +191,11 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
             a transparent column whose <title> carries the exact number —
             readable by keyboard and by assistive tech, and usable on a touch
             screen where there is no hover at all. */}
-        <ul className="trend-days">
+        <ul className="absolute inset-0 m-0 list-none p-0">
           {days.map((day, index) => (
-            <li key={day.date} className="trend-day">
+            <li key={day.date} className="trend-day absolute inset-y-0 right-0 left-14">
               <svg
-                className="trend-day-svg"
+                className="block h-[220px] w-full max-[639px]:h-[190px]"
                 viewBox={`0 0 ${plotWidth} ${CHART_HEIGHT}`}
                 height={CHART_HEIGHT}
                 preserveAspectRatio="none"
@@ -203,6 +203,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
                 aria-label={dayLabel(day, metric)}
               >
                 <rect
+                  className="fill-transparent transition-colors hover:fill-accent/5"
                   x={index * step - step / 2}
                   y={CHART_PADDING.top}
                   width={step || plotWidth}
@@ -218,11 +219,11 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
 
       {/* The x-axis is a separate row so the dates are anchored to the plot's own
           left and right edges rather than to their own intrinsic widths. */}
-      <div className="trend-axis trend-axis--x" style={{ marginLeft: CHART_PADDING.left }} aria-hidden="true">
+      <div className="trend-axis trend-axis--x m-0 list-none p-0 font-mono text-[11px] text-muted grid h-[22px] grid-cols-2 pt-1.5" style={{ marginLeft: CHART_PADDING.left }} aria-hidden="true">
         {geometry.xLabels.map((label, index) => (
           <span
             key={label.date}
-            className="trend-axis-label"
+            className="trend-axis-label whitespace-nowrap"
             style={{ justifySelf: index === 0 ? "start" : "end" }}
           >
             {label.text}
@@ -233,7 +234,7 @@ function TrendPlot({ days, metric }: { days: TrendDay[]; metric: TrendMetricId }
       {/* The series is also stated as text. A chart that exists only as pixels is
           unreadable to a screen reader, unverifiable by a test, and useless to
           the owner who wants one number rather than a shape. */}
-      <figcaption className="trend-caption">{trendCaption(days, metric)}</figcaption>
+      <figcaption className="trend-caption mt-2.5 text-xs leading-relaxed text-muted">{trendCaption(days, metric)}</figcaption>
 
       {/* The SVG marks are decorative above; this is the line a screen reader
           reads for the chart as a whole. */}

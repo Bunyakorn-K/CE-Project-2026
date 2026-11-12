@@ -87,8 +87,8 @@ function AlertSettingsPage() {
   if (!isOwner) {
     return (
       <div className="mx-auto w-full max-w-2xl p-6">
-        <p className="text-default-600">หน้านี้ใช้ได้เฉพาะเจ้าของระบบ</p>
-        <Link to="/dashboard" className="mt-3 inline-block text-primary underline">
+        <p className="text-muted">หน้านี้ใช้ได้เฉพาะเจ้าของระบบ</p>
+        <Link to="/dashboard" className="mt-3 inline-block text-accent underline">
           กลับแดชบอร์ด
         </Link>
       </div>
@@ -96,7 +96,7 @@ function AlertSettingsPage() {
   }
 
   if (query.isLoading) {
-    return <div className="flex min-h-[40vh] items-center justify-center text-default-500">กำลังโหลด…</div>;
+    return <div className="flex min-h-[40vh] items-center justify-center text-muted">กำลังโหลด…</div>;
   }
 
   if (query.isError || !query.data) {
@@ -115,16 +115,16 @@ function AlertSettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 sm:p-6">
-      <Link to="/admin" className="text-small text-default-500 underline">
+      <Link to="/admin" className="text-sm text-muted underline">
         ← กลับหน้าผู้ดูแล
       </Link>
       <h1 className="mt-3 text-2xl font-bold">การแจ้งเตือน LINE</h1>
-      <p className="mt-1 text-small text-default-500">
+      <p className="mt-1 text-sm text-muted">
         แพ็กเกจฟรีของ LINE ส่งได้ 300 ข้อความ/เดือน (การตอบกลับข้อความที่ผู้ใช้ส่งมาฟรี ไม่นับ)
       </p>
 
-      <section className="mt-5 rounded-large border border-default-200 p-4">
-        <h2 className="text-small font-semibold text-default-600">การใช้โควตาเดือนนี้</h2>
+      <section className="mt-5 rounded-xl border border-border p-4">
+        <h2 className="text-sm font-semibold text-muted">การใช้โควตาเดือนนี้</h2>
         <p
           className={
             usageLine.tone === "spent"
@@ -138,11 +138,11 @@ function AlertSettingsPage() {
         </p>
       </section>
 
-      <section className="mt-4 rounded-large border border-default-200 p-4">
-        <label className="block text-small font-semibold text-default-600" htmlFor="renotify">
+      <section className="mt-4 rounded-xl border border-border p-4">
+        <label className="block text-sm font-semibold text-muted" htmlFor="renotify">
           แจ้งซ้ำได้ทุกกี่ชั่วโมง
         </label>
-        <p className="mt-1 text-tiny text-default-500">
+        <p className="mt-1 text-xs text-muted">
           ภายในช่วงนี้ เรื่องเดิมจะไม่เด้งซ้ำ ({RENOTIFY_HOURS_MIN}–{RENOTIFY_HOURS_MAX} ชม.)
         </p>
         <input
@@ -152,16 +152,16 @@ function AlertSettingsPage() {
           max={RENOTIFY_HOURS_MAX}
           value={form.renotifyHours}
           onChange={(event) => setForm((current) => ({ ...current, renotifyHours: event.target.value }))}
-          className="mt-2 w-32 rounded-medium border border-default-300 px-3 py-2 text-small"
+          className="mt-2 w-32 rounded-lg border border-border px-3 py-2 text-sm"
         />
-        <p className="mt-1 text-tiny text-default-500">{estimateCopy(hours)}</p>
+        <p className="mt-1 text-xs text-muted">{estimateCopy(hours)}</p>
       </section>
 
-      <section className="mt-4 rounded-large border border-default-200 p-4">
-        <label className="block text-small font-semibold text-default-600" htmlFor="budget">
+      <section className="mt-4 rounded-xl border border-border p-4">
+        <label className="block text-sm font-semibold text-muted" htmlFor="budget">
           เพดานข้อความต่อเดือน
         </label>
-        <p className="mt-1 text-tiny text-default-500">
+        <p className="mt-1 text-xs text-muted">
           เมื่อถึงเพดาน ระบบจะหยุดส่งและบันทึกว่า “ถูกระงับเพราะเพดาน” ({MONTHLY_BUDGET_MIN}–{MONTHLY_BUDGET_MAX})
         </p>
         <input
@@ -171,25 +171,25 @@ function AlertSettingsPage() {
           max={MONTHLY_BUDGET_MAX}
           value={form.monthlyBudget}
           onChange={(event) => setForm((current) => ({ ...current, monthlyBudget: event.target.value }))}
-          className="mt-2 w-32 rounded-medium border border-default-300 px-3 py-2 text-small"
+          className="mt-2 w-32 rounded-lg border border-border px-3 py-2 text-sm"
         />
       </section>
 
-      {warning ? <p className="mt-3 text-small text-warning">{warning}</p> : null}
+      {warning ? <p className="mt-3 text-sm text-warning">{warning}</p> : null}
 
       <div className="mt-5 flex items-center gap-3">
         <button
           type="button"
           onClick={() => save.mutate()}
           disabled={save.isPending}
-          className="rounded-medium bg-primary px-4 py-2 text-small font-semibold text-primary-foreground disabled:opacity-60"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
           {save.isPending ? "กำลังบันทึก…" : "บันทึก"}
         </button>
-        {notice ? <span className="text-tiny text-default-600">{notice}</span> : null}
+        {notice ? <span className="text-xs text-muted">{notice}</span> : null}
       </div>
 
-      <p className="mt-6 text-tiny text-default-500">
+      <p className="mt-6 text-xs text-muted">
         ค่าปัจจุบันมาจาก{settings.source === "stored" ? "การตั้งค่าที่บันทึกไว้" : "ค่าเริ่มต้นของระบบ (ยังไม่เคยบันทึก)"}
         {settings.updatedAt ? ` · แก้ไขล่าสุด ${new Date(settings.updatedAt).toLocaleString("th-TH")}` : ""}
       </p>
@@ -293,7 +293,7 @@ function DigestCard() {
     onError: (error) => setNotice(error instanceof Error ? error.message : "ลบผู้รับไม่สำเร็จ")
   });
 
-  if (query.isLoading) return <p className="mt-6 text-default-500">กำลังโหลดสรุปรายวัน…</p>;
+  if (query.isLoading) return <p className="mt-6 text-muted">กำลังโหลดสรุปรายวัน…</p>;
   if (query.isError || !query.data) return null;
 
   const { settings, recipients, candidates, sentToday } = query.data;
@@ -303,14 +303,14 @@ function DigestCard() {
   );
 
   return (
-    <section className="mt-8 rounded-large border border-default-200 p-4">
+    <section className="mt-8 rounded-xl border border-border p-4">
       <h2 className="text-base font-bold">สรุปรายวัน (digest)</h2>
-      <p className="mt-1 text-tiny text-default-500">
+      <p className="mt-1 text-xs text-muted">
         ข้อความเดียวสรุปเมื่อวาน — รายได้ จำนวนรอบซัก และการแจ้งเตือน ค่าเริ่มต้นคือ<strong>ปิด</strong>
         และยังไม่มีผู้รับ ต้องเปิดและเพิ่มผู้รับเอง · 1 ข้อความ/วัน นับรวมโควตาเดียวกับการแจ้งเตือน
       </p>
 
-      <label className="mt-4 flex items-center gap-2 text-small">
+      <label className="mt-4 flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={settings.enabled}
@@ -322,7 +322,7 @@ function DigestCard() {
 
       <div className="mt-3 flex items-end gap-2">
         <div>
-          <label className="block text-tiny text-default-500" htmlFor="digest-hour">
+          <label className="block text-xs text-muted" htmlFor="digest-hour">
             เวลา (ชั่วโมง)
           </label>
           <input
@@ -332,11 +332,11 @@ function DigestCard() {
             max={23}
             value={hour}
             onChange={(event) => setHour(event.target.value)}
-            className="mt-1 w-24 rounded-medium border border-default-300 px-3 py-2 text-small"
+            className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label className="block text-tiny text-default-500" htmlFor="digest-minute">
+          <label className="block text-xs text-muted" htmlFor="digest-minute">
             นาที
           </label>
           <input
@@ -346,7 +346,7 @@ function DigestCard() {
             max={59}
             value={minute}
             onChange={(event) => setMinute(event.target.value)}
-            className="mt-1 w-24 rounded-medium border border-default-300 px-3 py-2 text-small"
+            className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-sm"
           />
         </div>
         <button
@@ -355,28 +355,28 @@ function DigestCard() {
             save.mutate({ sendHour: Number(hour), sendMinute: Number(minute) })
           }
           disabled={busy}
-          className="rounded-medium bg-primary px-4 py-2 text-small font-semibold text-primary-foreground disabled:opacity-60"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
           บันทึกเวลา
         </button>
-        <span className="text-tiny text-default-500">เวลาไทย (UTC+7)</span>
+        <span className="text-xs text-muted">เวลาไทย (UTC+7)</span>
       </div>
 
       <div className="mt-4">
-        <h3 className="text-small font-semibold text-default-600">ผู้รับ ({recipients.length})</h3>
+        <h3 className="text-sm font-semibold text-muted">ผู้รับ ({recipients.length})</h3>
         {recipients.length === 0 ? (
-          <p className="mt-1 text-tiny text-default-500">ยังไม่มีผู้รับ — ระบบจะไม่ส่งอะไรเลย</p>
+          <p className="mt-1 text-xs text-muted">ยังไม่มีผู้รับ — ระบบจะไม่ส่งอะไรเลย</p>
         ) : (
           <ul className="mt-2 space-y-1">
             {recipients.map((person) => (
-              <li key={person.lineUserId} className="flex items-center gap-2 text-small">
+              <li key={person.lineUserId} className="flex items-center gap-2 text-sm">
                 <span>{person.displayName ?? person.lineUserId}</span>
-                <span className="text-tiny text-default-500">{person.roles.join(", ") || "ไม่มีสิทธิ์แล้ว"}</span>
+                <span className="text-xs text-muted">{person.roles.join(", ") || "ไม่มีสิทธิ์แล้ว"}</span>
                 <button
                   type="button"
                   onClick={() => remove.mutate(person.lineUserId)}
                   disabled={busy}
-                  className="text-tiny text-danger underline"
+                  className="text-xs text-danger underline"
                 >
                   ลบ
                 </button>
@@ -389,7 +389,7 @@ function DigestCard() {
           <select
             value={pick}
             onChange={(event) => setPick(event.target.value)}
-            className="rounded-medium border border-default-300 px-3 py-2 text-small"
+            className="rounded-lg border border-border px-3 py-2 text-sm"
           >
             <option value="">— เลือกบัญชีที่ผูก LINE แล้ว —</option>
             {remaining.map((person) => (
@@ -403,7 +403,7 @@ function DigestCard() {
             type="button"
             onClick={() => pick && add.mutate(pick)}
             disabled={busy || !pick}
-            className="rounded-medium border border-default-300 px-3 py-2 text-small disabled:opacity-60"
+            className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
           >
             เพิ่มผู้รับ
           </button>
@@ -411,13 +411,13 @@ function DigestCard() {
       </div>
 
       {sentToday.length > 0 ? (
-        <p className="mt-3 text-tiny text-default-600">
+        <p className="mt-3 text-xs text-muted">
           วันนี้: {sentToday.map((row) => `${row.status} ${new Date(row.sentAt).toLocaleTimeString("th-TH")}`).join(" · ")}
         </p>
       ) : null}
 
-      {notice ? <p className="mt-3 text-tiny text-default-600">{notice}</p> : null}
-      <p className="mt-2 text-tiny text-default-500">
+      {notice ? <p className="mt-3 text-xs text-muted">{notice}</p> : null}
+      <p className="mt-2 text-xs text-muted">
         {settings.source === "stored"
           ? `แก้ไขล่าสุด ${settings.updatedAt ? new Date(settings.updatedAt).toLocaleString("th-TH") : "-"}`
           : "ยังไม่เคยตั้งค่า — ค่าเริ่มต้น 07:00 และปิดอยู่"}

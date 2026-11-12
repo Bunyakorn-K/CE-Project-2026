@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Button } from "@heroui/react";
 import type { ReactNode } from "react";
 import { useAuth } from "../atoms/auth";
 import { apiUrl } from "../api/client";
@@ -33,7 +34,17 @@ function NavIcon({ name }: { name: NavIconName }) {
 }
 
 function NavigationLink({ item }: { item: NavItem }) {
-  return <Link to={item.to} className="nav-link" activeOptions={{ exact: item.to === "/admin" }} activeProps={{ "aria-current": "page", "data-active": "true" }}><NavIcon name={item.icon} /><span>{item.label}</span></Link>;
+  return (
+    <Link
+      to={item.to}
+      className="nav-link inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface hover:text-foreground data-[active=true]:bg-surface data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+      activeOptions={{ exact: item.to === "/admin" }}
+      activeProps={{ "aria-current": "page", "data-active": "true" }}
+    >
+      <NavIcon name={item.icon} />
+      <span>{item.label}</span>
+    </Link>
+  );
 }
 
 /**
@@ -117,25 +128,47 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="app-shell">
-      <nav className="app-topbar" aria-label="เมนูหลัก">
-        <div className="app-topbar-inner">
-          <Link to="/dashboard" className="brand-lockup" aria-label="LaundryTwin ภาพรวมการดำเนินงาน">
-            <span className="brand-symbol brand-symbol--text">LT</span>
-            <span><span className="brand-name">LaundryTwin</span><span className="brand-context">Operations workspace</span></span>
+    <div className="app-shell min-h-screen bg-background text-foreground">
+      <header className="app-topbar sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="app-topbar-inner mx-auto flex h-[72px] max-w-7xl items-center gap-6 px-6 max-[639px]:h-[64px] max-[639px]:px-4">
+          <Link to="/dashboard" className="brand-lockup flex min-w-max items-center gap-3" aria-label="LaundryTwin ภาพรวมการดำเนินงาน">
+            <span className="grid size-9 place-items-center rounded-xl bg-accent text-xs font-black tracking-widest text-accent-foreground">
+              LT
+            </span>
+            <span className="grid">
+              <span className="text-base font-semibold leading-tight tracking-tight">LaundryTwin</span>
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted max-[639px]:hidden">Operations workspace</span>
+            </span>
           </Link>
-          <div className="primary-nav">{visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}</div>
-          <div className="account-actions">
-            <span className="account-name">{user?.name}</span>
-            <button type="button" onClick={() => void handleSignOut()} className="signout-button" aria-label="ออกจากระบบ"><span>ออกจากระบบ</span><NavIcon name="logout" /></button>
-            <details className="mobile-nav">
-              <summary className="mobile-nav-summary" aria-label="เปิดเมนู"><NavIcon name="menu" /><span>เมนู</span></summary>
-              <div className="mobile-nav-panel">{visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}</div>
+
+          <nav className="primary-nav flex flex-1 items-center gap-1" aria-label="เมนูหลัก">
+            {visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}
+          </nav>
+
+          <div className="account-actions ml-auto flex items-center gap-2">
+            <span className="account-name max-w-[130px] truncate text-sm text-muted">{user?.name}</span>
+            <Button
+              variant="ghost"
+              size="md"
+              className="signout-button"
+              aria-label="ออกจากระบบ"
+              onPress={() => void handleSignOut()}
+            >
+              <span className="max-[639px]:hidden">ออกจากระบบ</span>
+              <NavIcon name="logout" />
+            </Button>
+            <details className="mobile-nav relative">
+              <summary className="mobile-nav-summary inline-flex size-9 cursor-pointer list-none items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground [&::-webkit-details-marker]:hidden" aria-label="เปิดเมนู">
+                <NavIcon name="menu" />
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+10px)] grid min-w-[210px] gap-1 rounded-xl border border-border bg-overlay p-2 shadow-overlay">
+                {visibleItems.map((item) => <NavigationLink key={item.to} item={item} />)}
+              </div>
             </details>
           </div>
         </div>
-      </nav>
-      <main className="content-frame">{children}</main>
+      </header>
+      <main className="mx-auto w-full max-w-7xl px-6 py-8 max-[639px]:px-4">{children}</main>
     </div>
   );
 }

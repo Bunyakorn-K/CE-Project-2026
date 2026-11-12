@@ -333,29 +333,29 @@ function DashboardPage() {
   });
 
   return (
-    <div className="page-content">
+    <div className="grid gap-6">
       <Tabs
-        className="page-tabs"
+        className="grid gap-6"
         selectedKey={view}
         onSelectionChange={(key) => {
           const nextView = String(key);
           if (nextView === "dashboard" || nextView === "twin") applyContext({ view: nextView });
         }}
       >
-        <section className="surface-card surface-card--dark">
-          <div className="page-header">
+        <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
+          <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
             <div>
               <h1>ภาพรวมการดำเนินงาน</h1>
               <p>ติดตามผลประกอบการและหลักฐานสถานะเครื่องในช่วงเวลาที่เลือก</p>
-              <div className="data-context header-data-context" aria-live="polite">
-                <span className="source-pill">{sourceLabel(activeSource)}</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-4" aria-live="polite">
+                <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(activeSource)}</span>
                 <span>{availabilityLabel(activeAvailability)}</span>
                 {activeRange && <strong>{formatDate(activeRange.from)} — {formatDate(activeRange.to)}</strong>}
                 <span>ดึงเมื่อ {formatDateTime(activeFetchedAt)}</span>
               </div>
             </div>
-            <Tabs.ListContainer className="view-tabs-container">
-              <Tabs.List className="view-switcher" aria-label="เลือกมุมมอง">
+            <Tabs.ListContainer className="min-w-[260px] max-w-[300px] max-[639px]:w-full max-[639px]:min-w-0">
+              <Tabs.List className="flex w-full max-w-[300px] items-center gap-1.5" aria-label="เลือกมุมมอง">
                 <Tabs.Tab id="dashboard">ภาพรวม<Tabs.Indicator /></Tabs.Tab>
                 <Tabs.Tab id="twin">Digital Twin<Tabs.Indicator /></Tabs.Tab>
               </Tabs.List>
@@ -363,8 +363,8 @@ function DashboardPage() {
           </div>
         </section>
 
-        <section className="filter-panel" aria-label="ตัวกรองข้อมูล">
-          <div className="filter-field filter-field--branch">
+        <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-surface md:grid-cols-4" aria-label="ตัวกรองข้อมูล">
+          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted md:col-span-1">
             <label htmlFor="dashboard-branch">สาขา</label>
             <select
               id="dashboard-branch"
@@ -376,15 +376,15 @@ function DashboardPage() {
               {(branchesQuery.data?.branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
           </div>
-          <div className="filter-field">
+          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
             <label htmlFor="dashboard-from">ตั้งแต่วันที่</label>
             <input id="dashboard-from" type="date" value={range.from} max={range.to} onChange={(event) => applyContext({ from: event.target.value })} />
           </div>
-          <div className="filter-field">
+          <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted">
             <label htmlFor="dashboard-to">ถึงวันที่</label>
             <input id="dashboard-to" type="date" value={range.to} min={range.from} onChange={(event) => applyContext({ to: event.target.value })} />
           </div>
-          <div className="range-presets" role="group" aria-label="เลือกช่วงเวลาที่ใช้บ่อย">
+          <div className="range-presets col-span-full flex flex-wrap gap-2" role="group" aria-label="เลือกช่วงเวลาที่ใช้บ่อย">
             {RANGE_PRESETS.map((preset) => {
               const presetDates = presetRange(preset.days);
               const active = range.from === presetDates.from && range.to === presetDates.to;
@@ -392,7 +392,7 @@ function DashboardPage() {
                 <button
                   key={preset.id}
                   type="button"
-                  className={`secondary-button${active ? " secondary-button--active" : ""}`}
+                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50${active ? " ring-2 ring-focus" : ""}`}
                   aria-pressed={active}
                   onClick={() => applyContext({ ...presetDates })}
                 >
@@ -401,59 +401,59 @@ function DashboardPage() {
               );
             })}
           </div>
-          <p className="filter-note" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์ · ช่วงที่เลือกถูกเก็บไว้ใน URL เพื่อกลับมาดูซ้ำหรือแชร์ได้</p>
+          <p className="col-span-full text-[11px] leading-relaxed text-muted" role="status">วันที่ใช้รูปแบบ YYYY-MM-DD และส่งขอบเขตสาขาไปยังเซิร์ฟเวอร์ · ช่วงที่เลือกถูกเก็บไว้ใน URL เพื่อกลับมาดูซ้ำหรือแชร์ได้</p>
         </section>
 
-        <Tabs.Panel id="dashboard" className="dashboard-panel">
-          {!validRange && <div className="error-message">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
+        <Tabs.Panel id="dashboard" className="grid gap-6">
+          {!validRange && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
           {/* The one error path on this page that offered no way forward: a
               failed branch list left the filter permanently empty with nothing to
               retry, while every sibling query had a button. */}
           {branchesQuery.isError && (
-            <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+            <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground flex flex-wrap items-center gap-3" role="alert">
               <span>ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</span>
-              <button type="button" className="secondary-button" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
+              <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
             </div>
           )}
-          {dashQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดข้อมูลแดชบอร์ด</div>}
+          {dashQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดข้อมูลแดชบอร์ด</div>}
           {dashQuery.isError && (
-            <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+            <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground flex flex-wrap items-center gap-3" role="alert">
               <span>ไม่สามารถโหลดข้อมูลแดชบอร์ดได้: {dashQuery.error.message}</span>
-              <button type="button" className="secondary-button" onClick={() => void dashQuery.refetch()}>ลองใหม่</button>
+              <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onClick={() => void dashQuery.refetch()}>ลองใหม่</button>
             </div>
           )}
           {dashData && (
             <>
-              <div className="data-context evidence-strip" aria-live="polite">
-                <span className="source-pill">{sourceLabel(dashQuery.data?.source ?? null)}</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted rounded-lg border border-border bg-surface-secondary px-3.5 py-3" aria-live="polite">
+                <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(dashQuery.data?.source ?? null)}</span>
                 <span>{availabilityLabel(dashQuery.data?.availability ?? null)}</span>
                 <strong>{formatDate(dashData.from)} — {formatDate(dashData.to)}</strong>
                 <span>{usageRowsLabel(dashData.usageRowsInRange)}</span>
                 <span>ดึงเมื่อ {formatDateTime(dashQuery.data?.fetchedAt ?? null)}</span>
               </div>
-              {emptyWindowMessage && <div className="state-message">{emptyWindowMessage}</div>}
+              {emptyWindowMessage && <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">{emptyWindowMessage}</div>}
 
               {/* Ahead of the KPI cards, because it is the sentence an
                   executive reads first — and the attribution note ahead of
                   both, because it qualifies every cycle count on this page. */}
               {attribution.kind !== "none" && (
-                <div className="state-message" role="status">{attribution.message}</div>
+                <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted" role="status">{attribution.message}</div>
               )}
 
               {summaryQuery.isError && (
-                <div className="state-message" role="status">สรุปผู้บริหารไม่พร้อมใช้งาน: {summaryQuery.error.message}</div>
+                <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted" role="status">สรุปผู้บริหารไม่พร้อมใช้งาน: {summaryQuery.error.message}</div>
               )}
               {summary.kind === "text" && (
-                <section className="surface-card" aria-label="สรุปสำหรับผู้บริหาร">
-                  <div className="section-heading">
+                <section className="rounded-xl border border-border bg-surface p-6 shadow-surface" aria-label="สรุปสำหรับผู้บริหาร">
+                  <div className="flex items-baseline justify-between gap-3">
                     <div>
                       <h2>สรุปสำหรับผู้บริหาร</h2>
-                      <p className="section-description">เรียงจากตัวเลขชุดเดียวกับการ์ดด้านล่างด้วยกฎคงที่ ไม่ใช่ข้อความที่โมเดลเขียน</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-muted">เรียงจากตัวเลขชุดเดียวกับการ์ดด้านล่างด้วยกฎคงที่ ไม่ใช่ข้อความที่โมเดลเขียน</p>
                     </div>
                   </div>
-                  <p className="executive-summary">{summary.text}</p>
-                  <div className="data-context" aria-live="polite">
-                    <span className="source-pill">{summarySourceLabel(summaryQuery.data?.source)}</span>
+                  <p className="max-w-[62ch] text-[17px] font-medium leading-relaxed">{summary.text}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted" aria-live="polite">
+                    <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{summarySourceLabel(summaryQuery.data?.source)}</span>
                     <span>{summaryAvailabilityLabel(summaryQuery.data?.availability)}</span>
                     {summaryQuery.data?.range && (
                       <strong>{formatDate(summaryQuery.data.range.from)} — {formatDate(summaryQuery.data.range.to)}</strong>
@@ -463,7 +463,7 @@ function DashboardPage() {
                 </section>
               )}
 
-              <section className="kpi-grid" aria-label="ตัวชี้วัดหลัก">
+              <section className="kpi-grid grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1" aria-label="ตัวชี้วัดหลัก">
                 <KpiCard cell={kpis.revenue} />
                 <KpiCard cell={kpis.cycles} />
                 <KpiCard cell={kpis.inventory} />
@@ -474,20 +474,20 @@ function DashboardPage() {
                   totals against the named window, never as a forecast. An
                   unavailable comparison says so rather than omitting the row,
                   so its absence is not read as "no change". */}
-              <div className="comparison-strip" aria-live="polite">
-                <span className="comparison-basis">{comparisonBasis || "ช่วงก่อนหน้าคำนวณไม่ได้"}</span>
-                {!comparisonAvailable && <span className="comparison-note">เทียบช่วงก่อนหน้าไม่ได้ · ช่วงวันที่ยาวเกินขอบเขตที่ระบบรองรับ</span>}
+              <div className="comparison-strip flex flex-wrap items-center gap-x-3.5 gap-y-2 text-[11px] leading-relaxed" aria-live="polite">
+                <span className="comparison-basis font-medium text-foreground">{comparisonBasis || "ช่วงก่อนหน้าคำนวณไม่ได้"}</span>
+                {!comparisonAvailable && <span className="comparison-note text-muted">เทียบช่วงก่อนหน้าไม่ได้ · ช่วงวันที่ยาวเกินขอบเขตที่ระบบรองรับ</span>}
                 {comparisonAvailable && priorQuery.isError && (
-                  <span className="comparison-note">โหลดยอดช่วงก่อนหน้าไม่สำเร็จ: {priorQuery.error.message}</span>
+                  <span className="comparison-note text-muted">โหลดยอดช่วงก่อนหน้าไม่สำเร็จ: {priorQuery.error.message}</span>
                 )}
-                {comparisonAvailable && priorQuery.isLoading && <span className="comparison-note">กำลังโหลดยอดช่วงก่อนหน้า</span>}
+                {comparisonAvailable && priorQuery.isLoading && <span className="comparison-note text-muted">กำลังโหลดยอดช่วงก่อนหน้า</span>}
                 {comparisonAvailable && !priorQuery.isLoading && !priorQuery.isError && cycleDeltas.length === 0 && (
-                  <span className="comparison-note">ไม่มียอดในช่วงก่อนหน้าให้เทียบ</span>
+                  <span className="comparison-note text-muted">ไม่มียอดในช่วงก่อนหน้าให้เทียบ</span>
                 )}
                 {cycleDeltas.map((delta) => (
                   <span
                     key={delta.label}
-                    className={`comparison-delta comparison-delta--${delta.kind === "changed" ? delta.direction : "flat"}`}
+                    className={`comparison-delta comparison-delta--${delta.kind === "changed" ? delta.direction : "flat"} inline-flex items-center rounded-full border px-2.5 py-1 font-semibold ${delta.kind === "changed" ? (delta.direction === "up" ? "border-success/30 bg-success-soft text-success-soft-foreground" : "border-warning/30 bg-warning-soft text-warning-soft-foreground") : "border-border bg-surface-secondary text-muted"}`}
                   >
                     {delta.label}
                   </span>
@@ -506,14 +506,14 @@ function DashboardPage() {
               />
 
               <section>
-                <div className="section-heading">
+                <div className="flex items-baseline justify-between gap-3">
                   <div>
                     <h2>ผลประกอบการรายสาขา</h2>
-                    <p className="section-description">รายการสถานะ “กำลังใช้งาน” มาจาก usage และไม่ใช่การวัดสถานะทันที</p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted">รายการสถานะ “กำลังใช้งาน” มาจาก usage และไม่ใช่การวัดสถานะทันที</p>
                   </div>
-                  <div className="section-heading-actions">
+                  <div className="flex flex-wrap items-center gap-3">
                     <span>{dashData.branches.length.toLocaleString("th-TH")} สาขาในขอบเขตข้อมูล</span>
-                    <div className="filter-field filter-field--sort">
+                    <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted min-w-0">
                       <label htmlFor="branch-sort">เรียงตาม</label>
                       <select
                         id="branch-sort"
@@ -528,36 +528,36 @@ function DashboardPage() {
                   </div>
                 </div>
                 {dashData.branches.length > 0 ? (
-                  <div className="branch-grid">{sortBranches(dashData.branches, branchSort).map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
+                  <div className="grid grid-cols-3 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">{sortBranches(dashData.branches, branchSort).map((branch) => <BranchCard key={branch.branchId} branch={branch} presence={presence} />)}</div>
                 ) : (
-                  <div className="state-message">ไม่มีข้อมูลผลประกอบการในช่วงเวลานี้</div>
+                  <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีข้อมูลผลประกอบการในช่วงเวลานี้</div>
                 )}
               </section>
             </>
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel id="twin" className="dashboard-panel">
+        <Tabs.Panel id="twin" className="grid gap-6">
           <section>
-            <div className="section-heading">
+            <div className="flex items-baseline justify-between gap-3">
               <div>
                 <h2>ผังเครื่อง · Digital Twin</h2>
-                <p className="section-description">สถานะและรอบคำนวณจากแถว usage ไม่ใช่ live telemetry</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted">สถานะและรอบคำนวณจากแถว usage ไม่ใช่ live telemetry</p>
               </div>
               <span>รีเฟรช snapshot ทุก 60 วินาที</span>
             </div>
-            {!validRange && <div className="error-message">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
-            {twinQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดผังเครื่อง</div>}
+            {!validRange && <div className="error-message rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground">เลือกช่วงวันที่ให้ถูกต้องก่อนโหลดข้อมูล</div>}
+            {twinQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดผังเครื่อง</div>}
             {twinQuery.isError && (
-              <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+              <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground flex flex-wrap items-center gap-3" role="alert">
                 <span>ไม่สามารถโหลดผังเครื่องได้: {twinQuery.error.message}</span>
-                <button type="button" className="secondary-button" onClick={() => void twinQuery.refetch()}>ลองใหม่</button>
+                <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onClick={() => void twinQuery.refetch()}>ลองใหม่</button>
               </div>
             )}
             {twinData && (
               <>
-                <div className="data-context evidence-strip" aria-live="polite">
-                  <span className="source-pill">{sourceLabel(twinData.source)}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted rounded-lg border border-border bg-surface-secondary px-3.5 py-3" aria-live="polite">
+                  <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(twinData.source)}</span>
                   <span>{availabilityLabel(twinData.availability)}</span>
                   <strong>{formatDate(twinData.range.from)} — {formatDate(twinData.range.to)}</strong>
                   <span>ดึงเมื่อ {formatDateTime(twinData.fetchedAt)}</span>
@@ -574,11 +574,11 @@ function DashboardPage() {
 
 function KpiCard({ cell }: { cell: MetricCell }) {
   return (
-    <Card variant="transparent" className="surface-card kpi-card">
+    <Card variant="transparent" className="kpi-card min-h-[132px] rounded-xl border border-border bg-surface p-5 shadow-surface">
       <Card.Content>
-        <span className="kpi-label">{cell.label}</span>
-        <strong className={`kpi-value${cell.textValue ? " kpi-value--text" : ""}`}>{cell.value}</strong>
-        <span className="kpi-detail">{cell.detail}</span>
+        <span className="block text-xs font-medium text-muted">{cell.label}</span>
+        <strong className={`mt-3 block font-mono text-3xl font-semibold tabular-nums tracking-tight${cell.textValue ? " font-sans text-lg" : ""}`}>{cell.value}</strong>
+        <span className="mt-2 block text-xs text-muted">{cell.detail}</span>
       </Card.Content>
     </Card>
   );
@@ -588,28 +588,26 @@ function BranchCard({ branch, presence }: { branch: DashboardData["branches"][0]
   const cells = branchStatCells(branch, presence, formatCount, baht);
   const utilization = utilizationView(branch, presence);
   return (
-    <Card variant="transparent" className="surface-card branch-card">
+    <Card variant="transparent" className="branch-card rounded-xl border border-border bg-surface p-5 shadow-surface">
       <Card.Content>
-        <div className="branch-card-head">
-          <div>
-            <span className="branch-code">{branch.branchId.slice(0, 8)}</span>
-            <h3>{branch.branchName}</h3>
-          </div>
+        <div className="grid gap-2">
+          <span className="font-mono text-[11px] text-muted">{branch.branchId.slice(0, 8)}</span>
+          <h3 className="text-sm font-semibold leading-snug">{branch.branchName}</h3>
           {/* The color follows the measured evidence; the text carries the number,
               so the meaning survives without color. */}
-          <span className={`status-pill ${cells.statusClassName}`}>{cells.statusPill}</span>
+          <span className={`status-pill w-fit ${cells.statusClassName}`}>{cells.statusPill}</span>
         </div>
-        <div className="branch-stats">
+        <div className="stat-grid my-5 grid grid-cols-2 gap-x-3 gap-y-3.5">
           <div><span>{cells.revenue.label}</span><strong>{cells.revenue.value}</strong></div>
           <div><span>{cells.cycles.label}</span><strong>{cells.cycles.value}</strong></div>
           <div><span>{cells.machines.label}</span><strong>{cells.machines.value}</strong></div>
           <div><span>{cells.running.label}</span><strong>{cells.running.value}</strong></div>
         </div>
         {utilization.kind === "unavailable" ? (
-          <div className="utilization-unavailable">{utilization.message}</div>
+          <div className="text-[11px] leading-snug text-muted">{utilization.message}</div>
         ) : (
           <div
-            className="utilization-track"
+            className="h-1.5 overflow-hidden rounded-full bg-surface-tertiary"
             role="progressbar"
             aria-label={utilization.ariaLabel}
             aria-valuemin={0}
@@ -636,23 +634,23 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
   const floorCycles = machineFloorCycles(machines);
   const running = machines.filter((machine) => machine.status === "running").length;
 
-  if (machines.length === 0) return <div className="state-message">ไม่พบเครื่องใน Digital Twin สำหรับขอบเขตและช่วงเวลานี้</div>;
+  if (machines.length === 0) return <div className="state-message rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่พบเครื่องใน Digital Twin สำหรับขอบเขตและช่วงเวลานี้</div>;
 
   return (
-    <div className="machine-floor">
-      <div className="machine-floor-summary">
+    <div className="grid gap-5">
+      <div className="stat-grid stat-grid--cards grid grid-cols-4 gap-3 max-[1023px]:grid-cols-2">
         <div><span>เครื่องทั้งหมด</span><strong>{machines.length}</strong></div>
         <div><span>สถานะกำลังใช้งาน</span><strong>{running}</strong></div>
         <div>
           <span>รอบที่นับได้</span>
           <strong>{floorCycles.value}</strong>
-          <span className="machine-floor-coverage">{floorCycles.coverage}</span>
+          <span className="text-[10px] font-medium text-muted">{floorCycles.coverage}</span>
         </div>
         <div><span>สาขา</span><strong>{branches.length}</strong></div>
       </div>
       {branches.map(([branchKey, branchMachines]) => (
-        <section className="machine-floor-branch" key={branchKey}>
-          <div className="machine-floor-branch-head">
+        <section className="grid gap-4" key={branchKey}>
+          <div className="flex items-baseline justify-between gap-3">
             <h3>{branchMachines[0]?.branchName ?? "สาขาที่ไม่ระบุ"}</h3>
             <span>{branchMachines.length.toLocaleString("th-TH")} เครื่อง</span>
           </div>
@@ -671,9 +669,9 @@ function MachineFloor({ machines }: { machines: Machine[] }) {
 function MachineGroup({ title, machines }: { title: string; machines: Machine[] }) {
   if (machines.length === 0) return null;
   return (
-    <div className="machine-floor-group">
-      <div className="machine-floor-group-label"><strong>{title}</strong><span>{machines.length.toLocaleString("th-TH")} เครื่อง</span></div>
-      <div className="machine-floor-grid">
+    <div className="grid gap-2.5">
+      <div className="flex items-baseline justify-between gap-3"><strong>{title}</strong><span>{machines.length.toLocaleString("th-TH")} เครื่อง</span></div>
+      <div className="grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
         {machines.map((machine) => <MachineCard key={`${machine.branchId ?? "unknown-branch"}-${machine.machineId ?? machine.machineCode}`} machine={machine} />)}
       </div>
     </div>
@@ -685,12 +683,12 @@ function MachineCard({ machine }: { machine: Machine }) {
   const cycles = machineCycleFacts(machine);
   const freshness = machineFreshnessRow(machineAvailability(machine.freshness, machine.branchOpenState));
   return (
-    <Card variant="transparent" className="surface-card machine-card machine-floor-card">
+    <Card variant="transparent" className="machine-card machine-floor-card min-h-[168px] rounded-xl border border-border bg-surface p-5 shadow-surface">
       <Card.Content>
-        <div className="machine-card-head">
+        <div className="machine-card-head flex items-start justify-between gap-3">
           <div>
-            <span className="machine-code">{machine.machineCode}</span>
-            <span className="machine-kind">{machineKindLabel(machine.machineKind)}</span>
+            <span className="mb-1 block text-xl font-semibold text-accent">{machine.machineCode}</span>
+            <span className="text-[11px] text-muted">{machineKindLabel(machine.machineKind)}</span>
           </div>
           <span className={`status-pill ${status.className}`}>{status.label}</span>
         </div>
@@ -698,16 +696,16 @@ function MachineCard({ machine }: { machine: Machine }) {
             the last usage row said, which may be days old. Without this pill a
             six-day-old status renders exactly like a live one. */}
         {freshness && (
-          <div className="machine-card-status-row">
+          <div className="machine-card-status-row mt-3.5 flex flex-wrap items-center gap-2 text-[11px] text-muted">
             <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>
           </div>
         )}
-        <p className="machine-card-branch">{machine.branchName}</p>
-        <div className="machine-facts machine-floor-facts">
+        <p className="mt-4 text-xs text-muted">{machine.branchName}</p>
+        <div className="stat-grid mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3.5">
           <div><span>รอบในช่วง</span><strong>{cycles.value}</strong></div>
           <div><span>ที่มาของจำนวนรอบ</span><strong>{cycles.source}</strong></div>
         </div>
-        <p className="kpi-detail">ใช้งานล่าสุด {machine.lastActiveAt ? formatDateTime(machine.lastActiveAt) : "ไม่มีข้อมูล"}</p>
+        <p className="mt-2 block text-xs text-muted">ใช้งานล่าสุด {machine.lastActiveAt ? formatDateTime(machine.lastActiveAt) : "ไม่มีข้อมูล"}</p>
       </Card.Content>
     </Card>
   );

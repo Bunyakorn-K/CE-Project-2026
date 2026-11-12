@@ -90,8 +90,8 @@ function LineMenuPage() {
   if (!isOwner) {
     return (
       <div className="mx-auto w-full max-w-2xl p-6">
-        <p className="text-default-600">หน้านี้ใช้ได้เฉพาะเจ้าของระบบ</p>
-        <Link to="/dashboard" className="mt-3 inline-block text-primary underline">
+        <p className="text-muted">หน้านี้ใช้ได้เฉพาะเจ้าของระบบ</p>
+        <Link to="/dashboard" className="mt-3 inline-block text-accent underline">
           กลับแดชบอร์ด
         </Link>
       </div>
@@ -99,7 +99,7 @@ function LineMenuPage() {
   }
 
   if (query.isLoading) {
-    return <div className="flex min-h-[40vh] items-center justify-center text-default-500">กำลังโหลด…</div>;
+    return <div className="flex min-h-[40vh] items-center justify-center text-muted">กำลังโหลด…</div>;
   }
 
   if (query.isError || !query.data) {
@@ -114,16 +114,16 @@ function LineMenuPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 sm:p-6">
-      <Link to="/admin" className="text-small text-default-500 underline">
+      <Link to="/admin" className="text-sm text-muted underline">
         ← กลับหน้าผู้ดูแล
       </Link>
       <h1 className="mt-3 text-2xl font-bold">เมนู LINE ตามบทบาท</h1>
-      <p className="mt-1 text-small text-default-500">
+      <p className="mt-1 text-sm text-muted">
         แผงเมนูเหนือคีย์บอร์ดในแชท LINE — แต่ละคนเห็นเมนูตามสิทธิ์ของตัวเอง (ไม่กินโควตาข้อความ)
       </p>
 
       {!lineConfigured || !liffConfigured ? (
-        <p className="mt-4 rounded-large border border-warning p-3 text-small text-warning">
+        <p className="mt-4 rounded-xl border border-warning p-3 text-sm text-warning">
           {!lineConfigured ? "ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN · " : ""}
           {!liffConfigured ? "ยังไม่ได้ตั้งค่า LIFF_ID (ปุ่มจะเปิดไปไม่ได้)" : ""}
         </p>
@@ -131,14 +131,14 @@ function LineMenuPage() {
 
       <section className="mt-5 space-y-3">
         {menus.map((menu) => (
-          <div key={menu.key} className="rounded-large border border-default-200 p-4">
+          <div key={menu.key} className="rounded-xl border border-border p-4">
             <div className="flex items-baseline justify-between">
-              <h2 className="text-small font-semibold">{ROLE_LABEL[menu.key] ?? menu.key}</h2>
-              <span className="text-tiny text-default-500">{menu.chatBarText}</span>
+              <h2 className="text-sm font-semibold">{ROLE_LABEL[menu.key] ?? menu.key}</h2>
+              <span className="text-xs text-muted">{menu.chatBarText}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {menu.labels.map((label, index) => (
-                <span key={`${menu.key}-${label}`} className="rounded-medium bg-default-100 px-2 py-1 text-tiny">
+                <span key={`${menu.key}-${label}`} className="rounded-lg bg-surface-secondary px-2 py-1 text-xs">
                   {label}
                   {menu.areas[index]?.action.type === "message" ? " (ข้อความ)" : ""}
                 </span>
@@ -153,14 +153,14 @@ function LineMenuPage() {
           type="button"
           onClick={() => sync.mutate()}
           disabled={sync.isPending || !lineConfigured || !liffConfigured}
-          className="rounded-medium bg-primary px-4 py-2 text-small font-semibold text-primary-foreground disabled:opacity-60"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
           {sync.isPending ? "กำลังซิงก์…" : "ซิงก์เมนูกับ LINE"}
         </button>
-        {notice ? <span className="text-tiny text-default-600">{notice}</span> : null}
+        {notice ? <span className="text-xs text-muted">{notice}</span> : null}
       </div>
 
-      <p className="mt-6 text-tiny text-default-500">
+      <p className="mt-6 text-xs text-muted">
         {syncedAt
           ? `ซิงก์ล่าสุด ${new Date(syncedAt).toLocaleString("th-TH")}`
           : "ยังไม่เคยซิงก์ — เมนูจะยังไม่ปรากฏในแชท"}

@@ -102,15 +102,15 @@ function MachinesPage() {
   });
 
   return (
-    <div className="page-content">
-      <section className="surface-card surface-card--dark">
-        <div className="page-header">
+    <div className="grid gap-6">
+      <section className="rounded-xl border border-border bg-surface p-6 shadow-surface">
+        <div className="page-header flex items-end justify-between gap-5 max-[639px]:flex-col max-[639px]:items-start">
           <div>
             <h1>สถานะเครื่องซักผ้า</h1>
             <p>ดู snapshot ล่าสุด แหล่งที่มา ความสด และค่าที่เครื่องรายงานโดยไม่อ้างว่าเป็นข้อมูลทันที</p>
           </div>
           {branches.length > 0 && (
-            <div className="filter-field header-filter-field">
+            <div className="grid min-w-0 gap-1.5 text-xs font-medium text-muted w-full max-w-[260px]">
               <label htmlFor="machines-branch">สาขา</label>
               <select id="machines-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -120,40 +120,40 @@ function MachinesPage() {
         </div>
       </section>
 
-      {branchesQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลดสาขา</div>}
+      {branchesQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลดสาขา</div>}
       {branchesQuery.isError && (
-        <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+        <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground flex flex-wrap items-center gap-3" role="alert">
           <span>ไม่สามารถโหลดรายชื่อสาขาได้: {branchesQuery.error.message}</span>
-          <button type="button" className="secondary-button" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
+          <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onClick={() => void branchesQuery.refetch()}>ลองใหม่</button>
         </div>
       )}
-      {branchesQuery.data && branches.length === 0 && <div className="state-message">ไม่มีสาขาที่บัญชีนี้ได้รับสิทธิ์</div>}
-      {liveQuery.isLoading && <div className="loading-state compact" role="status" aria-live="polite"><span className="loading-orbit" />กำลังโหลด snapshot เครื่อง</div>}
+      {branchesQuery.data && branches.length === 0 && <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่มีสาขาที่บัญชีนี้ได้รับสิทธิ์</div>}
+      {liveQuery.isLoading && <div className="flex min-h-[60vh] items-center justify-center gap-2.5 text-sm text-muted min-h-[150px]" role="status" aria-live="polite"><span className="size-4 animate-spin rounded-full border-2 border-border border-t-accent" />กำลังโหลด snapshot เครื่อง</div>}
       {liveQuery.isError && (
-        <div className="error-message flex flex-wrap items-center gap-3" role="alert">
+        <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground flex flex-wrap items-center gap-3" role="alert">
           <span>ไม่สามารถโหลดข้อมูลเครื่องได้: {liveQuery.error.message}</span>
-          <button type="button" className="secondary-button" onClick={() => void liveQuery.refetch()}>ลองใหม่</button>
+          <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-default px-4 text-sm font-medium text-default-foreground transition-colors hover:bg-default-hover disabled:opacity-50" onClick={() => void liveQuery.refetch()}>ลองใหม่</button>
         </div>
       )}
 
       {liveQuery.data && (
         <section>
-          <div className="section-heading">
+          <div className="flex items-baseline justify-between gap-3">
             <div>
               <h2>ภาพรวมเครื่อง</h2>
-              <p className="section-description">รีเฟรช snapshot ทุก 60 วินาที ไม่ใช่ live feed</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">รีเฟรช snapshot ทุก 60 วินาที ไม่ใช่ live feed</p>
             </div>
-            <div className="data-context" aria-live="polite">
-              <span className="source-pill">{sourceLabel(liveQuery.data.source)}</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted" aria-live="polite">
+              <span className="source-pill inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-soft-foreground">{sourceLabel(liveQuery.data.source)}</span>
               <span>ดึงเมื่อ {fmtTime(liveQuery.data.fetchedAt)}</span>
               {liveQuery.isFetching && <span>กำลังรีเฟรช</span>}
             </div>
           </div>
           <StateSourceNotice machines={liveQuery.data.machines} />
           {liveQuery.data.machines.length > 0 ? (
-            <div className="machine-grid">{liveQuery.data.machines.map((machine) => <MachineCard key={machine.id} machine={machine} />)}</div>
+            <div className="grid grid-cols-4 gap-4 max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">{liveQuery.data.machines.map((machine) => <MachineCard key={machine.id} machine={machine} />)}</div>
           ) : (
-            <div className="state-message">ไม่พบเครื่องในสาขานี้</div>
+            <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">ไม่พบเครื่องในสาขานี้</div>
           )}
         </section>
       )}
@@ -172,21 +172,21 @@ function MachineCard({ machine }: { machine: Machine }) {
   const freshness = liveFreshnessRow(availability);
   const fallback = freshnessMeta(availability);
   return (
-    <Card variant="transparent" className="surface-card machine-card">
+    <Card variant="transparent" className="machine-card min-h-[168px] rounded-xl border border-border bg-surface p-5 shadow-surface">
       <Card.Content>
-        <div className="machine-card-head">
+        <div className="machine-card-head flex items-start justify-between gap-3">
           <div>
-            <span className="machine-code">{machine.code}</span>
-            <span className="machine-kind">{machineKindLabel(machine.kind)}</span>
+            <span className="mb-1 block text-xl font-semibold text-accent">{machine.code}</span>
+            <span className="text-[11px] text-muted">{machineKindLabel(machine.kind)}</span>
           </div>
           <span className={`status-pill ${claim.className}`}>{claim.label}</span>
         </div>
-        <div className="machine-card-status-row">
+        <div className="machine-card-status-row mt-3.5 flex flex-wrap items-center gap-2 text-[11px] text-muted">
           {freshness && <span className={`status-pill ${freshness.className}`}>{freshness.label}</span>}
           <span>สถานะตั้งค่า: {machine.configuredStatus || "ไม่ทราบ"}</span>
         </div>
         {machine.telemetry ? (
-          <div className="machine-facts">
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3.5">
             <div><span>Phase</span><strong>{machine.telemetry.phase ?? "ไม่ทราบ"}</strong></div>
             <div><span>เหลือเวลา</span><strong>{fmtRemaining(machine.telemetry.remainingSeconds ?? machine.remainingSeconds)}</strong></div>
             <div><span>อุณหภูมิ</span><strong>{machine.telemetry.temperatureC === null ? "ไม่ทราบ" : `${machine.telemetry.temperatureC}°C`}</strong></div>
@@ -195,7 +195,7 @@ function MachineCard({ machine }: { machine: Machine }) {
             <div><span>Error</span><strong>{machine.telemetry.errorCode === null ? "ไม่ทราบ" : machine.telemetry.errorCode}</strong></div>
           </div>
         ) : (
-          <div className="state-message">
+          <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">
             {/* Thai from the freshness enum rather than the server's English
                 prose. An unrecognised freshness value falls back to the
                 server's own reason -- showing the source string beats guessing
@@ -206,10 +206,10 @@ function MachineCard({ machine }: { machine: Machine }) {
             {/* The withheld state keeps its history visible without promoting it
                 back to the headline. A card that says only "unknown" would make
                 a technician re-check a machine it can already answer. */}
-            {claim.kind === "withheld" && claim.recordedLabel && <span className="machine-recorded-state"> · {claim.recordedLabel}</span>}
+            {claim.kind === "withheld" && claim.recordedLabel && <span className="text-muted"> · {claim.recordedLabel}</span>}
           </div>
         )}
-        <p className="kpi-detail">พบข้อมูลล่าสุด {fmtTime(machine.lastSeen)}</p>
+        <p className="mt-2 block text-xs text-muted">พบข้อมูลล่าสุด {fmtTime(machine.lastSeen)}</p>
       </Card.Content>
     </Card>
   );
@@ -230,7 +230,7 @@ function StateSourceNotice({ machines }: { machines: Machine[] }) {
   if (sources.length === 0) return null;
   if (!sources.every((source) => !("known" in source) && !source.available)) return null;
   return (
-    <div className="state-message machine-source-notice" role="status">
+    <div className="machine-source-notice rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted mt-3.5" role="status">
       {/* Thai first. The server's own reason stays available per machine on the
           card, but the headline explanation is this product's own claim about
           what it can and cannot see. */}

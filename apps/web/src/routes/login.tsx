@@ -101,24 +101,24 @@ function LoginPage() {
   }
 
   return (
-    <main className="public-page">
-      <Card variant="default" className="public-card">
-        <Card.Header className="public-card-header">
-          <span className="brand-symbol" aria-hidden="true">LT</span>
-          <div><h1>LaundryTwin</h1><p className="public-card-subtitle">Operations workspace สำหรับผู้ดูแลร้านซักผ้าหลายสาขา</p></div>
+    <main className="grid min-h-screen place-items-center bg-background p-6 max-[639px]:p-4">
+      <Card variant="default" className="w-full max-w-[440px] rounded-2xl border border-border bg-surface p-8 shadow-overlay max-[639px]:p-5">
+        <Card.Header className="mb-6 flex items-start gap-3.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-xs font-black tracking-widest text-accent-foreground" aria-hidden="true">LT</span>
+          <div><h1>LaundryTwin</h1><p className="mt-1 text-xs text-muted">Operations workspace สำหรับผู้ดูแลร้านซักผ้าหลายสาขา</p></div>
         </Card.Header>
         <Card.Content>
-          {configLoading && <p className="config-status" role="status">กำลังตรวจสอบโหมดระบบ</p>}
-          {configError && <p className="auth-error" role="status">{configError} · การเข้าสู่ระบบด้วยอีเมลยังใช้ได้</p>}
-          {demoMode && <div className="demo-notice"><strong>Demo mode</strong><span>ระบบกำลังใช้ข้อมูลจำลองสำหรับการทดสอบ ไม่ควรใช้เป็นข้อมูลปฏิบัติการจริง</span></div>}
+          {configLoading && <p className="mb-3 text-xs text-muted" role="status">กำลังตรวจสอบโหมดระบบ</p>}
+          {configError && <p className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-xs text-danger-soft-foreground" role="status">{configError} · การเข้าสู่ระบบด้วยอีเมลยังใช้ได้</p>}
+          {demoMode && <div className="mb-4 grid gap-1 rounded-lg border border-warning/30 bg-warning-soft px-3.5 py-3 text-warning-soft-foreground"><strong>Demo mode</strong><span>ระบบกำลังใช้ข้อมูลจำลองสำหรับการทดสอบ ไม่ควรใช้เป็นข้อมูลปฏิบัติการจริง</span></div>}
 
-          <div className="auth-actions">
-            {demoMode && <Button fullWidth variant="primary" className="primary-button" onPress={() => void onDemoSignIn()} isDisabled={demoLoading}>{demoLoading ? "กำลังเข้าสู่ระบบ Demo…" : "เข้าสู่ระบบ Demo · ข้อมูลจำลอง"}</Button>}
-            <Button fullWidth variant="outline" className="line-button" onPress={() => void onLineSignIn()} isDisabled={lineLoading}>{lineLoading ? "กำลังเชื่อมต่อ LINE…" : "เข้าสู่ระบบด้วย LINE"}</Button>
+          <div className="grid gap-2.5">
+            {demoMode && <Button fullWidth variant="primary" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" onPress={() => void onDemoSignIn()} isDisabled={demoLoading}>{demoLoading ? "กำลังเข้าสู่ระบบ Demo…" : "เข้าสู่ระบบ Demo · ข้อมูลจำลอง"}</Button>}
+            <Button fullWidth variant="outline" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover" onPress={() => void onLineSignIn()} isDisabled={lineLoading}>{lineLoading ? "กำลังเชื่อมต่อ LINE…" : "เข้าสู่ระบบด้วย LINE"}</Button>
           </div>
 
-          <div className="auth-divider">หรือใช้บัญชีอีเมล</div>
-          <Form onSubmit={onSubmit} className="auth-form">
+          <div className="my-5 flex items-center gap-2.5 text-[11px] text-muted">หรือใช้บัญชีอีเมล</div>
+          <Form onSubmit={onSubmit} className="grid gap-3">
             <TextField isRequired name="email" type="email" value={email} onChange={setEmail}>
               <Label>อีเมล</Label>
               <Input autoComplete="email" placeholder="อีเมล" variant="secondary" />
@@ -127,10 +127,10 @@ function LoginPage() {
               <Label>รหัสผ่าน</Label>
               <Input autoComplete="current-password" placeholder="รหัสผ่าน" variant="secondary" />
             </TextField>
-            {error && <p className="auth-error" role="alert">{error}</p>}
-            <Button fullWidth type="submit" variant="secondary" className="secondary-button" isDisabled={loading}>{loading ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบด้วยอีเมล"}</Button>
+            {error && <p className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-xs text-danger-soft-foreground" role="alert">{error}</p>}
+            <Button fullWidth type="submit" variant="primary" isDisabled={loading}>{loading ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบด้วยอีเมล"}</Button>
           </Form>
-          <nav className="public-legal-nav" aria-label="ข้อกำหนดและนโยบาย"><Link to="/privacy">นโยบายความเป็นส่วนตัว</Link><span aria-hidden="true">·</span><Link to="/terms">ข้อกำหนดการใช้งาน</Link></nav>
+          <nav className="mt-5 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="ข้อกำหนดและนโยบาย"><Link to="/privacy">นโยบายความเป็นส่วนตัว</Link><span aria-hidden="true">·</span><Link to="/terms">ข้อกำหนดการใช้งาน</Link></nav>
         </Card.Content>
       </Card>
     </main>
