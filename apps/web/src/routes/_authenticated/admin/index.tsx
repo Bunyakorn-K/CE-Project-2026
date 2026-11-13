@@ -2,9 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { apiErrorMessage, apiUrl } from "../../../lib/api/client";
-import { buildGrantRequest, canSubmitGrant } from "../../../lib/admin-grant";
+import { buildGrantEdit, buildGrantRequest, canSubmitGrant } from "../../../lib/admin-grant";
 import { authAtom } from "../../../lib/atoms/auth";
 import { isOwner as hasOwnerGrant } from "../../../lib/access";
 
@@ -51,6 +51,8 @@ export function AdminHome() {
     enabled: isOwner
   });
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const grantsQuery = useQuery({
     queryKey: ["admin", "grants"],
     queryFn: () => fetchJson<{ grants: Grant[] }>("/api/admin/grants", "ไม่สามารถโหลดสิทธิ์เข้าใช้งานได้"),
@@ -92,6 +94,30 @@ export function AdminHome() {
       return (await response.json()) as { ok: boolean; notified?: "sent" | "failed" | "skipped" };
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "grants"] });
+    }
+  });
+
+  /**
+   * Change what a grant allows, in place.
+   *
+   * Revoking and re-creating was the only way to correct a role or move someone to
+   * another branch, and it leaves the person with no access in between — for an
+   * ordinary event like a manager changing shop.
+   */
+  const editMutation = useMutation({
+    mutationFn: async ({ id, role, branchId }: { id: string; role: Role; branchId: string | null }) => {
+      const response = await fetch(apiUrl(`/api/admin/grants/${encodeURIComponent(id)}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role, branchId })
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response, `แก้ไขสิทธิ์ไม่สำเร็จ (HTTP ${response.status})`));
+      return (await response.json()) as { ok: boolean };
+    },
+    onSuccess: async () => {
+      setEditingId(null);
       await queryClient.invalidateQueries({ queryKey: ["admin", "grants"] });
     }
   });
@@ -160,6 +186,8 @@ export function AdminHome() {
       )}
       {revokeMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">เพิกถอนสิทธิ์ไม่สำเร็จ: {revokeMutation.error.message}</div>}
       {revokeMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">เพิกถอนสิทธิ์แล้ว</div>}
+      {editMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">แก้ไขสิทธิ์ไม่สำเร็จ: {editMutation.error.message}</div>}
+      {editMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">แก้ไขสิทธิ์แล้ว — มีผลทันทีในคำขอถัดไป</div>}
       {grantMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}
       {grantMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">ให้สิทธิ์แล้ว</div>}
 
@@ -214,7 +242,20 @@ export function AdminHome() {
                       <div><span>ขอบเขต</span><strong className={scope.isCode ? "font-mono text-xs text-muted" : "text-sm font-semibold text-foreground"}>{scope.label}</strong></div>
                       <div><span>ให้สิทธิ์เมื่อ</span><strong className="font-mono text-xs text-muted">{formatDate(grant.grantedAt)}</strong></div>
                     </div>
-                    <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50 w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                    {editingId === grant.id ? (
+                      <GrantEditor
+                        grant={grant}
+                        branches={branches}
+                        pending={editMutation.isPending}
+                        onCancel={() => setEditingId(null)}
+                        onSave={(role, branchId) => editMutation.mutate({ id: grant.id, role, branchId })}
+                      />
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" data-grant-edit className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-secondary" onClick={() => setEditingId(grant.id)}>แก้ไขบทบาท/ขอบเขต</button>
+                        <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50 w-fit" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -225,13 +266,33 @@ export function AdminHome() {
               <thead><tr><th scope="col">ผู้ใช้</th><th scope="col">บทบาท</th><th scope="col">ขอบเขต</th><th scope="col">ให้สิทธิ์เมื่อ</th><th scope="col">การจัดการ</th></tr></thead>
               <tbody>
                 {grantsQuery.data?.grants.map((grant) => (
-                  <tr key={grant.id}>
-                    <td><strong>{grant.userName}</strong><span className="mt-1 block text-[11px] text-muted">{grant.userEmail}</span></td>
-                    <td>{roleLabel(grant.role)}</td>
-                    <td>{branchName(grant.branchId)}</td>
-                    <td>{formatDate(grant.grantedAt)}</td>
-                    <td><button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button></td>
-                  </tr>
+                  <Fragment key={grant.id}>
+                    <tr>
+                      <td><strong>{grant.userName}</strong><span className="mt-1 block text-[11px] text-muted">{grant.userEmail}</span></td>
+                      <td>{roleLabel(grant.role)}</td>
+                      <td>{branchName(grant.branchId)}</td>
+                      <td>{formatDate(grant.grantedAt)}</td>
+                      <td>
+                        <div className="flex gap-2">
+                          <button type="button" data-grant-edit className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-secondary" onClick={() => setEditingId(editingId === grant.id ? null : grant.id)}>แก้ไข</button>
+                          <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 text-sm font-medium text-danger-soft-foreground transition-colors hover:bg-danger-soft-hover disabled:opacity-50" disabled={revokeMutation.isPending && revokeMutation.variables === grant.id} onClick={() => revokeMutation.mutate(grant.id)}>{revokeMutation.isPending && revokeMutation.variables === grant.id ? "กำลังเพิกถอน…" : "เพิกถอน"}</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {editingId === grant.id && (
+                      <tr>
+                        <td colSpan={5} className="bg-surface-secondary">
+                          <GrantEditor
+                            grant={grant}
+                            branches={branches}
+                            pending={editMutation.isPending}
+                            onCancel={() => setEditingId(null)}
+                            onSave={(role, branchId) => editMutation.mutate({ id: grant.id, role, branchId })}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -315,6 +376,94 @@ function GrantForm({ branches, pending, onGrant }: { branches: Branch[]; pending
           </select>
         </label>
         <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50" disabled={pending || !canSubmitGrant({ email, role, branchId })}>{pending ? "กำลังให้สิทธิ์…" : "ให้สิทธิ์"}</button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Change one grant's role and scope.
+ *
+ * The rule the API enforces is restated here only as `disabled` reasons, never as a
+ * different rule: owner is tenant-wide, manager and technician need exactly one
+ * branch. The API is still the authority — a stale dropdown cannot widen a scope.
+ */
+function GrantEditor({
+  grant,
+  branches,
+  pending,
+  onSave,
+  onCancel
+}: {
+  grant: Grant;
+  branches: Branch[];
+  pending: boolean;
+  onSave: (role: Role, branchId: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [role, setRole] = useState<Role>(grant.role);
+  const [branchId, setBranchId] = useState(grant.branchId ?? "");
+
+  useEffect(() => {
+    if (role !== "owner" && !branchId && branches[0]) setBranchId(branches[0].id);
+  }, [role, branchId, branches]);
+
+  const needsBranch = role !== "owner";
+  // One decision, used by both the disabled state and the submit — a button whose
+  // rule differs from the payload's is how a form sends something it just refused.
+  const draft = buildGrantEdit({ currentRole: grant.role, currentBranchId: grant.branchId, role, branchId });
+
+  return (
+    <form
+      className="grid gap-2.5 rounded-xl border border-accent/30 bg-surface p-3.5 md:grid-cols-[minmax(170px,1fr)_minmax(170px,1fr)_auto] md:items-end md:gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (draft.ok) onSave(draft.body.role, draft.body.branchId);
+      }}
+    >
+      <label>
+        <span>บทบาท</span>
+        <select value={role} onChange={(event) => setRole(event.target.value as Role)} data-grant-role>
+          <option value="owner">เจ้าของ · ทั้งผู้ใช้งาน</option>
+          <option value="manager">ผู้จัดการสาขา</option>
+          <option value="technician">ช่างเทคนิค</option>
+        </select>
+      </label>
+      <label>
+        <span>ขอบเขต</span>
+        <select
+          value={needsBranch ? branchId : ""}
+          disabled={!needsBranch || branches.length === 0}
+          onChange={(event) => setBranchId(event.target.value)}
+          required={needsBranch}
+          data-grant-branch
+        >
+          {!needsBranch && <option value="">ทุกสาขา (เจ้าของ)</option>}
+          {needsBranch && branches.length === 0 && <option value="">ไม่มีสาขาให้เลือก</option>}
+          {needsBranch &&
+            branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name}
+              </option>
+            ))}
+        </select>
+      </label>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
+          disabled={pending || !draft.ok}
+          data-grant-save
+        >
+          {pending ? "กำลังบันทึก…" : "บันทึก"}
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-secondary"
+          onClick={onCancel}
+        >
+          ยกเลิก
+        </button>
       </div>
     </form>
   );

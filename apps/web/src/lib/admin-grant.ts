@@ -37,3 +37,28 @@ export function buildGrantRequest(input: {
 export function canSubmitGrant(input: { email: string; role: Role; branchId: string }): boolean {
   return buildGrantRequest(input).ok;
 }
+
+/**
+ * What the edit form sends, and whether it may send anything at all.
+ *
+ * Same rule as `buildGrantRequest`, plus the one an editor needs and a creator does
+ * not: an unchanged scope is not a request. Sending it would rewrite the grant and
+ * write an audit entry that says something happened when nothing did.
+ *
+ * The dangerous direction is the same as the create form's — an empty branch
+ * resolving to tenant-wide — so `owner` is the only role that may carry no branch,
+ * and it drops the branch rather than sending one the API would refuse.
+ */
+export function buildGrantEdit(input: {
+  currentRole: Role;
+  currentBranchId: string | null;
+  role: Role;
+  branchId: string;
+}): { ok: true; body: { role: Role; branchId: string | null } } | { ok: false; reason: "unchanged" | "branch-required" } {
+  const branchId = input.role === "owner" ? null : input.branchId;
+  if (input.role !== "owner" && !branchId) return { ok: false, reason: "branch-required" };
+  if (input.role === input.currentRole && branchId === (input.currentBranchId ?? null)) {
+    return { ok: false, reason: "unchanged" };
+  }
+  return { ok: true, body: { role: input.role, branchId } };
+}

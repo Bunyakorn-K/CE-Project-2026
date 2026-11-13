@@ -1299,6 +1299,105 @@ describe("LaundryTwin API", () => {
       expect(response.status).toBe(404);
       await expect(response.json()).resolves.toMatchObject({ error: { code: "USER_NOT_FOUND" } });
     });
+
+    // Editing a grant. Revoking and re-creating was the only way to correct a role
+    // or move someone between branches, which loses the grant's history and leaves
+    // the person with no access in between.
+    function seedUser(email: string) {
+      const now = Date.now();
+      sqlite
+        .prepare("insert or ignore into user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, 0, ?, ?)")
+        .run(`user-${email}`, email.split("@")[0], email, now, now);
+      return email;
+    }
+
+    function patch(app: ReturnType<typeof createApp>, id: string, body: unknown) {
+      return app.request(`/api/admin/grants/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    }
+
+    /** A second branch, so a move has somewhere to go. Both sources report it. */
+    const BRANCH_ROW_2 = { ...BRANCH_ROW, branch_id: "branch-02", branch_name: "สาขาทดสอบ 2" };
+    const twoBranchClickhouse = (branch: string) =>
+      (vi.fn().mockImplementation(async (sql: string) =>
+        String(sql).includes("dim_branch") ? [BRANCH_ROW, BRANCH_ROW_2] : []
+      ) as unknown) as ClickHouseExecutor;
+
+    it("changes a technician to a manager without revoking the grant", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const email = seedUser(`promote-${Date.now()}@example.com`);
+      const { app } = ownerApp();
+      const created = await post(app, { email, role: "technician", branchId: "branch-01" });
+      const { grant } = (await created.json()) as { grant: { id: string } };
+
+      const response = await patch(app, grant.id, { role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ ok: true, grant: { role: "manager", branchId: "branch-01" } });
+    });
+
+    it("moves a grant to another branch", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const { app } = ownerApp(
+        { getBranches: vi.fn().mockResolvedValue({ branches: [
+          { id: "branch-01", name: "สาขาทดสอบ", timezone: "Asia/Bangkok", active: true },
+          { id: "branch-02", name: "สาขาทดสอบ 2", timezone: "Asia/Bangkok", active: true }
+        ] }) },
+        { clickhouse: twoBranchClickhouse("branch-02") }
+      );
+      const email = seedUser(`move-${Date.now()}@example.com`);
+      const created = await post(app, { email, role: "manager", branchId: "branch-01" });
+      const { grant } = (await created.json()) as { grant: { id: string } };
+
+      const response = await patch(app, grant.id, { role: "manager", branchId: "branch-02" });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ grant: { branchId: "branch-02" } });
+    });
+
+    it("refuses an owner scoped to one branch, and a branch the warehouse lacks", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const { app } = ownerApp();
+      const email = seedUser(`scope-${Date.now()}@example.com`);
+      const created = await post(app, { email, role: "manager", branchId: "branch-01" });
+      const { grant } = (await created.json()) as { grant: { id: string } };
+
+      const scopedOwner = await patch(app, grant.id, { role: "owner", branchId: "branch-01" });
+      expect(scopedOwner.status).toBe(400);
+      await expect(scopedOwner.json()).resolves.toMatchObject({ error: { code: "INVALID_BRANCH_SCOPE" } });
+
+      const missing = await patch(app, grant.id, { role: "manager", branchId: "branch-nope" });
+      expect(missing.status).toBe(400);
+      await expect(missing.json()).resolves.toMatchObject({ error: { code: "UNKNOWN_BRANCH" } });
+    });
+
+    it("answers 404 for a grant that is gone, not a source failure", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const { app } = ownerApp();
+
+      const response = await patch(app, "grant-that-never-existed", { role: "manager", branchId: "branch-01" });
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "GRANT_NOT_FOUND" } });
+    });
+
+    it("refuses a caller who is not an owner", async () => {
+      authenticate([{ id: "manager-01", role: "manager", branchId: "branch-01" }]);
+      seedActor();
+      const { app } = ownerApp();
+
+      const response = await patch(app, "any-grant", { role: "manager", branchId: "branch-01" });
+
+      expect(response.status).not.toBe(200);
+      expect(response.status).toBeGreaterThanOrEqual(400);
+    });
   });
 });
 

@@ -314,19 +314,128 @@ export function approveLiffAccessRequest(input: {
   return approvedUser;
 }
 
+/**
+ * How many active owner grants exist, optionally ignoring one.
+ *
+ * Revoking and re-scoping both have to answer "would this leave the tenant with no
+ * owner?", and two copies of that count is two chances to disagree about the demo
+ * owner.
+ */
+function activeOwnerGrantCount(exceptGrantId?: string): number {
+  return db
+    .select({ id: accessGrant.id })
+    .from(accessGrant)
+    .innerJoin(user, eq(accessGrant.userId, user.id))
+    .where(and(eq(accessGrant.role, "owner"), isNull(accessGrant.revokedAt), ne(user.email, DEMO_OWNER_EMAIL)))
+    .all()
+    .filter((row) => row.id !== exceptGrantId).length;
+}
+
+function findActiveGrant(grantId: string): ActiveAccessGrant | null {
+  return (
+    db
+      .select({
+        id: accessGrant.id,
+        userId: accessGrant.userId,
+        userName: user.name,
+        userEmail: user.email,
+        role: accessGrant.role,
+        branchId: accessGrant.branchId,
+        grantedAt: accessGrant.grantedAt
+      })
+      .from(accessGrant)
+      .innerJoin(user, eq(accessGrant.userId, user.id))
+      .where(and(eq(accessGrant.id, grantId), isNull(accessGrant.revokedAt)))
+      .get() ?? null
+  );
+}
+
+/**
+ * Change what an existing grant allows.
+ *
+ * A grant used to be write-once: the only ways to correct a role or a branch were to
+ * revoke it and create another, which loses the grant's history and briefly leaves
+ * the person with no access at all. A manager who moves branch is an ordinary event
+ * in a franchise, not a re-hire.
+ *
+ * Three refusals matter and each has a different cause: a grant that is gone
+ * (`not-found`), a change that would duplicate a scope the account already holds
+ * (`duplicate`), and a change that would strip the last owner (`last-owner`).
+ */
+export function updateAccessGrant(input: {
+  grantId: string;
+  role: Role;
+  branchId: string | null;
+  actorUserId: string;
+}): { ok: true; grant: ActiveAccessGrant } | { ok: false; reason: "not-found" | "duplicate" | "last-owner" } {
+  const current = db.select().from(accessGrant).where(eq(accessGrant.id, input.grantId)).get();
+  if (!current || current.revokedAt) return { ok: false, reason: "not-found" };
+
+  const branchChanged = (current.branchId ?? null) !== input.branchId;
+  if (current.role === input.role && !branchChanged) {
+    const unchanged = findActiveGrant(input.grantId);
+    return unchanged ? { ok: true, grant: unchanged } : { ok: false, reason: "not-found" };
+  }
+
+  // Only a role that leaves owner can orphan the tenant.
+  if (current.role === "owner" && input.role !== "owner" && activeOwnerGrantCount(input.grantId) === 0) {
+    return { ok: false, reason: "last-owner" };
+  }
+
+  const duplicate = db
+    .select({ id: accessGrant.id })
+    .from(accessGrant)
+    .where(
+      and(
+        eq(accessGrant.userId, current.userId),
+        eq(accessGrant.role, input.role),
+        input.branchId === null ? isNull(accessGrant.branchId) : eq(accessGrant.branchId, input.branchId),
+        isNull(accessGrant.revokedAt)
+      )
+    )
+    .all()
+    .find((row) => row.id !== input.grantId);
+  if (duplicate) return { ok: false, reason: "duplicate" };
+
+  db.update(accessGrant)
+    .set({ role: input.role, branchId: input.branchId })
+    .where(eq(accessGrant.id, input.grantId))
+    .run();
+  writeAudit(input.actorUserId, "access_grant.updated", input.grantId, {
+    userId: current.userId,
+    from: { role: current.role, branchId: current.branchId },
+    to: { role: input.role, branchId: input.branchId }
+  });
+
+  const updated = findActiveGrant(input.grantId);
+  return updated ? { ok: true, grant: updated } : { ok: false, reason: "not-found" };
+}
+
+/**
+ * Keep the stored name in step with LINE.
+ *
+ * The account is named from whatever the approval saw, and the bot used to see
+ * nothing — so an approved account could be permanently named after the bot. LINE is
+ * the source of truth for a LINE user's display name, and a LIFF sign-in carries it in
+ * the ID token the server has already verified.
+ */
+export function updateLiffDisplayName(lineUserId: string, displayName: string): boolean {
+  const name = displayName.trim();
+  if (!name) return false;
+  const identity = db.select().from(liffIdentity).where(eq(liffIdentity.lineUserId, lineUserId)).get();
+  if (!identity || identity.displayName === name) return false;
+
+  const now = new Date();
+  db.update(liffIdentity).set({ displayName: name, updatedAt: now }).where(eq(liffIdentity.lineUserId, lineUserId)).run();
+  db.update(user).set({ name, updatedAt: now }).where(eq(user.id, identity.userId)).run();
+  return true;
+}
+
 export function revokeAccessGrant(grantId: string, actorUserId: string): "revoked" | "not-found" | "last-owner" {
   const grant = db.select().from(accessGrant).where(eq(accessGrant.id, grantId)).get();
   if (!grant || grant.revokedAt) return "not-found";
 
-  if (grant.role === "owner") {
-    const activeOwnerCount = db
-      .select({ id: accessGrant.id })
-      .from(accessGrant)
-      .innerJoin(user, eq(accessGrant.userId, user.id))
-      .where(and(eq(accessGrant.role, "owner"), isNull(accessGrant.revokedAt), ne(user.email, DEMO_OWNER_EMAIL)))
-      .all().length;
-    if (activeOwnerCount <= 1) return "last-owner";
-  }
+  if (grant.role === "owner" && activeOwnerGrantCount() <= 1) return "last-owner";
 
   db.update(accessGrant).set({ revokedAt: new Date() }).where(eq(accessGrant.id, grantId)).run();
   writeAudit(actorUserId, "access_grant.revoked", grantId, { userId: grant.userId });

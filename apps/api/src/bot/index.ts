@@ -1,4 +1,4 @@
-import { recordPendingLiffAccessRequest } from "../access-store";
+import { recordPendingLiffAccessRequest, updateLiffDisplayName } from "../access-store";
 import type { ClickHouseExecutor } from "../analytics/clickhouse";
 import { listBranchNames } from "../analytics/queries";
 import { isValidLineSignature } from "../line";
@@ -44,6 +44,7 @@ import {
   stripMarkdown
 } from "./answer-flex";
 import { LineAdapter } from "./line-adapter";
+import { isPlaceholderName, lineProfileLookup, UNKNOWN_PERSON, type ProfileLookup } from "./profile";
 import { McpClient, type McpClientLike } from "./mcp-client";
 
 export type BotDeps = {
@@ -52,6 +53,8 @@ export type BotDeps = {
   lineChannelAccessToken: string | undefined;
   clickhouse: ClickHouseExecutor;
   fetchImpl?: typeof fetch;
+  /** Injectable so the name lookup is testable without LINE. */
+  profileLookup?: ProfileLookup;
 };
 
 type LineSource = { userId?: string; displayName?: string };
@@ -128,6 +131,9 @@ function accentFor(roleLabel: string): string {
 export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapter, mcpOverride?: McpClientLike) {
   const adapter = adapterOverride ?? new LineAdapter(deps.lineChannelAccessToken);
   const mcp = mcpOverride ?? new McpClient(deps.mcpUrl, deps.mcpToken);
+  // The webhook's `source` has no displayName, so the name is asked for rather than
+  // guessed. `event.source?.displayName` never exists on a message event.
+  const lookupProfile = deps.profileLookup ?? lineProfileLookup(deps.lineChannelAccessToken);
   /**
    * One answer at a time per LINE user, in order.
    *
@@ -337,9 +343,13 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       const identity = resolveLineIdentity(userId);
       if (!identity.ok) {
         if (identity.code === "unknown_user") {
+          // Asked from the Messaging API, because a message event carries no name.
+          // A failed lookup stores a name an operator can act on rather than one
+          // that reads like the bot itself asked for access.
+          const displayName = await lookupProfile(userId);
           recordPendingLiffAccessRequest({
             lineUserId: userId,
-            displayName: event.source?.displayName ?? "LINE bot user"
+            displayName: displayName ?? UNKNOWN_PERSON
           });
         }
         await reply(
@@ -348,6 +358,13 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
           event.replyToken
         );
         return;
+      }
+      // An account named after the bot is an account nobody can identify in the admin
+      // list. LINE is asked once, and only while the stored name is still a
+      // placeholder, so the repair costs nothing after the first message.
+      if (isPlaceholderName(identity.principal.user.name)) {
+        const displayName = await lookupProfile(userId);
+        if (displayName) updateLiffDisplayName(userId, displayName);
       }
       // A switch first, then the allowance: both refuse before spending a model call.
       if (!chatEnabled()) {

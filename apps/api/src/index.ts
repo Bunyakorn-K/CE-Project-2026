@@ -27,6 +27,8 @@ import {
   resolveUserPrincipal,
   revokeLiffSession,
   revokeAccessGrant,
+  updateAccessGrant,
+  updateLiffDisplayName,
   type Principal
 } from "./access-store";
 import { createClickHouseClient, type ClickHouseExecutor } from "./analytics/clickhouse";
@@ -272,6 +274,13 @@ export function createApp(dependencies: AppDependencies = {}) {
       const principal = resolveUserPrincipal(knownUser, "liff");
       if (principal.grants.length === 0) {
         return apiError(c, 403, "ACCESS_NOT_GRANTED", "Your access has been revoked or has not been granted");
+      }
+
+      // LINE is the source of truth for a LINE user's display name, and this token was
+      // just verified by LINE. An account approved from a bot-only request used to keep
+      // whatever name the approval saw, which could be the bot's own.
+      if (updateLiffDisplayName(profile.userId, profile.displayName)) {
+        knownUser.name = profile.displayName;
       }
 
       // Point the panel at the menu for this role. Rich menus are not messages,
@@ -799,6 +808,40 @@ export function createApp(dependencies: AppDependencies = {}) {
       // must fix rather than reporting an outage.
       if (result.reason === "user-not-found") {
         return apiError(c, 404, "USER_NOT_FOUND", "No account uses that email address");
+      }
+      return apiError(c, 409, "DUPLICATE_GRANT", "That account already holds this role for that branch");
+    }
+    return c.json({ ok: true, grant: result.grant });
+  });
+
+  /**
+   * Change what a grant allows.
+   *
+   * Revoking and re-creating was the only way to correct a role or move someone to
+   * another branch, which loses the grant's history and leaves them with no access in
+   * between. `validateGrantScope` is shared with create, so the role/branch rule
+   * (owner is tenant-wide; manager and technician need exactly one branch) and the
+   * branch-exists check cannot drift between the two paths.
+   */
+  app.patch("/api/admin/grants/:id", async (c) => {
+    const principal = requireOwner(c);
+    if (principal instanceof Response) return principal;
+    const body = await readJson(c);
+    const scope = await validateGrantScope(c, iris, clickhouse, body);
+    if (scope instanceof Response) return scope;
+
+    const result = updateAccessGrant({
+      grantId: c.req.param("id"),
+      role: scope.role,
+      branchId: scope.branchId,
+      actorUserId: principal.user.id
+    });
+    if (!result.ok) {
+      if (result.reason === "not-found") {
+        return apiError(c, 404, "GRANT_NOT_FOUND", "The grant is already revoked or does not exist");
+      }
+      if (result.reason === "last-owner") {
+        return apiError(c, 400, "LAST_OWNER", "Assign another owner before taking the last owner grant away from this account");
       }
       return apiError(c, 409, "DUPLICATE_GRANT", "That account already holds this role for that branch");
     }

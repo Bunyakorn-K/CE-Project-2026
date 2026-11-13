@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGrantRequest, canSubmitGrant } from "./admin-grant";
+import { buildGrantEdit, buildGrantRequest, canSubmitGrant } from "./admin-grant";
 
 describe("buildGrantRequest", () => {
   it("sends one branch for a manager", () => {
@@ -83,5 +83,43 @@ describe("canSubmitGrant", () => {
     for (const input of cases) {
       expect(canSubmitGrant(input)).toBe(buildGrantRequest(input).ok);
     }
+  });
+});
+
+describe("buildGrantEdit", () => {
+  it("sends a role change on the same branch", () => {
+    expect(
+      buildGrantEdit({ currentRole: "technician", currentBranchId: "b1", role: "manager", branchId: "b1" })
+    ).toEqual({ ok: true, body: { role: "manager", branchId: "b1" } });
+  });
+
+  it("sends a move to another branch", () => {
+    expect(
+      buildGrantEdit({ currentRole: "manager", currentBranchId: "b1", role: "manager", branchId: "b2" })
+    ).toEqual({ ok: true, body: { role: "manager", branchId: "b2" } });
+  });
+
+  it("refuses to send an unchanged scope", () => {
+    expect(
+      buildGrantEdit({ currentRole: "manager", currentBranchId: "b1", role: "manager", branchId: "b1" })
+    ).toEqual({ ok: false, reason: "unchanged" });
+  });
+
+  it("drops the branch for an owner, and still detects no change", () => {
+    expect(buildGrantEdit({ currentRole: "manager", currentBranchId: "b1", role: "owner", branchId: "b1" })).toEqual({
+      ok: true,
+      body: { role: "owner", branchId: null }
+    });
+    expect(buildGrantEdit({ currentRole: "owner", currentBranchId: null, role: "owner", branchId: "" })).toEqual({
+      ok: false,
+      reason: "unchanged"
+    });
+  });
+
+  it("refuses a scoped role with no branch — the direction that would widen access", () => {
+    expect(buildGrantEdit({ currentRole: "manager", currentBranchId: "b1", role: "technician", branchId: "" })).toEqual({
+      ok: false,
+      reason: "branch-required"
+    });
   });
 });

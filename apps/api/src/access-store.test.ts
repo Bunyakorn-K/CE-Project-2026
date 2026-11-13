@@ -196,3 +196,179 @@ describe("granting a role to an existing account", () => {
     expect(JSON.parse(entry!.detail)).toMatchObject({ role: "technician", branchId: "branch-lampang" });
   });
 });
+
+describe("changing what a grant allows", () => {
+  const actor = () => insertOwner(`updater-${randomUUID()}@example.com`).id;
+
+  function insertUser(email: string): string {
+    const now = new Date();
+    const id = randomUUID();
+    database.db
+      .insert(schema.user)
+      .values({ id, name: email, email, emailVerified: true, image: null, createdAt: now, updatedAt: now })
+      .run();
+    return id;
+  }
+
+  it("moves a manager to another branch without revoking anything", () => {
+    const actorUserId = actor();
+    const email = `mover-${randomUUID()}@example.com`;
+    insertUser(email);
+    const created = accessStore.createAccessGrant({ email, role: "manager", branchId: "branch-a", actorUserId });
+    if (!created.ok) throw new Error(created.reason);
+
+    const result = accessStore.updateAccessGrant({
+      grantId: created.grant.id,
+      role: "manager",
+      branchId: "branch-b",
+      actorUserId
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.grant.branchId).toBe("branch-b");
+    // The same grant, not a new one: history survives a move.
+    expect(result.grant.id).toBe(created.grant.id);
+    expect(result.grant.userEmail).toBe(email);
+  });
+
+  it("promotes a technician to manager and reads the account back", () => {
+    const actorUserId = actor();
+    const email = `promote-${randomUUID()}@example.com`;
+    insertUser(email);
+    const created = accessStore.createAccessGrant({ email, role: "technician", branchId: "branch-a", actorUserId });
+    if (!created.ok) throw new Error(created.reason);
+
+    const result = accessStore.updateAccessGrant({
+      grantId: created.grant.id,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.grant.role).toBe("manager");
+  });
+
+  it("refuses to take the last owner away from the tenant", () => {
+    accessStore.ensureDemoOwner();
+    const actorUserId = actor();
+    const owner = insertOwner(`last-owner-${randomUUID()}@example.com`);
+
+    // Make every other real owner a non-owner first, so this one is genuinely last.
+    for (const grant of accessStore.listActiveAccessGrants()) {
+      if (grant.role === "owner" && grant.id !== owner.grantId) {
+        accessStore.updateAccessGrant({ grantId: grant.id, role: "manager", branchId: "branch-z", actorUserId });
+      }
+    }
+
+    const result = accessStore.updateAccessGrant({
+      grantId: owner.grantId,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId
+    });
+    expect(result).toEqual({ ok: false, reason: "last-owner" });
+  });
+
+  it("allows demoting an owner when another real owner remains", () => {
+    const actorUserId = actor();
+    const first = insertOwner(`owner-a-${randomUUID()}@example.com`);
+    const second = insertOwner(`owner-b-${randomUUID()}@example.com`);
+
+    const result = accessStore.updateAccessGrant({
+      grantId: second.grantId,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId
+    });
+    expect(result.ok).toBe(true);
+    expect(accessStore.listActiveAccessGrants().find((grant) => grant.id === first.grantId)?.role).toBe("owner");
+  });
+
+  it("refuses a scope the account already holds, rather than stacking a second row", () => {
+    const actorUserId = actor();
+    const email = `dupe-${randomUUID()}@example.com`;
+    insertUser(email);
+    const a = accessStore.createAccessGrant({ email, role: "manager", branchId: "branch-a", actorUserId });
+    const b = accessStore.createAccessGrant({ email, role: "manager", branchId: "branch-b", actorUserId });
+    if (!a.ok || !b.ok) throw new Error("seed failed");
+
+    const result = accessStore.updateAccessGrant({
+      grantId: b.grant.id,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId
+    });
+    expect(result).toEqual({ ok: false, reason: "duplicate" });
+  });
+
+  it("treats an unchanged scope as a no-op rather than a write", () => {
+    const actorUserId = actor();
+    const email = `same-${randomUUID()}@example.com`;
+    insertUser(email);
+    const created = accessStore.createAccessGrant({ email, role: "technician", branchId: "branch-a", actorUserId });
+    if (!created.ok) throw new Error(created.reason);
+
+    const result = accessStore.updateAccessGrant({
+      grantId: created.grant.id,
+      role: "technician",
+      branchId: "branch-a",
+      actorUserId
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.grant.grantedAt.getTime()).toBe(created.grant.grantedAt.getTime());
+  });
+
+  it("answers not-found for a grant that was revoked", () => {
+    const actorUserId = actor();
+    const first = insertOwner(`revoked-a-${randomUUID()}@example.com`);
+    insertOwner(`revoked-b-${randomUUID()}@example.com`);
+    expect(accessStore.revokeAccessGrant(first.grantId, actorUserId)).toBe("revoked");
+
+    const result = accessStore.updateAccessGrant({
+      grantId: first.grantId,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId
+    });
+    expect(result).toEqual({ ok: false, reason: "not-found" });
+  });
+
+  it("records what changed and what it changed from", () => {
+    const actorUserId = actor();
+    const email = `audit-${randomUUID()}@example.com`;
+    insertUser(email);
+    const created = accessStore.createAccessGrant({ email, role: "technician", branchId: "branch-a", actorUserId });
+    if (!created.ok) throw new Error(created.reason);
+
+    accessStore.updateAccessGrant({ grantId: created.grant.id, role: "manager", branchId: "branch-b", actorUserId });
+
+    const entry = database.sqlite
+      .prepare("select action, detail from audit_log where target = ? order by rowid desc limit 1")
+      .get(created.grant.id) as { action: string; detail: string } | undefined;
+    expect(entry?.action).toBe("access_grant.updated");
+    expect(JSON.parse(entry!.detail)).toMatchObject({
+      from: { role: "technician", branchId: "branch-a" },
+      to: { role: "manager", branchId: "branch-b" }
+    });
+  });
+
+  it("keeps a LINE account's name in step with the name LINE reports", () => {
+    const lineUserId = `U-name-${randomUUID()}`;
+    accessStore.recordPendingLiffAccessRequest({ lineUserId, displayName: "LINE bot user" });
+    const request = accessStore.listPendingAccessRequests().find((row) => row.lineUserId === lineUserId)!;
+    const approved = accessStore.approveLiffAccessRequest({
+      requestId: request.id,
+      role: "manager",
+      branchId: "branch-a",
+      actorUserId: actor()
+    });
+    if (!approved) throw new Error("approval failed");
+
+    expect(accessStore.updateLiffDisplayName(lineUserId, "สมชาย ใจดี")).toBe(true);
+    expect(accessStore.findLiffUser(lineUserId)?.name).toBe("สมชาย ใจดี");
+    // A second call with the same name is a no-op.
+    expect(accessStore.updateLiffDisplayName(lineUserId, "สมชาย ใจดี")).toBe(false);
+  });
+});
