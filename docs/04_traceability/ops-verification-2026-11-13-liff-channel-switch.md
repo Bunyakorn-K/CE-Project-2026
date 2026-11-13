@@ -104,6 +104,30 @@ proven, the list should narrow to `2011807354` alone. It is deliberately not nar
 this deploy: the rollback target is still the old channel, and narrowing before a live
 sign-in has been measured trades a real recovery path for a theoretical one.
 
+## The trust list was narrowed (owner confirmed a real sign-in)
+
+The owner reported the product reachable on the new channel, so the list went from four
+channels to one:
+
+```text
+before  LINE_LOGIN_CHANNEL_IDS=2011807354,2011592166,2011592167,2011592168
+after   LINE_LOGIN_CHANNEL_IDS=2011807354
+```
+
+`docker restart` was **not enough**: the container keeps the env it was created with, so
+it still reported the four-channel list after a restart. A recreate is what applies an
+`.env` change:
+
+```text
+restart  -> CHANNELS=2011807354,2011592166,2011592167,2011592168   (unchanged)
+rm + up  -> CHANNELS=2011807354                                     (applied)
+           health 200 · /api/me 401 · exchange(bogus) 401 LIFF_VERIFICATION_FAILED
+```
+
+**Rolling back the image now also needs this line re-widened**, because the old image
+was built with the retired LIFF id and its bundle would mint tokens for a channel the
+API no longer accepts — the same trap in reverse.
+
 ## Still outstanding
 
 1. **A real sign-in on the new channel.** `/api/auth/liff/exchange` is proven wired and
