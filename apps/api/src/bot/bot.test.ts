@@ -349,10 +349,14 @@ describe("bot webhook handler", () => {
       const text = adapter.sendText.mock.calls[0][1] as string;
       expect(text).toContain("ต้องการดูสาขาไหน");
       const options = adapter.sendText.mock.calls[0][2] as { quickReplies?: { label: string; data: string }[] };
-      expect(options.quickReplies?.map((reply) => reply.label)).toEqual([
-        TWO_BRANCHES[0].branchName,
-        TWO_BRANCHES[1].branchName,
-        "ทุกสาขา"
+      // The two branches differ only at the end of their names, and LINE cuts a label
+      // at 20 characters — so the labels are the distinguishing tails, and the ids
+      // that come back are still the real ones.
+      expect(options.quickReplies?.map((reply) => reply.label)).toEqual(["หลิ่งมื่น", "ตลาดโขนเหลือง", "ทุกสาขา"]);
+      expect(options.quickReplies?.map((reply) => reply.data)).toEqual([
+        `pref:branch:${TWO_BRANCHES[0].branchId}`,
+        `pref:branch:${TWO_BRANCHES[1].branchId}`,
+        "pref:branch:all"
       ]);
     });
 

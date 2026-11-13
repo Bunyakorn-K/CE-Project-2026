@@ -12,6 +12,8 @@
 export type BranchRef = { branchId: string; branchName: string };
 
 /** The payload for "don't narrow it — show me everything I can see". */
+import { shortBranchLabels } from "./branch-label";
+
 export const ALL_BRANCHES = "all";
 
 /**
@@ -76,10 +78,19 @@ export function shouldAskWhichBranch(input: {
   return !mentionsBranch(input.text, input.branches);
 }
 
-/** The picker: every branch, plus "ทุกสาขา" — the scope the bot assumed before. */
+/**
+ * The picker: every branch, plus "ทุกสาขา" — the scope the bot assumed before.
+ *
+ * Labels come from `shortBranchLabels`, not from the full name: branches share a
+ * prefix, LINE cuts a quick-reply label at 20 characters, and the cut landed in the
+ * part that is identical for every branch. The tap carried the right id; the buttons
+ * were unreadable.
+ */
 export function branchScopeReplies(branches: BranchRef[]): { label: string; data: string }[] {
-  const options = branches.slice(0, 12).map((branch) => ({
-    label: branch.branchName,
+  const shown = branches.slice(0, 12);
+  const labels = shortBranchLabels(shown.map((branch) => branch.branchName));
+  const options = shown.map((branch, index) => ({
+    label: labels[index],
     data: `pref:branch:${branch.branchId}`
   }));
   return [...options, { label: "ทุกสาขา", data: `pref:branch:${ALL_BRANCHES}` }];

@@ -15,6 +15,7 @@ import type { Principal } from "../access-store";
 import { acknowledgeAlert } from "../access-store";
 import { canAccessBranch } from "../access-policy";
 import { readAlertRows } from "../alert-detail";
+import { shortBranchLabels } from "./branch-label";
 
 export type ChatCommand =
   | { kind: "ack"; alertId: string }
@@ -164,8 +165,12 @@ export function branchChoiceReplies(branches: { branchId: string; branchName: st
   label: string;
   data: string;
 }[] {
-  return branches.slice(0, 13).map((branch) => ({
-    label: branch.branchName,
+  const shown = branches.slice(0, 13);
+  // The same shortening the picker uses: two branches of one franchise differ at the
+  // end of their name, and LINE keeps only the first 20 characters of a label.
+  const labels = shortBranchLabels(shown.map((branch) => branch.branchName));
+  return shown.map((branch, index) => ({
+    label: labels[index],
     data: `pref:branch:${branch.branchId}`
   }));
 }

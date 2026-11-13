@@ -60,7 +60,22 @@ describe("shouldAskWhichBranch", () => {
 describe("branchScopeReplies", () => {
   it("offers every branch and the all-branches scope", () => {
     const replies = branchScopeReplies(BRANCHES);
-    expect(replies.map((reply) => reply.label)).toEqual([BRANCHES[0].branchName, BRANCHES[1].branchName, "ทุกสาขา"]);
+    // Short labels, because LINE cuts at 20 characters and both names share a prefix.
+    expect(replies.map((reply) => reply.label)).toEqual(["หลิ่งมื่น", "ตลาดโขนเหลือง", "ทุกสาขา"]);
     expect(replies.at(-1)?.data).toBe(`pref:branch:${ALL_BRANCHES}`);
+    // The value is still the real branch id: only the label was shortened.
+    expect(replies.map((reply) => reply.data)).toEqual([
+      `pref:branch:${BRANCHES[0].branchId}`,
+      `pref:branch:${BRANCHES[1].branchId}`,
+      `pref:branch:${ALL_BRANCHES}`
+    ]);
+  });
+
+  it("never hands LINE two labels it would render the same", () => {
+    // The production defect: both buttons read "about you.wash & dry".
+    const replies = branchScopeReplies(BRANCHES);
+    const labels = replies.map((reply) => reply.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels.every((label) => label.length <= 20)).toBe(true);
   });
 });
