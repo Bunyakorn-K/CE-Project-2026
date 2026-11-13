@@ -31,6 +31,11 @@ ch.3: a CR must survive a technology swap).
 | **CR-04** | `[assumed]` Owner gets a scoped AI executive summary that only uses their own branches' data | R08, US-05, F-11; allow-listed MCP (6 tools), RBAC scope | **4** |
 | **CR-05** | `[assumed]` Multi-branch data is isolated by role; revenue is hidden from technicians; customers only see public availability | R04, R11, US-09/11, F-06/F-07/F-13; cross-branch denial tests | **5** |
 
+The three Phase-2 requirements attach to the nearest CR rather than to a new
+one: **R10** (predictive maintenance) → CR-03, **R09** (off-peak recommendation)
+and **R12** (weather correlation) → CR-02 as demand intelligence. The bridge
+sentence in `system_requirement.md` was corrected to match on 2026-11-13.
+
 *Weighting method:* direct 1–5 scoring (handbook ch.3 simple path), informed by
 which requirements the real implementation treats as load-bearing (RBAC
 isolation and core BI rank highest). Source of weight is stated, not invented.

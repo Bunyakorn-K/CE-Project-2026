@@ -18,6 +18,13 @@
 | **F-12** | AI Integration  | External Context (Weather API)     | Normalize branch locations and times; correlate weather data exclusively for specified analysis periods.                            | **Demand Analysis:** Report correlations between weather patterns and machine usage.              | — (Phase 2, no QR yet)  | _Phase 2_ | Output specifies the source data range and explicitly states correlation limits.             | Do not claim causation or forecasting accuracy without proper validation.              |
 | **F-13** | Customer Facing | Public Machine Status API          | Serve machine availability and remaining time via a read-only, aggressively rate-limited endpoint.                                  | **Customer Convenience:** LIFF/web view allows customers to check if machines are free.           | QR-03                  | _Phase 2_ | Response schema strictly excludes revenue data, raw MQTT telemetry, or internal branch info. | Use public-specific DTOs and rate limits; do not expose internal APIs.                 |
 
+*Phase is a commitment level, not a delivery status.* F-12 (weather) shipped
+ahead of its phase, F-02 and F-07 are partial, F-09 is blocked upstream, and
+F-04/F-05 were descoped or replaced. Delivery evidence lives in the requirement
+status table in [`system_requirement.md`](system_requirement.md#implementation-status-verified-2026-09-14-r06-re-checked-2026-09-30)
+and in [`RTM_matrix.md`](../04_traceability/RTM_matrix.md) — it is not repeated
+here, so the two cannot disagree.
+
 *QR column maps each function to the Quantifiable Requirement(s) it serves,
 defined in [`house_of_quality.md`](house_of_quality.md) Step D. `— (Phase 2, no
 QR yet)` means the capability is a declared target without a committed

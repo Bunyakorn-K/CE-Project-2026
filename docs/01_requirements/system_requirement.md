@@ -6,10 +6,16 @@
 > from the student handbook) lives in
 > [`house_of_quality.md`](house_of_quality.md). Each R-row below is the
 > *operational* requirement behind one or more CR. The mapping:
-> R01/R02 → CR-01 · R03 → CR-02 · R05/R06/R07 → CR-03 · R08 → CR-04 ·
-> R04/R09/R11/R12 → CR-05. QR numbers in the handbook sense are defined in
-> `house_of_quality.md` Step D; they are **not** renumbered here so this file
-> stays the single source of truth for operational requirements.
+> R01/R02 → CR-01 · R03 → CR-02 · R05/R06/R07/**R10** → CR-03 · R08 → CR-04 ·
+> R04/R11 → CR-05 · **R09/R12** → CR-02 (demand intelligence). QR numbers in the
+> handbook sense are defined in `house_of_quality.md` Step D; they are **not**
+> renumbered here so this file stays the single source of truth for operational
+> requirements.
+>
+> *Corrected 2026-11-13:* the previous mapping omitted **R10** entirely and filed
+> **R09/R12** under CR-05 (multi-branch isolation), which they are not — R12 is
+> weather correlation and R09 is off-peak recommendation, both demand
+> intelligence. CR-05 is now R04 + R11 only.
 
 | ID      | Priority  | Category                | Requirement                                          | Scope / Rules / Dependencies                                                                                                                                                                                         | Acceptance Criteria                                                                                                | Constraints / Notes                                                               |
 | :------ | :-------- | :---------------------- | :--------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |

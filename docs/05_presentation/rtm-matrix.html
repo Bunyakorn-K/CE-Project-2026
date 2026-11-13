@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>LaundryTwin — Requirements Traceability Matrix</title>
+<style>
+  @page { size: A3 landscape; margin: 10mm; }
+  html, body { margin:0; padding:0; background:#fff; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Inter,Arial,sans-serif; color:#23282f; }
+  .wrap { width:1840px; margin:0 auto; padding:26px 30px 34px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.2px; }
+  .sub { font-size:12.5px; color:#6b7789; margin:0 0 16px; }
+  table { border-collapse:collapse; width:100%; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#5b6b85; text-align:left;
+        border-bottom:1.6px solid #7e8fab; padding:0 8px 7px; vertical-align:bottom; }
+  td { font-size:11.5px; padding:8px; border-bottom:1px solid #dfe4ec; vertical-align:top; line-height:1.35; }
+  tr:nth-child(even) td { background:#faf7f2; }
+  td.f { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-weight:700; white-space:nowrap; }
+  td.nm { font-weight:600; }
+  td.ph, td.c, td.qr { white-space:nowrap; color:#3b4553; }
+  td.t { color:#2b323b; }
+  td.nw { white-space:nowrap; }
+  td.st { min-width:210px; }
+  .foot { margin-top:14px; font-size:11px; color:#6b7789; line-height:1.5; }
+  .foot b { color:#23282f; }
+</style></head><body><div class="wrap">
+<h1>Requirements Traceability Matrix — chain CR → TC → QR → F → C → T</h1>
+<p class="sub">LaundryTwin · CE Project 2026 · function-level completion of the handbook chain ·
+CR/TC/QR defined in <code>docs/01_requirements/house_of_quality.md</code>, F in <code>system_functions.md</code>,
+T in <code>docs/04_traceability/test_cases.md</code></p>
+<table>
+<thead><tr>
+<th>F</th><th>Function</th><th>Phase</th><th>R</th><th>US</th><th>CR</th><th>TC</th><th>QR</th><th>C</th><th>T (verification)</th><th>Status</th>
+</tr></thead>
+<tbody>
+<tr><td class='f'>F-01</td><td class='nm'>Virtual Presence & State Sync</td><td class='ph'>MVP</td><td class='nw'>R02, R04</td><td class='nw'>US-02</td><td class='nw'>CR-01</td><td class='nw'>TC-01</td><td class='qr'>QR-01</td><td class='c'>C-02, C-05</td><td class='t'>T-02.1–02.5, 02.7, 02.8 · report/clickhouse-report.test.ts, index.test.ts</td><td class='st'><b>Partial</b> — state is derived from usage rows; fact_machine_event holds 0 rows, so nothing is live telemetry</td></tr>
+<tr><td class='f'>F-02</td><td class='nm'>Estimated Gas Remaining</td><td class='ph'>MVP</td><td class='nw'>R05, R06</td><td class='nw'>US-01</td><td class='nw'>CR-03</td><td class='nw'>TC-04, TC-06</td><td class='qr'>QR-04</td><td class='c'>C-03, C-04</td><td class='t'>T-01.1–01.4 · alert-engine.test.ts, gas-trend.test.ts, ops-verification-2026-11-09-gas-trend-production.md</td><td class='st'><b>Partial</b> — decision over the external HA psi series; the IRIS register blocker stands and the source keeps a 7-day ceiling</td></tr>
+<tr><td class='f'>F-03</td><td class='nm'>Spatial Layout & Error Correlation</td><td class='ph'>_Phase 2_</td><td class='nw'>R10</td><td class='nw'>US-12</td><td class='nw'>CR-03</td><td class='nw'>—</td><td class='qr'><b>— (Phase 2, no QR yet)</b></td><td class='c'>C-05</td><td class='t'>none — US-12 has no test</td><td class='st'><b>Not implemented</b> (Phase 2)</td></tr>
+<tr><td class='f'>F-04</td><td class='nm'>Telemetry Data Streaming</td><td class='ph'>MVP</td><td class='nw'>R01, R02</td><td class='nw'>US-10</td><td class='nw'>CR-01</td><td class='nw'>TC-01</td><td class='qr'>QR-01</td><td class='c'>C-02, C-05</td><td class='t'>none — no WebSocket/SSE channel exists to test</td><td class='st'><b>Descoped with MQTT</b> — every surface is polled; the 2 s p95 push target has no artefact</td></tr>
+<tr><td class='f'>F-05</td><td class='nm'>MQTT Ingestion & Data Pipeline</td><td class='ph'>MVP</td><td class='nw'>R01</td><td class='nw'>US-10</td><td class='nw'>CR-02</td><td class='nw'>TC-02</td><td class='qr'>QR-02</td><td class='c'>C-04</td><td class='t'>apps/etl/src/{schema,transform,watermark}.test.ts</td><td class='st'><b>Replaced</b> — IRIS → ETL → ClickHouse is the live path; MQTT was descoped 2026-09-07</td></tr>
+<tr><td class='f'>F-06</td><td class='nm'>Role-Based Access Control</td><td class='ph'>MVP</td><td class='nw'>R04</td><td class='nw'>US-09, US-11</td><td class='nw'>CR-05</td><td class='nw'>TC-03</td><td class='qr'>QR-03</td><td class='c'>C-02</td><td class='t'>T-09.1–09.4, T-11.1–11.4 · access-policy.test.ts, scope.test.ts, index.test.ts</td><td class='st'><b>Implemented</b></td></tr>
+<tr><td class='f'>F-07</td><td class='nm'>Authentication & Audit Log</td><td class='ph'>MVP</td><td class='nw'>R04</td><td class='nw'>US-11</td><td class='nw'>CR-05</td><td class='nw'>TC-03, TC-05</td><td class='qr'>QR-03</td><td class='c'>C-02, C-06</td><td class='t'>T-11.5–11.7 · auth.test.ts, ai-audit.test.ts</td><td class='st'><b>Implemented</b> — auth + grant/alert/settings audit; the AI audit table landed 2026-11-09</td></tr>
+<tr><td class='f'>F-08</td><td class='nm'>KPI Aggregation & Data Export</td><td class='ph'>MVP</td><td class='nw'>R03, R04</td><td class='nw'>US-04</td><td class='nw'>CR-02</td><td class='nw'>TC-02</td><td class='qr'>QR-02</td><td class='c'>C-02, C-05</td><td class='t'>T-04.1–04.5 · clickhouse-report.test.ts, dashboard-view.test.ts</td><td class='st'><b>Implemented</b> — canonical cycle definition, integer satang</td></tr>
+<tr><td class='f'>F-09</td><td class='nm'>Estimated Coin-Box Fill & Reset</td><td class='ph'>MVP</td><td class='nw'>R05, R07</td><td class='nw'>US-03</td><td class='nw'>CR-03</td><td class='nw'>TC-04</td><td class='qr'>QR-04</td><td class='c'>C-03</td><td class='t'>T-03.1 only; T-03.2/03.3 blocked · alert tests</td><td class='st'><b>Blocked upstream</b> — coinbox_open / paid semantics unresolved, so no estimator and no reset path</td></tr>
+<tr><td class='f'>F-10</td><td class='nm'>Event-Driven Alert Engine</td><td class='ph'>MVP</td><td class='nw'>R05, R10</td><td class='nw'>US-01, US-08</td><td class='nw'>CR-03</td><td class='nw'>TC-04</td><td class='qr'>QR-04</td><td class='c'>C-03</td><td class='t'>T-08.1–08.3 · alert-engine.test.ts, alert-sweep.test.ts</td><td class='st'><b>Implemented</b> — scheduled sweep + LINE delivery verified 2026-11-09</td></tr>
+<tr><td class='f'>F-11</td><td class='nm'>Safe Analytics Function Calling</td><td class='ph'>MVP</td><td class='nw'>R08</td><td class='nw'>US-05</td><td class='nw'>CR-04</td><td class='nw'>TC-07</td><td class='qr'>QR-05</td><td class='c'>C-01, C-06</td><td class='t'>T-05.1–05.7 · analytics/mcp.test.ts, bot/bot.test.ts</td><td class='st'><b>Implemented (local)</b> — six allow-listed tools, signed per-session scope</td></tr>
+<tr><td class='f'>F-12</td><td class='nm'>External Context (Weather API)</td><td class='ph'>_Phase 2_</td><td class='nw'>R12</td><td class='nw'>US-06</td><td class='nw'>CR-02</td><td class='nw'>—</td><td class='qr'><b>— (Phase 2, no QR yet)</b></td><td class='c'>C-04, C-06</td><td class='t'>f12-weather-evaluation-2026-09-07.md, mcp.test.ts (get_weather_usage_correlation)</td><td class='st'><b>Implemented ahead of phase</b> — TMD collector live, correlation significant at n = 77; one effective series</td></tr>
+<tr><td class='f'>F-13</td><td class='nm'>Public Machine Status API</td><td class='ph'>_Phase 2_</td><td class='nw'>R11</td><td class='nw'>US-07</td><td class='nw'>CR-05</td><td class='nw'>TC-08</td><td class='qr'>QR-03</td><td class='c'>C-02</td><td class='t'>none — US-07 has no test</td><td class='st'><b>Not implemented</b> (Phase 2)</td></tr>
+</tbody></table>
+<p class="foot">
+<b>Two namespaces, one prefix shape.</b> <code>T-02.1</code> in the T column is a <i>test case</i> from
+<code>test_cases.md</code>; <code>TC-02</code> in the TC column is a <i>technical characteristic</i> from
+<code>house_of_quality.md</code>. The test cases were renumbered from <code>TC-nn.m</code> to <code>T-nn.m</code>
+on 2026-11-13 because the two collided.<br>
+<b>Phase-2 rows</b> with <code>— (Phase 2, no QR yet)</code> are declared targets without a committed measurable
+goal; they are marked, not given an invented number. F-12 shipped ahead of its phase and therefore carries
+evidence without a QR — an orphan test by the handbook's rule, disclosed rather than hidden.<br>
+<b>Status</b> records local code/test evidence plus the named production records; it is not a production E2E claim.
+</p>
+</div></body></html>

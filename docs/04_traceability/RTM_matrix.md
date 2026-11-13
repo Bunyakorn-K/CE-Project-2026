@@ -45,6 +45,60 @@ report), C-03 = alert engine, C-04 = ETL→ClickHouse warehouse, C-05 = web UI +
 Superset. This is a documentation bridge, not a new module in code.*
 
 
+#### Full chain, function by function (F → QR → C → T)
+
+The CR-level table above closes the chain at five customer requirements. This
+one closes it at every function, so a reader can start from any `F-##` and walk
+up to a CR and down to a file. `F` and `R` IDs are not renumbered — they are the
+operational source of truth in `system_functions.md` and `system_requirement.md`;
+`CR/TC/QR` are defined in `house_of_quality.md`.
+
+| Function | Phase | R | US | CR | TC | QR | C | T (verification) | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| **F-01** Virtual Presence &amp; State Sync | MVP | R02, R04 | US-02 | CR-01 | TC-01 | QR-01 | C-02, C-05 | T-02.1–02.5, 02.7, 02.8 · `report/clickhouse-report.test.ts`, `index.test.ts` | **Partial** — state is derived from usage rows; `fact_machine_event` holds 0 rows, so nothing is live telemetry |
+| **F-02** Estimated Gas Remaining | MVP | R05, R06 | US-01 | CR-03 | TC-04, TC-06 | QR-04 | C-03, C-04 | T-01.1–01.4 · `alert-engine.test.ts`, `gas-trend.test.ts`, `ops-verification-2026-11-09-gas-trend-production.md` | **Partial** — decision over the external HA psi series; the IRIS register blocker stands and the source keeps a 7-day ceiling |
+| **F-03** Spatial Layout &amp; Error Correlation | _Phase 2_ | R10 | US-12 | CR-03 | — | **— (Phase 2, no QR yet)** | C-05 | none — US-12 has no test | **Not implemented** (Phase 2) |
+| **F-04** Telemetry Data Streaming | MVP | R01, R02 | US-10 | CR-01 | TC-01 | QR-01 | C-02, C-05 | none — no WebSocket/SSE channel exists to test | **Descoped with MQTT** — every surface is polled; the 2 s p95 push target has no artefact |
+| **F-05** MQTT Ingestion &amp; Data Pipeline | MVP | R01 | US-10 | CR-02 | TC-02 | QR-02 | C-04 | `apps/etl/src/{schema,transform,watermark}.test.ts` | **Replaced** — IRIS → ETL → ClickHouse is the live path; MQTT was descoped 2026-09-07 |
+| **F-06** Role-Based Access Control | MVP | R04 | US-09, US-11 | CR-05 | TC-03 | QR-03 | C-02 | T-09.1–09.4, T-11.1–11.4 · `access-policy.test.ts`, `scope.test.ts`, `index.test.ts` | **Implemented** |
+| **F-07** Authentication &amp; Audit Log | MVP | R04 | US-11 | CR-05 | TC-03, TC-05 | QR-03 | C-02, C-06 | T-11.5–11.7 · `auth.test.ts`, `ai-audit.test.ts` | **Implemented** — auth + grant/alert/settings audit; the AI audit table landed 2026-11-09 |
+| **F-08** KPI Aggregation &amp; Data Export | MVP | R03, R04 | US-04 | CR-02 | TC-02 | QR-02 | C-02, C-05 | T-04.1–04.5 · `clickhouse-report.test.ts`, `dashboard-view.test.ts` | **Implemented** — canonical cycle definition, integer satang |
+| **F-09** Estimated Coin-Box Fill &amp; Reset | MVP | R05, R07 | US-03 | CR-03 | TC-04 | QR-04 | C-03 | T-03.1 only; T-03.2/03.3 blocked · alert tests | **Blocked upstream** — `coinbox_open` / `paid` semantics unresolved, so no estimator and no reset path |
+| **F-10** Event-Driven Alert Engine | MVP | R05, R10 | US-01, US-08 | CR-03 | TC-04 | QR-04 | C-03 | T-08.1–08.3 · `alert-engine.test.ts`, `alert-sweep.test.ts` | **Implemented** — scheduled sweep + LINE delivery verified 2026-11-09 |
+| **F-11** Safe Analytics Function Calling | MVP | R08 | US-05 | CR-04 | TC-07 | QR-05 | C-01, C-06 | T-05.1–05.7 · `analytics/mcp.test.ts`, `bot/bot.test.ts` | **Implemented (local)** — six allow-listed tools, signed per-session scope |
+| **F-12** External Context (Weather API) | _Phase 2_ | R12 | US-06 | CR-02 | — | **— (Phase 2, no QR yet)** | C-04, C-06 | `f12-weather-evaluation-2026-09-07.md`, `mcp.test.ts` (`get_weather_usage_correlation`) | **Implemented ahead of phase** — TMD collector live, correlation significant at n = 77; one effective series |
+| **F-13** Public Machine Status API | _Phase 2_ | R11 | US-07 | CR-05 | TC-08 | QR-03 | C-02 | none — US-07 has no test | **Not implemented** (Phase 2) |
+
+*C mapping:* **C-01** MCP analytics server + LINE bot (`apps/api/src/analytics/mcp.ts`,
+`apps/api/src/bot/`) · **C-02** Hono API — auth, RBAC, report routes
+(`apps/api/src/index.ts`, `report/`, `access-*.ts`) · **C-03** alert engine + sweep
+(`alert-engine.ts`, `alert-sweep.ts`, `line.ts`) · **C-04** ETL + collectors
+(`apps/etl/src/`) · **C-05** web SPA + Superset · **C-06** AI gateway + conversation
+(`llm-client.ts`, `bot/conversation.ts`, `ai-routes.ts`, `ai-audit.ts`). C-01…C-05
+carry the same meaning they carry in the CR-level table above; C-06 is new here
+because the AI audit surface has no other home.
+
+#### Two things this table does not claim
+
+1. **`T` is a test case, not a technical characteristic.** `test_cases.md`
+   numbers its rows `T-nn.m`; `house_of_quality.md` numbers technical
+   characteristics `TC-01…TC-08`. The test cases used the `TC-` prefix until
+   **2026-11-13**, when the collision was removed: they are `T-nn.m` (and
+   `T-F1…T-F6` for the cross-cutting failure cases) in `test_cases.md`, here, and
+   in `05_presentation/function-tree.html`. The `TC` column in this table is
+   always the characteristic.
+2. **The R → CR bridge was incomplete and is now corrected.** Until
+   **2026-11-13** the mapping sentence in `system_requirement.md` omitted
+   **R10** and filed **R09/R12** under CR-05 (multi-branch isolation). It now
+   reads `R05/R06/R07/R10 → CR-03` and `R09/R12 → CR-02`, which is why F-03
+   carries CR-03 and F-12 carries CR-02 here. `house_of_quality.md` records the
+   same attachment, so the two files agree rather than being edited apart.
+3. **Two rows carry a test but no QR** (F-12), and two carry neither (F-03,
+   F-13). The handbook wants every `T` to trace to a `QR`; F-12 is a Phase-2
+   capability that shipped early and has evidence but no committed target, so
+   its test is an orphan by the handbook's rule. It is marked rather than given
+   an invented number.
+
 ### F-12 ambiguity
 
 `system_functions.md` defines F-12 as **External Context (Weather API)**.

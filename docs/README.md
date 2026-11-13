@@ -115,6 +115,10 @@ Ops records, most recent first:
 
 Presentation build notes and evidence.
 
+| File | Purpose |
+|---|---|
+| [`rtm-matrix.html`](05_presentation/rtm-matrix.html) | printable A3-landscape render of the function-level chain (F → QR → C → T); **the matrix itself lives in `04_traceability/RTM_matrix.md`**, this is a view of it for the report |
+
 ### `06_ml/` — models and training data
 
 | File | Purpose |
