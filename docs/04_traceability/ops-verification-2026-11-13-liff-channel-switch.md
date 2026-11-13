@@ -63,24 +63,50 @@ The identical digest before the secret changed is the useful half of this record
 rebuild that "succeeds" is not evidence the build inputs changed, and grepping the
 produced bundle for the expected id is what distinguishes the two.
 
+## The rich menu was re-synced (owner click)
+
+LINE cannot edit a menu, so a sync creates new menus, relinks users, and deletes the
+old ones. Measured after the owner pressed "ซิงก์เมนูกับ LINE" at `/admin/line`:
+
+```text
+before                          after
+richmenu-b8d…  manager:v3       richmenu-0d84ab7a…  owner:v3
+richmenu-2ed…  owner:v3         richmenu-f0f3ad65…  manager:v3
+richmenu-235…  technician:v3    richmenu-cf717fdf…  technician:v3
+richmenu-e3e…  default:v3       richmenu-6477c992…  default:v3
+
+every URI on every menu → liff.line.me/2011807354-DuoPfzrR/…
+unwrap: GET /v2/bot/user/all/richmenu   → richmenu-6477c992… (default)
+        U284d77f… (owner)               → richmenu-0d84ab7a…
+        U3c32ee2… (manager, approved)   → richmenu-f0f3ad65…
+sqlite  rich_menu: four rows, synced_at 1794561800626
+```
+
+The per-user links are the half worth checking: the default menu being right says
+nothing about whether a manager is still pointed at the old panel.
+
+## Channel map (measured on the console by the owner)
+
+| channel | id | role |
+|---|---|---|
+| Messaging API (the bot) | `2011658980` | sends every message: alerts, digest, chat, approval notices |
+| LINE Login + LIFF (new) | `2011807354` | identity: `2011807354-DuoPfzrR` |
+| retired MINI App | `2011592166` | held the previous LIFF app; unpublished, so nobody could sign in |
+| unknown | `2011592167`, `2011592168` | still in `LINE_LOGIN_CHANNEL_IDS`; nothing uses them |
+
+The bot is a **different channel** from the retired one, which is what makes deleting
+the MINI App safe — deleting the channel that owns `LINE_CHANNEL_ACCESS_TOKEN` would
+stop every message in the product, not just sign-in.
+
+**`LINE_LOGIN_CHANNEL_IDS` is a trust list, not a convenience list.** Every id in it is
+a channel whose ID tokens this API will accept as an identity, so once the new channel is
+proven, the list should narrow to `2011807354` alone. It is deliberately not narrowed in
+this deploy: the rollback target is still the old channel, and narrowing before a live
+sign-in has been measured trades a real recovery path for a theoretical one.
+
 ## Still outstanding
 
-1. **Rich menu re-sync.** LINE still holds four menus whose buttons point at
-   `https://liff.line.me/2011592166-uToRdTwS/…`:
-
-   ```text
-   laundrytwin:manager:v3      → /2011592166-uToRdTwS/dashboard
-   laundrytwin:owner:v3        → /2011592166-uToRdTwS/dashboard
-   laundrytwin:technician:v3   → /2011592166-uToRdTwS/dashboard
-   laundrytwin:default:v3      → (message actions only)
-   ```
-
-   LINE cannot edit a menu, so a sync creates new menus and relinks users. It is
-   owner-only (`POST /api/admin/rich-menus/sync`, button at `/admin/line`), and a
-   deploy token is not an owner session — so this step is the owner's click, not a
-   deploy step.
-
-2. **A real sign-in on the new channel.** `/api/auth/liff/exchange` is proven wired and
+1. **A real sign-in on the new channel.** `/api/auth/liff/exchange` is proven wired and
    is now verifying against the new client id, but no live token has been traded since
    the switch. The check that closes it: open
    `https://liff.line.me/2011807354-DuoPfzrR/dashboard` on a phone that is **not** an
