@@ -29,6 +29,7 @@ import { clearPreference, readPreference, rememberedLine, setPreference } from "
 import { ALL_BRANCHES, askWhichBranchText, branchScopeReplies, shouldAskWhichBranch } from "./branch-intent";
 import { narrowScopeToBranch } from "./scope";
 import { bahtOnly } from "./money";
+import { stripProvenance } from "./provenance";
 import { ALREADY_RATED, recordFeedback, thanksText, UNKNOWN_TURN } from "./feedback";
 import { shapeAnswer, TRUNCATION_NOTE } from "./shape";
 import type { DeliveryKind, OutboundMessage } from "./adapter";
@@ -298,8 +299,9 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
       { mcp, fetchImpl: deps.fetchImpl }
     );
 
-    // The prompt asks for baht; this makes it true whatever the model wrote.
-    const text = bahtOnly(answer.text);
+    // The prompt asks for baht and no tool names; both are made true here whatever
+    // the model wrote. A simulated answer keeps its warning — see provenance.ts.
+    const text = stripProvenance(bahtOnly(answer.text));
 
     // Suggestions on the first answer only: after that the person knows what to
     // type, and a keyboard full of chips on every message is noise.

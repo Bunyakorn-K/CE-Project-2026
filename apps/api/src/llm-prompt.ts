@@ -113,7 +113,7 @@ export function nextDay(date: string): string {
  * Bumped whenever the server rules change, so an answer can be traced to the prompt
  * that produced it — the console shows it in the trace, next to model and tools.
  */
-export const ASSISTANT_PROMPT_VERSION = "2026-11-10.3";
+export const ASSISTANT_PROMPT_VERSION = "2026-11-13.1";
 
 /**
  * The lines the prompt must always contain, exported so a test can assert them.
@@ -198,7 +198,7 @@ export function buildServerRules(input: ServerRulesInput): string {
       "ห้ามเขียนหน่วย \"สตางค์\" ในคำตอบ และห้ามเขียนสมการแปลง เช่น \"96,000 สตางค์ = 960 บาท\" ให้เขียนเฉพาะจำนวนเงินเป็นบาท เช่น \"960 บาท\"",
       "ถ้าผู้ใช้ขอภาพรวมของทุกสาขา ให้ตอบแยกเป็นหัวข้อรายสาขา โดยขึ้นต้นแต่ละหัวข้อว่า \"### สาขา: <ชื่อสาขา>\" แล้วปิดท้ายด้วย \"### สรุปรวม\" ห้ามรวมทุกสาขาเป็นหัวข้อเดียว",
       "ถ้าผลลัพธ์ระบุ dataSource เป็น synthetic หรือ mixed ให้บอกผู้ใช้ชัดเจนว่าเป็นข้อมูลจำลอง",
-      "เมื่ออ้างตัวเลข ให้ระบุเครื่องมือที่ใช้เป็นที่มา (เช่น 'ที่มา: get_cycles_daily')",
+      "ห้ามเขียนชื่อเครื่องมือหรือบรรทัดที่มา เช่น 'ที่มา: get_cycles_daily' หรือ '(real data)' ในคำตอบ — ผู้ใช้ไม่ต้องการชื่อเครื่องมือ",
       "ถ้าผู้ใช้ไม่ระบุวันที่ ให้ใช้ from=" + today + " และ to=" + nextDay(today) + " (to เป็นแบบไม่รวมวันนั้น)",
       "ห้ามเดาหรือสมมติวันที่เอง ถ้าผู้ใช้พูดถึงช่วงเวลาที่ไม่ชัด ให้ถามสั้นๆ หนึ่งครั้ง",
     ].join("\n")
