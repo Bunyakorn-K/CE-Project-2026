@@ -30,6 +30,7 @@ import {
   type Principal
 } from "./access-store";
 import { createClickHouseClient, type ClickHouseExecutor } from "./analytics/clickhouse";
+import { notifyAccessApproved, type ApprovalNotice, type NotifyOutcome } from "./bot/notify";
 import { createMcpServer, type McpTransport } from "./analytics/mcp";
 import { buildOpenApiDocument } from "./analytics/openapi";
 import { isCalendarDate } from "./calendar-date";
@@ -106,6 +107,12 @@ export type AppDependencies = {
   mcp?: McpTransport;
   /** The MCP *client* the bot and the AI console share. Tests pass a fake. */
   mcpClient?: McpClientLike;
+  /**
+   * The message sent to a LINE user whose access request was approved. Injectable
+   * so a test can assert the notice without a LINE token, and so the default
+   * (which pushes) stays the only thing production ever runs.
+   */
+  notifyApproved?: (notice: ApprovalNotice) => Promise<NotifyOutcome>;
 };
 
 initializeDatabase();
@@ -126,6 +133,19 @@ export function createApp(dependencies: AppDependencies = {}) {
   const trustedOrigins = resolveTrustedOrigins();
   const mcpAccessToken = process.env.MCP_ACCESS_TOKEN ?? "";
   const clickhouse = dependencies.analyticsDeps?.clickhouse ?? createClickHouseClient();
+  const notifyApproved = dependencies.notifyApproved ?? ((notice: ApprovalNotice) => notifyAccessApproved(notice));
+
+  /** The branch's name, for the sentence the person will read. */
+  async function branchNameOf(branchId: string): Promise<string | null> {
+    try {
+      const branches = await queryBranches(clickhouse, branchId);
+      return branches.find((branch) => branch.branchId === branchId)?.branchName ?? null;
+    } catch {
+      // The grant is already written; an unnamed branch is a worse sentence, not a
+      // reason to fail the approval.
+      return null;
+    }
+  }
   const mcp = dependencies.mcp ?? createMcpServer({
     clickhouse,
     mcpSecret: mcpAccessToken,
@@ -733,9 +753,26 @@ export function createApp(dependencies: AppDependencies = {}) {
     const scope = await validateGrantScope(c, iris, clickhouse, body);
     if (scope instanceof Response) return scope;
 
-    const approvedUser = approveLiffAccessRequest({ requestId: c.req.param("id"), role: scope.role, branchId: scope.branchId, actorUserId: principal.user.id });
+    const requestId = c.req.param("id");
+    // Read before approving: the row is marked approved by the call below, and the
+    // LINE id lives on the request, not on the account it creates.
+    const pending = listPendingAccessRequests().find((request) => request.id === requestId);
+    const approvedUser = approveLiffAccessRequest({ requestId, role: scope.role, branchId: scope.branchId, actorUserId: principal.user.id });
     if (!approvedUser) return apiError(c, 404, "ACCESS_REQUEST_NOT_FOUND", "The access request is no longer pending");
-    return c.json({ ok: true, user: approvedUser });
+
+    // The approval happened on a screen this person cannot see, so it is announced.
+    // Best-effort by design: a refused notice must not turn a granted approval into
+    // an error the admin reads as "it did not work".
+    const notified = pending
+      ? await notifyApproved({
+          requestId,
+          lineUserId: pending.lineUserId,
+          role: scope.role,
+          branchName: scope.branchId ? await branchNameOf(scope.branchId) : null
+        })
+      : "skipped";
+
+    return c.json({ ok: true, user: approvedUser, notified });
   });
 
   /**

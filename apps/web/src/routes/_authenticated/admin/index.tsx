@@ -66,7 +66,10 @@ export function AdminHome() {
         body: JSON.stringify({ role, branchId })
       });
       if (!response.ok) throw new Error(await apiErrorMessage(response, `อนุมัติคำขอไม่สำเร็จ (HTTP ${response.status})`));
-      return (await response.json()) as { ok: boolean };
+      // `notified` says whether the person was told. It is not part of "ok": the
+      // grant is written either way, and a refused LINE push must not read as a
+      // failed approval.
+      return (await response.json()) as { ok: boolean; notified?: "sent" | "failed" | "skipped" };
     },
     onSuccess: async () => {
       await Promise.all([
@@ -83,7 +86,10 @@ export function AdminHome() {
         credentials: "include"
       });
       if (!response.ok) throw new Error(await apiErrorMessage(response, `เพิกถอนสิทธิ์ไม่สำเร็จ (HTTP ${response.status})`));
-      return (await response.json()) as { ok: boolean };
+      // `notified` says whether the person was told. It is not part of "ok": the
+      // grant is written either way, and a refused LINE push must not read as a
+      // failed approval.
+      return (await response.json()) as { ok: boolean; notified?: "sent" | "failed" | "skipped" };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin", "grants"] });
@@ -99,7 +105,10 @@ export function AdminHome() {
         body: JSON.stringify({ email, role, branchId })
       });
       if (!response.ok) throw new Error(await apiErrorMessage(response, `ให้สิทธิ์ไม่สำเร็จ (HTTP ${response.status})`));
-      return (await response.json()) as { ok: boolean };
+      // `notified` says whether the person was told. It is not part of "ok": the
+      // grant is written either way, and a refused LINE push must not read as a
+      // failed approval.
+      return (await response.json()) as { ok: boolean; notified?: "sent" | "failed" | "skipped" };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin", "grants"] });
@@ -140,7 +149,15 @@ export function AdminHome() {
       </section>
 
       {approveMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">อนุมัติคำขอไม่สำเร็จ: {approveMutation.error.message}</div>}
-      {approveMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">อนุมัติคำขอแล้ว</div>}
+      {approveMutation.isSuccess && (
+        <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">
+          {approveMutation.data?.notified === "sent"
+            ? "อนุมัติคำขอแล้ว และแจ้งผู้ใช้ทาง LINE แล้ว"
+            : approveMutation.data?.notified === "failed"
+              ? "อนุมัติคำขอแล้ว แต่ส่งข้อความแจ้งผู้ใช้ไม่สำเร็จ — ให้เขาลองเข้าใช้งานดู"
+              : "อนุมัติคำขอแล้ว (ยังไม่ได้แจ้งผู้ใช้ เพราะระบบไม่ได้ตั้งค่า LINE ไว้)"}
+        </div>
+      )}
       {revokeMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">เพิกถอนสิทธิ์ไม่สำเร็จ: {revokeMutation.error.message}</div>}
       {revokeMutation.isSuccess && <div className="rounded-lg border border-border px-3.5 py-3 text-sm text-muted border-success/30 bg-success-soft text-success-soft-foreground" role="status">เพิกถอนสิทธิ์แล้ว</div>}
       {grantMutation.isError && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm leading-relaxed text-danger-soft-foreground" role="alert">ให้สิทธิ์ไม่สำเร็จ: {grantMutation.error.message}</div>}

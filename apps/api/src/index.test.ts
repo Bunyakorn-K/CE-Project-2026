@@ -1126,7 +1126,10 @@ describe("LaundryTwin API", () => {
       active: 1
     };
 
-    function ownerApp(irisOverrides: Record<string, unknown> = {}, options: { clickhouse?: ClickHouseExecutor } = {}) {
+    function ownerApp(
+      irisOverrides: Record<string, unknown> = {},
+      options: { clickhouse?: ClickHouseExecutor; notifyApproved?: (notice: unknown) => Promise<string> } = {}
+    ) {
       const getBranches = vi.fn().mockResolvedValue({
         branches: [{ id: "branch-01", name: "สาขาทดสอบ", timezone: "Asia/Bangkok", active: true }]
       });
@@ -1144,7 +1147,8 @@ describe("LaundryTwin API", () => {
           getEvents: vi.fn(),
           ...irisOverrides
         },
-        analyticsDeps: { clickhouse }
+        analyticsDeps: { clickhouse },
+        ...(options.notifyApproved ? { notifyApproved: options.notifyApproved as never } : {})
       });
       return { app, getBranches, clickhouse };
     }
@@ -1166,7 +1170,8 @@ describe("LaundryTwin API", () => {
       // outage.
       authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
       seedActor();
-      const { app } = ownerApp();
+      const notifyApproved = vi.fn().mockResolvedValue("sent");
+      const { app } = ownerApp({}, { notifyApproved });
       // Unique per run: the test database is a file, so a request approved by an
       // earlier run is still approved and the second approval would answer 404.
       const lineUserId = `U-approve-warehouse-${Date.now()}`;
@@ -1181,7 +1186,11 @@ describe("LaundryTwin API", () => {
       });
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({ ok: true });
+      await expect(response.json()).resolves.toMatchObject({ ok: true, notified: "sent" });
+      // The person who asked is told, and told the same scope that was granted.
+      expect(notifyApproved).toHaveBeenCalledWith(
+        expect.objectContaining({ lineUserId, role: "manager", branchName: "สาขาทดสอบ" })
+      );
     });
 
     it("still refuses a branch the warehouse does not have", async () => {
