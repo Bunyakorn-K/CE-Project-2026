@@ -730,7 +730,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     const principal = requireOwner(c);
     if (principal instanceof Response) return principal;
     const body = await readJson(c);
-    const scope = await validateGrantScope(c, iris, body);
+    const scope = await validateGrantScope(c, iris, clickhouse, body);
     if (scope instanceof Response) return scope;
 
     const approvedUser = approveLiffAccessRequest({ requestId: c.req.param("id"), role: scope.role, branchId: scope.branchId, actorUserId: principal.user.id });
@@ -751,7 +751,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     const principal = requireOwner(c);
     if (principal instanceof Response) return principal;
     const body = await readJson(c);
-    const scope = await validateGrantScope(c, iris, body);
+    const scope = await validateGrantScope(c, iris, clickhouse, body);
     if (scope instanceof Response) return scope;
     const email = getString(body, "email");
     if (!email) return apiError(c, 400, "INVALID_INPUT", "email is required");
@@ -1256,6 +1256,7 @@ function requireOwner(c: Context<{ Variables: AppVariables }>) {
 async function validateGrantScope(
   c: Context,
   iris: IrisClient,
+  clickhouse: ClickHouseExecutor,
   body: Record<string, unknown>
 ): Promise<{ role: Role; branchId: string | null } | Response> {
   const role = getRole(body, "role");
@@ -1266,10 +1267,23 @@ async function validateGrantScope(
   }
 
   if (branchId) {
+    // The branch is checked against the same source the admin page's own branch
+    // picker used. It used to be IRIS unconditionally — so on the ClickHouse-only
+    // deployment the picker offered real branches from the warehouse and the
+    // approval then failed 503 "analytics warehouse unavailable", which reads as an
+    // outage rather than as a validation the caller cannot satisfy.
+    const clickhouseFirst = isDevelopmentAuthBypassEnabled() || (!isDemoModeEnabled() && !isIrisReadConfigured());
     try {
-      const branches = await iris.getBranches();
-      if (!branches.branches.some((branch) => branch.id === branchId)) {
-        return apiError(c, 400, "UNKNOWN_BRANCH", "The branch is not available in the configured IRIS tenant");
+      if (clickhouseFirst) {
+        const branches = await queryBranches(clickhouse, branchId);
+        if (!branches.some((branch) => branch.branchId === branchId)) {
+          return apiError(c, 400, "UNKNOWN_BRANCH", "The branch does not exist in the analytics warehouse");
+        }
+      } else {
+        const branches = await iris.getBranches();
+        if (!branches.branches.some((branch) => branch.id === branchId)) {
+          return apiError(c, 400, "UNKNOWN_BRANCH", "The branch is not available in the configured IRIS tenant");
+        }
       }
     } catch (error) {
       return irisError(c, error);

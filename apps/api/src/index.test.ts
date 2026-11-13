@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Principal } from "./access-store";
+import * as accessStore from "./access-store";
 import { sqlite } from "./db";
 
 const testAuth = vi.hoisted(() => ({ principal: null as Principal | null }));
@@ -1102,10 +1103,38 @@ describe("LaundryTwin API", () => {
   // who signed in on their own could never be scoped down to one branch — which
   // is also why production held no single-branch account to verify scoping with.
   describe("admin grant route", () => {
-    function ownerApp(irisOverrides: Record<string, unknown> = {}) {
+    /**
+     * A grant records who granted it, and `granted_by_user_id` is a real foreign
+     * key — the principal the mocked session returns has to exist as a row, or the
+     * insert fails 500 and the test would be measuring the fixture, not the route.
+     */
+    function seedActor() {
+      const now = Date.now();
+      const insert = sqlite.prepare(
+        "insert or ignore into user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, 0, ?, ?)"
+      );
+      insert.run("user-01", "Test User", "test@example.com", now, now);
+      insert.run("owner-01", "Owner", "owner-01@laundrytwin.local", now, now);
+    }
+
+    /** The warehouse row `queryBranches` returns for branch-01. */
+    const BRANCH_ROW = {
+      tenant_id: "tenant-01",
+      branch_id: "branch-01",
+      branch_name: "สาขาทดสอบ",
+      timezone: "Asia/Bangkok",
+      active: 1
+    };
+
+    function ownerApp(irisOverrides: Record<string, unknown> = {}, options: { clickhouse?: ClickHouseExecutor } = {}) {
       const getBranches = vi.fn().mockResolvedValue({
         branches: [{ id: "branch-01", name: "สาขาทดสอบ", timezone: "Asia/Bangkok", active: true }]
       });
+      // Both sources are wired, because the route picks one by configuration: the
+      // test that only stubs IRIS passes while the deployment has none.
+      const clickhouse =
+        options.clickhouse ??
+        (vi.fn().mockImplementation(async (sql: string) => (String(sql).includes("dim_branch") ? [BRANCH_ROW] : [])) as unknown as ClickHouseExecutor);
       const app = createApp({
         irisClient: {
           getBranches,
@@ -1114,9 +1143,10 @@ describe("LaundryTwin API", () => {
           getAlerts: vi.fn(),
           getEvents: vi.fn(),
           ...irisOverrides
-        }
+        },
+        analyticsDeps: { clickhouse }
       });
-      return { app, getBranches };
+      return { app, getBranches, clickhouse };
     }
 
     function post(app: ReturnType<typeof createApp>, body: unknown) {
@@ -1126,6 +1156,51 @@ describe("LaundryTwin API", () => {
         body: JSON.stringify(body)
       });
     }
+
+
+    it("approves a pending request on a warehouse-only deployment", async () => {
+      // The production failure this fixes: the admin page listed real branches from
+      // ClickHouse, and the approval then checked them against IRIS — which is not
+      // configured there — so every tap answered 503 "analytics warehouse
+      // unavailable". A validation the caller cannot satisfy must not read as an
+      // outage.
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const { app } = ownerApp();
+      // Unique per run: the test database is a file, so a request approved by an
+      // earlier run is still approved and the second approval would answer 404.
+      const lineUserId = `U-approve-warehouse-${Date.now()}`;
+      accessStore.recordPendingLiffAccessRequest({ lineUserId, displayName: "LINE bot user" });
+      const pending = accessStore.listPendingAccessRequests().find((request) => request.lineUserId === lineUserId);
+      expect(pending).toBeTruthy();
+
+      const response = await app.request(`/api/admin/access-requests/${pending!.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role: "manager", branchId: "branch-01" })
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ ok: true });
+    });
+
+    it("still refuses a branch the warehouse does not have", async () => {
+      authenticate([{ id: "owner-01", role: "owner", branchId: null }]);
+      seedActor();
+      const { app } = ownerApp({}, { clickhouse: (vi.fn().mockResolvedValue([]) as unknown) as ClickHouseExecutor });
+      const lineUserId = `U-approve-unknown-${Date.now()}`;
+      accessStore.recordPendingLiffAccessRequest({ lineUserId, displayName: "LINE bot user" });
+      const pending = accessStore.listPendingAccessRequests().find((request) => request.lineUserId === lineUserId);
+
+      const response = await app.request(`/api/admin/access-requests/${pending!.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role: "manager", branchId: "branch-missing" })
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: "UNKNOWN_BRANCH" } });
+    });
 
     it("refuses a principal who is not an owner", async () => {
       authenticate([{ id: "manager-01", role: "manager", branchId: "branch-01" }]);
