@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { ASSISTANT_PROMPT_VERSION, branchLabel, buildAssistantSystemPrompt } from "../llm-prompt";
 import { contentEnabled, withAnswerSpan, withToolSpan, hashUser, truncate } from "../telemetry";
 import { recentTurns } from "./memory";
+import { FRESH_DATA_NUDGE, needsFreshNumbers } from "./fresh-data";
 
 /**
  * Does this tool result say "I failed"?
@@ -204,6 +205,9 @@ async function answerOnce(
     };
   }
 
+  // Narrowed once, outside the closure below: the guard above proves it is set, but a
+  // closure does not inherit that narrowing.
+  const apiKey = settings.apiKey;
   const tools = await deps.mcp.listTools(ctx.scope);
   // The last few turns, so a follow-up can refer to what came before. Read per
   // message, not cached: the container restarts on deploy and the conversation
@@ -213,52 +217,64 @@ async function answerOnce(
   // whose execute routes back to the MCP data server.
   // The base URL belongs in the log next to the failure: "502" is a deployment
   // fact and the stack trace alone does not name the host that did not answer.
-  const result = await agenticAnswerWithMeta(settings.baseUrl, settings.apiKey, settings.model, {
-    instructions: buildSystemPrompt(ctx, settings.systemPrompt, tools.map((tool) => tool.name)),
-    input: ctx.userText,
-    messages: history,
-    tools: tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema as Record<string, unknown> | undefined
-    })),
-    execute: async (name, args, meta) => {
-      const toolArgs = { ...args };
-      delete toolArgs.accessScope;
-      // Exactly one audit row per call, on success and on failure. The row
-      // carries a digest of the arguments, never the arguments: they hold branch
-      // ids and revenue scopes, and an audit table must not become a second copy
-      // of the data it audits.
-      return runAuditedToolCall({
-        tool: name,
-        toolCallId: meta?.toolCallId ?? null,
-        actorUserId: ctx.actorUserId ?? null,
-        model: settings.model,
-        args: toolArgs,
-        execute: async () =>
-          // Its own span, so "89 seconds" can be attributed to one call instead of
-          // being one number for four.
-          withToolSpan(
-            name,
-            turnId,
-            async () => {
-              const text = toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope));
-              if (looksLikeToolError(text)) failedTools.add(name);
-              return text;
-            },
-            { args: toolArgs }
-          )
-      });
-    },
-    temperature: settings.temperature,
-    // Bounded by the owner's setting: 2 was a single tool round-trip, which cannot
-    // answer "compare branch A with B". The loop is bounded so cost stays predictable.
-    maxSteps: settings.maxSteps,
-    fetchImpl: deps.fetchImpl
-  }).catch((error: unknown) => {
-    console.error("LLM call failed", { baseUrl: settings.baseUrl, model: settings.model, error });
-    throw error;
-  });
+  const ask = (instructions: string) =>
+    agenticAnswerWithMeta(settings.baseUrl, apiKey, settings.model, {
+      instructions,
+      input: ctx.userText,
+      messages: history,
+      tools: tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema as Record<string, unknown> | undefined
+      })),
+      execute: async (name: string, args: Record<string, unknown>, meta: { toolCallId?: string } | undefined) => {
+        const toolArgs = { ...args };
+        delete toolArgs.accessScope;
+        // Exactly one audit row per call, on success and on failure. The row
+        // carries a digest of the arguments, never the arguments: they hold branch
+        // ids and revenue scopes, and an audit table must not become a second copy
+        // of the data it audits.
+        return runAuditedToolCall({
+          tool: name,
+          toolCallId: meta?.toolCallId ?? null,
+          actorUserId: ctx.actorUserId ?? null,
+          model: settings.model,
+          args: toolArgs,
+          execute: async () =>
+            // Its own span, so "89 seconds" can be attributed to one call instead of
+            // being one number for four.
+            withToolSpan(
+              name,
+              turnId,
+              async () => {
+                const text = toolResultText(await deps.mcp.callTool(name, toolArgs, ctx.scope));
+                if (looksLikeToolError(text)) failedTools.add(name);
+                return text;
+              },
+              { args: toolArgs }
+            )
+        });
+      },
+      temperature: settings.temperature,
+      // Bounded by the owner's setting: 2 was a single tool round-trip, which cannot
+      // answer "compare branch A with B". The loop is bounded so cost stays predictable.
+      maxSteps: settings.maxSteps,
+      fetchImpl: deps.fetchImpl
+    }).catch((error: unknown) => {
+      console.error("LLM call failed", { baseUrl: settings.baseUrl, model: settings.model, error });
+      throw error;
+    });
+
+  const baseInstructions = buildSystemPrompt(ctx, settings.systemPrompt, tools.map((tool) => tool.name));
+  let result = await ask(baseInstructions);
+
+  // A question that asks for a measurement, answered without measuring anything, is
+  // answered from the transcript: the previous card's numbers become today's. It reads
+  // perfectly, which is why it needs a code check rather than a prompt rule — measured
+  // in production as one step, zero tool calls, and figures 2.5 hours old.
+  if (needsFreshNumbers(ctx.userText) && result.toolCalls === 0 && tools.length > 0) {
+    result = await ask(`${baseInstructions}\n\n${FRESH_DATA_NUDGE}`);
+  }
 
   return {
     text: result.text,

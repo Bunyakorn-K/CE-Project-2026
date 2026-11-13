@@ -112,7 +112,9 @@ describe("bot conversation loop", () => {
   it("returns the LLM answer when no tool call is requested", async () => {
     const mcp = { listTools: vi.fn().mockResolvedValue(mcpTools), callTool: vi.fn() };
     // AI SDK Chat Completions streaming: one text delta, then DONE.
-    const fetchImpl = vi.fn().mockResolvedValue(
+    // A factory, not a value: the body of a Response can be read once, and a numbers
+    // question with no tool call is now asked twice.
+    const fetchImpl = vi.fn(async () =>
       new Response(
         `data: {"choices":[{"delta":{"content":"รายได้รวม 184,000 บาท"},"finish_reason":null}]}\n\ndata: [DONE]\n`,
         { status: 200, headers: { "content-type": "text/event-stream" } }
@@ -234,7 +236,9 @@ describe("bot webhook handler", () => {
       ]),
       callTool: vi.fn()
     };
-    const fetchImpl = vi.fn().mockResolvedValue(
+    // A factory: a numbers question with no tool call is asked twice now, and a
+    // Response body can only be read once.
+    const fetchImpl = vi.fn(async () =>
       new Response(
         `data: {"choices":[{"delta":{"content":"สาขา SYNTH-A มี 31 รอบ"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n`,
         { status: 200, headers: { "content-type": "text/event-stream" } }
@@ -300,7 +304,13 @@ describe("bot webhook handler", () => {
 
   // P1: the typing indicator, the queue, the memory write, and history on the wire.
   function harness(
-    options: { delayMs?: number; answer?: string; branches?: { branchId: string; branchName: string }[] } = {}
+    options: {
+    delayMs?: number;
+    answer?: string;
+    branches?: { branchId: string; branchName: string }[];
+    /** Tools the MCP server offers — the re-measure guard only fires when there are any. */
+    tools?: { name: string; description: string; inputSchema?: Record<string, unknown> }[];
+  } = {}
   ) {
     const adapter = {
       platform: "line" as const,
@@ -308,7 +318,7 @@ describe("bot webhook handler", () => {
       sendFlex: vi.fn().mockResolvedValue("reply" as const),
       showLoading: vi.fn().mockResolvedValue(undefined)
     };
-    const mcp = { listTools: vi.fn().mockResolvedValue([]), callTool: vi.fn() };
+    const mcp = { listTools: vi.fn().mockResolvedValue(options.tools ?? []), callTool: vi.fn() };
     const fetchImpl = vi.fn(async (_url: unknown, _init?: RequestInit): Promise<Response> => {
       if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
       const payload = JSON.stringify({ choices: [{ delta: { content: options.answer ?? "ตอบแล้ว" } }] });
@@ -400,6 +410,49 @@ describe("bot webhook handler", () => {
       const replies = adapter.sendText.mock.calls.map((call) => call[1] as string);
       expect(replies.some((text) => text.includes("ขอบคุณ"))).toBe(true);
       expect(replies.some((text) => text.includes("ให้คะแนนคำตอบนี้ไม่ได้"))).toBe(false);
+    });
+
+    it("re-measures a numbers question the model answered from memory", async () => {
+      // Measured in production: "สาขาหลิ่งมื่น ภาพรวมวันนี้" came back in one step with
+      // zero tool calls, carrying the figures of a card delivered 2.5 hours earlier.
+      // The transcript is in the prompt, so the previous answer's numbers were read as
+      // this answer's evidence. A second attempt, told out loud not to do that, is the
+      // cheapest honest answer.
+      const userStale = `line-stale-${Date.now()}`;
+      const { adapter, handler, fetchImpl } = harness({
+        branches: [TWO_BRANCHES[0]],
+        answer: "รายได้: 3,040 บาท\nรอบซัก: 50 รอบ",
+        tools: [{ name: "get_revenue_daily", description: "Daily revenue", inputSchema: { type: "object" } }]
+      });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ภาพรวมวันนี้" },
+        source: { userId: userStale },
+        replyToken: "rt-stale"
+      });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      const secondBody = JSON.stringify(fetchImpl.mock.calls[1]);
+      expect(secondBody).toContain("ยังไม่ได้เรียกเครื่องมือ");
+    });
+
+    it("does not retry a thank-you, which asks for nothing", async () => {
+      const userThanks = `line-thanks-${Date.now()}`;
+      const { handler, fetchImpl } = harness({ branches: [TWO_BRANCHES[0]], answer: "ยินดีครับ" });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "ขอบคุณครับ" },
+        source: { userId: userThanks },
+        replyToken: "rt-thanks"
+      });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
 
     it("answers the held question when the branch is tapped", async () => {
