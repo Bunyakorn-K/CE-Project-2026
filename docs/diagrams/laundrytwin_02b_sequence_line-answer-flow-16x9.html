@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>LaundryTwin — LINE answer flow</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, Arial, sans-serif;
+         color: #23282f; -webkit-font-smoothing: antialiased; }
+  .poster { width: 100%; max-width: 1920px; margin: 0 auto; }
+  svg.d { display: block; width: 100%; height: auto; }
+  .tf   { font-size: 16px; font-weight: 700; fill: #1c2229; }
+  .t    { font-size: 16px; fill: #23282f; }
+  .tk   { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 14.5px; fill: #2b323b; }
+  .tn   { font-size: 15px; fill: #3b4553; }
+  .tcap { font-size: 13.5px; fill: #7d8899; }
+  .tsub { font-size: 12.5px; fill: #7d8899; }
+  .call { stroke: #5b6b85; stroke-width: 1.8; fill: none; }
+  .ret  { stroke: #8fa0b8; stroke-width: 1.5; fill: none; stroke-dasharray: 6 5; }
+  .life { stroke: #c3ccda; stroke-width: 1.2; stroke-dasharray: 4 6; fill: none; }
+  .card { fill: none; stroke: #7e8fab; stroke-width: 1.6; }
+  .soft { fill: none; stroke: #a9b8cc; stroke-width: 1.3; }
+  .icon { fill: none; stroke: #333b47; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<div class="poster">
+<svg class="d" viewBox="0 0 1920 1080" role="img" aria-label="LaundryTwin LINE answer flow">
+  <defs>
+    <marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5"
+            orient="auto-start-reverse" markerUnits="strokeWidth">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#5b6b85" stroke-width="1.9"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="so" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5"
+            orient="auto-start-reverse" markerUnits="strokeWidth">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#8fa0b8" stroke-width="1.9"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+<symbol id="logo-hono" viewBox="0 0 24 24"><path d="M12.445.002a45.529 45.529 0 0 0-5.252 8.146 8.595 8.595 0 0 1-.555-.53 27.796 27.796 0 0 0-1.205-1.542 8.762 8.762 0 0 0-1.251 2.12 20.743 20.743 0 0 0-1.448 5.88 8.867 8.867 0 0 0 .338 3.468c1.312 3.48 3.794 5.593 7.445 6.337 3.055.438 5.755-.333 8.097-2.312 2.677-2.59 3.359-5.634 2.047-9.132a33.287 33.287 0 0 0-2.988-5.59A91.34 91.34 0 0 0 12.615.053a.216.216 0 0 0-.17-.051Zm-.336 3.906a50.93 50.93 0 0 1 4.794 6.552c.448.767.817 1.57 1.108 2.41.606 2.386-.044 4.354-1.951 5.904-1.845 1.298-3.87 1.683-6.072 1.156-2.376-.737-3.75-2.335-4.121-4.794a5.107 5.107 0 0 1 .242-2.266c.358-.908.79-1.774 1.3-2.601l1.446-2.121a397.33 397.33 0 0 0 3.254-4.24Z"/></symbol>
+<symbol id="logo-sqlite" viewBox="0 0 24 24"><path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521m-18.573.543A1.842 1.842 0 0 0 1.27 2.9v16.608a1.84 1.84 0 0 0 1.835 1.834h9.418a22.953 22.953 0 0 1-.052-2.707c-.006-.062-.011-.141-.016-.2a27.01 27.01 0 0 0-.473-2.378c-.121-.47-.275-.898-.369-1.057-.116-.197-.098-.31-.097-.432 0-.12.015-.245.037-.386a9.98 9.98 0 0 1 .234-1.045l.217-.028c-.017-.035-.014-.065-.031-.097l-.041-.381a32.8 32.8 0 0 1 .382-1.194l.2-.019c-.008-.016-.01-.038-.018-.053l-.043-.316c.63-3.28 2.587-7.443 4.8-9.791.066-.069.133-.128.198-.194Z"/></symbol>
+<symbol id="logo-line" viewBox="0 0 24 24"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></symbol>
+<symbol id="logo-clickhouse" viewBox="0 0 24 24"><path d="M21.333 10H24v4h-2.667ZM16 1.335h2.667v21.33H16Zm-5.333 0h2.666v21.33h-2.666ZM0 22.665V1.335h2.667v21.33zm5.333-21.33H8v21.33H5.333Z"/></symbol>
+  </defs>
+<path class="life" d="M130 162 V1056"/>
+  <path class="life" d="M380 162 V1056"/>
+  <path class="life" d="M630 162 V1056"/>
+  <path class="life" d="M880 162 V1056"/>
+  <path class="life" d="M1130 162 V1056"/>
+  <path class="life" d="M1380 162 V1056"/>
+  <path class="life" d="M1630 162 V1056"/>
+  <rect class="card" x="37" y="44" width="186" height="118" rx="7"/>
+  <g class="icon"><circle cx="130" cy="78" r="8"/><path d="M115 96 a15 15 0 0 1 30 0"/></g>
+  <text class="tf" x="130" y="136" text-anchor="middle">User</text>
+  <rect class="card" x="287" y="44" width="186" height="118" rx="7"/>
+  <use href="#logo-line" x="360" y="64" width="40" height="40" fill="#06c755"/>
+  <text class="tf" x="380" y="136" text-anchor="middle">LINE Platform</text>
+  <rect class="card" x="537" y="44" width="186" height="118" rx="7"/>
+  <g class="icon" stroke-width="2.4"><path d="M630 66 l5 13 l13 5 l-13 5 l-5 13 l-5 -13 l-13 -5 l13 -5 z"/></g>
+  <text class="tf" x="630" y="136" text-anchor="middle">LLM Gateway</text>
+  <rect class="card" x="787" y="44" width="186" height="118" rx="7"/>
+  <use href="#logo-hono" x="860" y="64" width="40" height="40" fill="#ff5b1f"/>
+  <text class="tf" x="880" y="136" text-anchor="middle">Hono API</text>
+  <text class="tsub" x="880" y="154" text-anchor="middle">webhook · bot · MCP</text>
+  <rect class="card" x="1037" y="44" width="186" height="118" rx="7"/>
+  <use href="#logo-sqlite" x="1110" y="64" width="40" height="40" fill="#12495f"/>
+  <text class="tf" x="1130" y="136" text-anchor="middle">SQLite</text>
+  <text class="tsub" x="1130" y="154" text-anchor="middle">sessions · grants</text>
+  <rect class="card" x="1287" y="44" width="186" height="118" rx="7"/>
+  <g class="icon"><path d="M1370 68 v8 M1390 68 v8"/><path d="M1365 76 h30 v8 a15 15 0 0 1 -30 0 z"/><path d="M1380 100 v10"/></g>
+  <text class="tf" x="1380" y="136" text-anchor="middle">MCP tools</text>
+  <text class="tsub" x="1380" y="154" text-anchor="middle">6 allow-listed</text>
+  <rect class="card" x="1537" y="44" width="186" height="118" rx="7"/>
+  <use href="#logo-clickhouse" x="1610" y="64" width="40" height="40" fill="#e2a900"/>
+  <text class="tf" x="1630" y="136" text-anchor="middle">ClickHouse</text>
+  <text class="tsub" x="1630" y="154" text-anchor="middle">warehouse</text>
+  <path class="call" d="M136 236 H372"  marker-end="url(#s)"/>
+  <text class="t" x="255.0" y="224" text-anchor="middle">asks a question</text>
+  <path class="call" d="M386 316 H872"  marker-end="url(#s)"/>
+  <text class="tk" x="630.0" y="304" text-anchor="middle">webhook · HMAC signed</text>
+  <rect class="soft" x="697.1" y="386" width="365.79999999999995" height="40" rx="5"/>
+  <text class="tn" x="880" y="413" text-anchor="middle">200 ack first — the model runs detached</text>
+  <path class="call" d="M886 466 H1122" marker-start="url(#so)" marker-end="url(#so)"/>
+  <text class="t" x="1005.0" y="454" text-anchor="middle">identity + grants → branch scope</text>
+  <path class="call" d="M874 546 H638" marker-start="url(#so)" marker-end="url(#so)"/>
+  <text class="t" x="755.0" y="534" text-anchor="middle">prompt + tools → tool_call</text>
+  <path class="call" d="M886 626 H1372" marker-start="url(#so)" marker-end="url(#so)"/>
+  <text class="t" x="1130.0" y="614" text-anchor="middle">callTool(name, scope) → result</text>
+  <path class="call" d="M1386 706 H1622" marker-start="url(#so)" marker-end="url(#so)"/>
+  <text class="t" x="1505.0" y="694" text-anchor="middle">parameterized query → rows</text>
+  <path class="call" d="M874 786 H638" marker-start="url(#so)" marker-end="url(#so)"/>
+  <text class="t" x="755.0" y="774" text-anchor="middle">tool result → Thai answer</text>
+  <path class="call" d="M874 866 H388"  marker-end="url(#s)"/>
+  <text class="t" x="630.0" y="854" text-anchor="middle">pushMessage</text>
+  <path class="call" d="M374 946 H138"  marker-end="url(#s)"/>
+  <text class="t" x="255.0" y="934" text-anchor="middle">answer appears in the chat</text>
+  <text class="tcap" x="80" y="1054">solid = call · double-headed = request and response collapsed · dashed lifelines are time, not data flow</text>
+</svg>
+</div>
+</body>
+</html>

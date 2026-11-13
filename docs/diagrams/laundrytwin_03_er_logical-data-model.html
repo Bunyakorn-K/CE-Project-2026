@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>LaundryTwin — logical data model</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, Arial, sans-serif;
+         color: #23282f; -webkit-font-smoothing: antialiased; }
+  .poster { width: 100%; max-width: 2080px; margin: 0 auto; }
+  svg.d { display: block; width: 100%; height: auto; }
+  .tn     { font-size: 12.5px; font-weight: 700; letter-spacing: .2px; fill: #1c2229;
+            font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+  .tk     { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: #2b323b; }
+  .ttype  { font-size: 10.5px; fill: #7d8899; }
+  .tkey   { font-size: 8.5px; font-weight: 700; fill: #5b6b85; letter-spacing: .3px;
+            font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+  .tleg2  { font-size: 11.5px; fill: #3b4553; }
+  .card   { fill: none; stroke: #7e8fab; stroke-width: 1.5; }
+  .hrule  { stroke: #a9b8cc; stroke-width: 1.1; }
+  .tag    { fill: none; stroke: #a9b8cc; stroke-width: 1; }
+  .soft   { fill: none; stroke: #a9b8cc; stroke-width: 1.2; }
+  .bold   { fill: none; stroke: #5b6b85; stroke-width: 1.6; }
+  .thin   { fill: none; stroke: #b3c0d2; stroke-width: 1.1; }
+</style>
+</head>
+<body>
+<div class="poster">
+<svg class="d" viewBox="0 0 2080 1950" role="img" aria-label="LaundryTwin logical data model">
+  <defs>
+    <marker id="crow" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="11" markerHeight="11"
+            orient="auto" markerUnits="strokeWidth">
+      <path d="M1 7 L13 1 M1 7 L13 7 M1 7 L13 12" fill="none" stroke="#8b9ab0" stroke-width="1.4"
+            stroke-linecap="round"/>
+    </marker>
+  </defs>
+<mask id="cm"><rect width="2080" height="1950" fill="#fff"/>
+  <rect x="63" y="43" width="294" height="188" fill="#000"/>
+  <rect x="393" y="43" width="294" height="169" fill="#000"/>
+  <rect x="723" y="43" width="294" height="226" fill="#000"/>
+  <rect x="1053" y="43" width="294" height="112" fill="#000"/>
+  <rect x="1383" y="43" width="294" height="169" fill="#000"/>
+  <rect x="1743" y="363" width="294" height="188" fill="#000"/>
+  <rect x="1743" y="603" width="294" height="188" fill="#000"/>
+  <rect x="1743" y="843" width="294" height="169" fill="#000"/>
+  <rect x="1743" y="1083" width="294" height="169" fill="#000"/>
+  <rect x="43" y="303" width="294" height="131" fill="#000"/>
+  <rect x="43" y="473" width="294" height="169" fill="#000"/>
+  <rect x="43" y="683" width="294" height="207" fill="#000"/>
+  <rect x="43" y="903" width="294" height="169" fill="#000"/>
+  <rect x="43" y="1123" width="294" height="131" fill="#000"/>
+  <rect x="43" y="1333" width="294" height="169" fill="#000"/>
+  <rect x="63" y="1563" width="294" height="207" fill="#000"/>
+  <rect x="393" y="1563" width="294" height="188" fill="#000"/>
+  <rect x="723" y="1563" width="294" height="264" fill="#000"/>
+  <rect x="1053" y="1563" width="294" height="188" fill="#000"/>
+  <rect x="1383" y="1563" width="294" height="169" fill="#000"/>
+  <rect x="1713" y="1563" width="294" height="131" fill="#000"/>
+  <rect x="893" y="703" width="294" height="150" fill="#000"/>
+  </mask>
+  <g mask="url(#cm)">
+  <path class="bold" d="M1186.1 158.0 L1058.4 700.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M190.0 437.0 L190.0 470.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M289.5 300.0 L412.9 215.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M690.0 140.5 L720.0 143.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M390.0 131.8 L360.0 132.7" marker-end="url(#crow)"/>
+  <path class="bold" d="M1020.0 235.6 L1740.0 617.4" marker-end="url(#crow)"/>
+  <path class="bold" d="M540.0 215.0 L540.0 289.0 L1726.0 289.0 L1726.0 457.0 L1740.0 457.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M540.0 215.0 L540.0 289.0 L1738.0 289.0 L1738.0 697.0 L1740.0 697.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M540.0 215.0 L540.0 289.0 L1750.0 289.0 L1750.0 927.5 L2040.0 927.5" marker-end="url(#crow)"/>
+  <path class="bold" d="M653.6 215.0 L1776.4 1080.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M1710.0 1637.1 L1680.0 1638.9" marker-end="url(#crow)"/>
+  <path class="bold" d="M1050.0 1674.3 L1020.0 1677.7" marker-end="url(#crow)"/>
+  <path class="bold" d="M720.0 1677.7 L690.0 1674.3" marker-end="url(#crow)"/>
+  <path class="bold" d="M190.0 1257.0 L190.0 1330.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M340.0 1186.6 L1740.0 1169.4" marker-end="url(#crow)"/>
+  <path class="bold" d="M340.0 1188.5 L1786.0 1188.5 L1786.0 1666.5 L360.0 1666.5" marker-end="url(#crow)"/>
+  <path class="bold" d="M190.0 1120.0 L190.0 1075.0" marker-end="url(#crow)"/>
+  <path class="bold" d="M190.0 900.0 L190.0 893.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M939.0 700.0 L335.6 234.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M980.0 700.0 L607.3 215.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1018.7 700.0 L901.7 272.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1098.8 700.0 L1464.1 215.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1190.0 721.4 L1740.0 513.6" marker-end="url(#crow)"/>
+  <path class="thin" d="M1190.0 763.7 L1740.0 711.3" marker-end="url(#crow)"/>
+  <path class="thin" d="M1190.0 804.4 L1740.0 901.1" marker-end="url(#crow)"/>
+  <path class="thin" d="M1190.0 846.7 L1740.0 1098.8" marker-end="url(#crow)"/>
+  <path class="thin" d="M890.0 705.7 L332.2 437.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M890.0 739.1 L340.0 596.4" marker-end="url(#crow)"/>
+  <path class="thin" d="M890.0 779.5 L340.0 785.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M890.0 815.0 L340.0 950.5" marker-end="url(#crow)"/>
+  <path class="thin" d="M890.0 850.4 L331.8 1120.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M936.3 856.0 L306.3 1330.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M967.1 856.0 L309.5 1560.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M995.6 856.0 L595.2 1560.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1025.5 856.0 L895.0 1560.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1054.2 856.0 L1182.3 1560.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1084.0 856.0 L1480.7 1560.0" marker-end="url(#crow)"/>
+  <path class="thin" d="M1115.2 856.0 L1794.0 1560.0" marker-end="url(#crow)"/>
+  </g>
+  <rect class="card" x="60" y="40" width="300" height="194"/>
+  <path class="hrule" d="M60 72 h300"/>
+  <text class="tn" x="72" y="61">MACHINE_SNAPSHOT</text>
+  <rect class="tag" x="70" y="80" width="33" height="14" rx="3"/>
+  <text class="tkey" x="86.5" y="91" text-anchor="middle">PK/FK</text>
+  <text class="tk" x="111" y="91">machine_id</text>
+  <text class="ttype" x="348" y="91" text-anchor="end">string</text>
+  <rect class="tag" x="70" y="99" width="15" height="14" rx="3"/>
+  <text class="tkey" x="77.5" y="110" text-anchor="middle">FK</text>
+  <text class="tk" x="93" y="110">branch_id</text>
+  <text class="ttype" x="348" y="110" text-anchor="end">string</text>
+  <text class="tk" x="94" y="129">state</text>
+  <text class="ttype" x="348" y="129" text-anchor="end">string</text>
+  <text class="tk" x="94" y="148">remaining_seconds</text>
+  <text class="ttype" x="348" y="148" text-anchor="end">int</text>
+  <text class="tk" x="94" y="167">temperature_c</text>
+  <text class="ttype" x="348" y="167" text-anchor="end">decimal</text>
+  <text class="tk" x="94" y="186">door_status</text>
+  <text class="ttype" x="348" y="186" text-anchor="end">string</text>
+  <text class="tk" x="94" y="205">updated_at</text>
+  <text class="ttype" x="348" y="205" text-anchor="end">datetime</text>
+  <text class="tk" x="94" y="224">stale_after</text>
+  <text class="ttype" x="348" y="224" text-anchor="end">datetime</text>
+  <rect class="card" x="390" y="40" width="300" height="175"/>
+  <path class="hrule" d="M390 72 h300"/>
+  <text class="tn" x="402" y="61">MACHINE</text>
+  <rect class="tag" x="400" y="80" width="16" height="14" rx="3"/>
+  <text class="tkey" x="408.0" y="91" text-anchor="middle">PK</text>
+  <text class="tk" x="424" y="91">machine_id</text>
+  <text class="ttype" x="678" y="91" text-anchor="end">string</text>
+  <rect class="tag" x="400" y="99" width="15" height="14" rx="3"/>
+  <text class="tkey" x="407.5" y="110" text-anchor="middle">FK</text>
+  <text class="tk" x="423" y="110">branch_id</text>
+  <text class="ttype" x="678" y="110" text-anchor="end">string</text>
+  <rect class="tag" x="400" y="118" width="15" height="14" rx="3"/>
+  <text class="tkey" x="407.5" y="129" text-anchor="middle">FK</text>
+  <text class="tk" x="423" y="129">register_map_id</text>
+  <text class="ttype" x="678" y="129" text-anchor="end">string</text>
+  <text class="tk" x="424" y="148">display_name</text>
+  <text class="ttype" x="678" y="148" text-anchor="end">string</text>
+  <text class="tk" x="424" y="167">machine_type</text>
+  <text class="ttype" x="678" y="167" text-anchor="end">string</text>
+  <text class="tk" x="424" y="186">status</text>
+  <text class="ttype" x="678" y="186" text-anchor="end">string</text>
+  <text class="tk" x="424" y="205">installed_at</text>
+  <text class="ttype" x="678" y="205" text-anchor="end">datetime</text>
+  <rect class="card" x="720" y="40" width="300" height="232"/>
+  <path class="hrule" d="M720 72 h300"/>
+  <text class="tn" x="732" y="61">TELEMETRY_EVENT</text>
+  <rect class="tag" x="730" y="80" width="16" height="14" rx="3"/>
+  <text class="tkey" x="738.0" y="91" text-anchor="middle">PK</text>
+  <text class="tk" x="754" y="91">telemetry_event_id</text>
+  <text class="ttype" x="1008" y="91" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="99" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="110" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="110">tenant_id</text>
+  <text class="ttype" x="1008" y="110" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="118" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="129" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="129">branch_id</text>
+  <text class="ttype" x="1008" y="129" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="137" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="148" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="148">machine_id</text>
+  <text class="ttype" x="1008" y="148" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="156" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="167" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="167">register_map_id</text>
+  <text class="ttype" x="1008" y="167" text-anchor="end">string</text>
+  <text class="tk" x="754" y="186">event_timestamp</text>
+  <text class="ttype" x="1008" y="186" text-anchor="end">datetime</text>
+  <text class="tk" x="754" y="205">received_at</text>
+  <text class="ttype" x="1008" y="205" text-anchor="end">datetime</text>
+  <text class="tk" x="754" y="224">payload_hash</text>
+  <text class="ttype" x="1008" y="224" text-anchor="end">string</text>
+  <text class="tk" x="754" y="243">data_quality_status</text>
+  <text class="ttype" x="1008" y="243" text-anchor="end">string</text>
+  <text class="tk" x="754" y="262">raw_payload_ref</text>
+  <text class="ttype" x="1008" y="262" text-anchor="end">string</text>
+  <rect class="card" x="1050" y="40" width="300" height="118"/>
+  <path class="hrule" d="M1050 72 h300"/>
+  <text class="tn" x="1062" y="61">TENANT</text>
+  <rect class="tag" x="1060" y="80" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1068.0" y="91" text-anchor="middle">PK</text>
+  <text class="tk" x="1084" y="91">tenant_id</text>
+  <text class="ttype" x="1338" y="91" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="110">name</text>
+  <text class="ttype" x="1338" y="110" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="129">status</text>
+  <text class="ttype" x="1338" y="129" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="148">created_at</text>
+  <text class="ttype" x="1338" y="148" text-anchor="end">datetime</text>
+  <rect class="card" x="1380" y="40" width="300" height="175"/>
+  <path class="hrule" d="M1380 72 h300"/>
+  <text class="tn" x="1392" y="61">INGESTION_REJECTION</text>
+  <rect class="tag" x="1390" y="80" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1398.0" y="91" text-anchor="middle">PK</text>
+  <text class="tk" x="1414" y="91">rejection_id</text>
+  <text class="ttype" x="1668" y="91" text-anchor="end">string</text>
+  <rect class="tag" x="1390" y="99" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1397.5" y="110" text-anchor="middle">FK</text>
+  <text class="tk" x="1413" y="110">tenant_id</text>
+  <text class="ttype" x="1668" y="110" text-anchor="end">string</text>
+  <rect class="tag" x="1390" y="118" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1397.5" y="129" text-anchor="middle">FK</text>
+  <text class="tk" x="1413" y="129">branch_id</text>
+  <text class="ttype" x="1668" y="129" text-anchor="end">string</text>
+  <text class="tk" x="1414" y="148">received_at</text>
+  <text class="ttype" x="1668" y="148" text-anchor="end">datetime</text>
+  <text class="tk" x="1414" y="167">payload_hash</text>
+  <text class="ttype" x="1668" y="167" text-anchor="end">string</text>
+  <text class="tk" x="1414" y="186">reason_code</text>
+  <text class="ttype" x="1668" y="186" text-anchor="end">string</text>
+  <text class="tk" x="1414" y="205">raw_payload_ref</text>
+  <text class="ttype" x="1668" y="205" text-anchor="end">string</text>
+  <rect class="card" x="1740" y="360" width="300" height="194"/>
+  <path class="hrule" d="M1740 392 h300"/>
+  <text class="tn" x="1752" y="381">MACHINE_CYCLE</text>
+  <rect class="tag" x="1750" y="400" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1758.0" y="411" text-anchor="middle">PK</text>
+  <text class="tk" x="1774" y="411">cycle_id</text>
+  <text class="ttype" x="2028" y="411" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="419" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="430" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="430">branch_id</text>
+  <text class="ttype" x="2028" y="430" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="438" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="449" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="449">machine_id</text>
+  <text class="ttype" x="2028" y="449" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="468">started_at</text>
+  <text class="ttype" x="2028" y="468" text-anchor="end">datetime</text>
+  <text class="tk" x="1774" y="487">ended_at</text>
+  <text class="ttype" x="2028" y="487" text-anchor="end">datetime</text>
+  <text class="tk" x="1774" y="506">program_code</text>
+  <text class="ttype" x="2028" y="506" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="525">paid_satang</text>
+  <text class="ttype" x="2028" y="525" text-anchor="end">int</text>
+  <text class="tk" x="1774" y="544">status</text>
+  <text class="ttype" x="2028" y="544" text-anchor="end">string</text>
+  <rect class="card" x="1740" y="600" width="300" height="194"/>
+  <path class="hrule" d="M1740 632 h300"/>
+  <text class="tn" x="1752" y="621">PAYMENT_EVENT</text>
+  <rect class="tag" x="1750" y="640" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1758.0" y="651" text-anchor="middle">PK</text>
+  <text class="tk" x="1774" y="651">payment_event_id</text>
+  <text class="ttype" x="2028" y="651" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="659" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="670" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="670">branch_id</text>
+  <text class="ttype" x="2028" y="670" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="678" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="689" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="689">machine_id</text>
+  <text class="ttype" x="2028" y="689" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="697" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="708" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="708">telemetry_event_id</text>
+  <text class="ttype" x="2028" y="708" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="727">amount_satang</text>
+  <text class="ttype" x="2028" y="727" text-anchor="end">int</text>
+  <text class="tk" x="1774" y="746">payment_method</text>
+  <text class="ttype" x="2028" y="746" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="765">counter_semantics</text>
+  <text class="ttype" x="2028" y="765" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="784">occurred_at</text>
+  <text class="ttype" x="2028" y="784" text-anchor="end">datetime</text>
+  <rect class="card" x="1740" y="840" width="300" height="175"/>
+  <path class="hrule" d="M1740 872 h300"/>
+  <text class="tn" x="1752" y="861">COIN_BOX_ESTIMATE</text>
+  <rect class="tag" x="1750" y="880" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1758.0" y="891" text-anchor="middle">PK</text>
+  <text class="tk" x="1774" y="891">coin_box_estimate_id</text>
+  <text class="ttype" x="2028" y="891" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="899" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="910" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="910">branch_id</text>
+  <text class="ttype" x="2028" y="910" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="918" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="929" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="929">machine_id</text>
+  <text class="ttype" x="2028" y="929" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="948">estimated_fill_percent</text>
+  <text class="ttype" x="2028" y="948" text-anchor="end">decimal</text>
+  <text class="tk" x="1774" y="967">calibration_version</text>
+  <text class="ttype" x="2028" y="967" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="986">evidence_until</text>
+  <text class="ttype" x="2028" y="986" text-anchor="end">datetime</text>
+  <text class="tk" x="1774" y="1005">updated_at</text>
+  <text class="ttype" x="2028" y="1005" text-anchor="end">datetime</text>
+  <rect class="card" x="1740" y="1080" width="300" height="175"/>
+  <path class="hrule" d="M1740 1112 h300"/>
+  <text class="tn" x="1752" y="1101">COIN_BOX_RESET</text>
+  <rect class="tag" x="1750" y="1120" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1758.0" y="1131" text-anchor="middle">PK</text>
+  <text class="tk" x="1774" y="1131">coin_box_reset_id</text>
+  <text class="ttype" x="2028" y="1131" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="1139" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="1150" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="1150">branch_id</text>
+  <text class="ttype" x="2028" y="1150" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="1158" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="1169" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="1169">machine_id</text>
+  <text class="ttype" x="2028" y="1169" text-anchor="end">string</text>
+  <rect class="tag" x="1750" y="1177" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1757.5" y="1188" text-anchor="middle">FK</text>
+  <text class="tk" x="1773" y="1188">performed_by_user_id</text>
+  <text class="ttype" x="2028" y="1188" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="1207">reset_source</text>
+  <text class="ttype" x="2028" y="1207" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="1226">source_event_id</text>
+  <text class="ttype" x="2028" y="1226" text-anchor="end">string</text>
+  <text class="tk" x="1774" y="1245">reset_at</text>
+  <text class="ttype" x="2028" y="1245" text-anchor="end">datetime</text>
+  <rect class="card" x="40" y="300" width="300" height="137"/>
+  <path class="hrule" d="M40 332 h300"/>
+  <text class="tn" x="52" y="321">REGISTER_MAP</text>
+  <rect class="tag" x="50" y="340" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="351" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="351">register_map_id</text>
+  <text class="ttype" x="328" y="351" text-anchor="end">string</text>
+  <text class="tk" x="74" y="370">machine_model</text>
+  <text class="ttype" x="328" y="370" text-anchor="end">string</text>
+  <text class="tk" x="74" y="389">version</text>
+  <text class="ttype" x="328" y="389" text-anchor="end">string</text>
+  <text class="tk" x="74" y="408">status</text>
+  <text class="ttype" x="328" y="408" text-anchor="end">string</text>
+  <text class="tk" x="74" y="427">created_at</text>
+  <text class="ttype" x="328" y="427" text-anchor="end">datetime</text>
+  <rect class="card" x="40" y="470" width="300" height="175"/>
+  <path class="hrule" d="M40 502 h300"/>
+  <text class="tn" x="52" y="491">REGISTER_DEFINITION</text>
+  <rect class="tag" x="50" y="510" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="521" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="521">register_definition_id</text>
+  <text class="ttype" x="328" y="521" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="529" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="540" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="540">register_map_id</text>
+  <text class="ttype" x="328" y="540" text-anchor="end">string</text>
+  <text class="tk" x="74" y="559">register_address</text>
+  <text class="ttype" x="328" y="559" text-anchor="end">int</text>
+  <text class="tk" x="74" y="578">field_name</text>
+  <text class="ttype" x="328" y="578" text-anchor="end">string</text>
+  <text class="tk" x="74" y="597">data_type</text>
+  <text class="ttype" x="328" y="597" text-anchor="end">string</text>
+  <text class="tk" x="74" y="616">unit</text>
+  <text class="ttype" x="328" y="616" text-anchor="end">string</text>
+  <text class="tk" x="74" y="635">decode_rule</text>
+  <text class="ttype" x="328" y="635" text-anchor="end">string</text>
+  <rect class="card" x="40" y="680" width="300" height="213"/>
+  <path class="hrule" d="M40 712 h300"/>
+  <text class="tn" x="52" y="701">AI_TOOL_CALL</text>
+  <rect class="tag" x="50" y="720" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="731" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="731">ai_tool_call_id</text>
+  <text class="ttype" x="328" y="731" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="739" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="750" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="750">ai_request_id</text>
+  <text class="ttype" x="328" y="750" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="758" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="769" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="769">tenant_id</text>
+  <text class="ttype" x="328" y="769" text-anchor="end">string</text>
+  <text class="tk" x="74" y="788">tool_name</text>
+  <text class="ttype" x="328" y="788" text-anchor="end">string</text>
+  <text class="tk" x="74" y="807">sanitized_arguments</text>
+  <text class="ttype" x="328" y="807" text-anchor="end">string</text>
+  <text class="tk" x="74" y="826">branch_scope_json</text>
+  <text class="ttype" x="328" y="826" text-anchor="end">string</text>
+  <text class="tk" x="74" y="845">result_ref</text>
+  <text class="ttype" x="328" y="845" text-anchor="end">string</text>
+  <text class="tk" x="74" y="864">status</text>
+  <text class="ttype" x="328" y="864" text-anchor="end">string</text>
+  <text class="tk" x="74" y="883">called_at</text>
+  <text class="ttype" x="328" y="883" text-anchor="end">datetime</text>
+  <rect class="card" x="40" y="900" width="300" height="175"/>
+  <path class="hrule" d="M40 932 h300"/>
+  <text class="tn" x="52" y="921">AI_REQUEST</text>
+  <rect class="tag" x="50" y="940" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="951" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="951">ai_request_id</text>
+  <text class="ttype" x="328" y="951" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="959" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="970" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="970">tenant_id</text>
+  <text class="ttype" x="328" y="970" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="978" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="989" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="989">user_id</text>
+  <text class="ttype" x="328" y="989" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1008">prompt_redacted</text>
+  <text class="ttype" x="328" y="1008" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1027">status</text>
+  <text class="ttype" x="328" y="1027" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1046">requested_at</text>
+  <text class="ttype" x="328" y="1046" text-anchor="end">datetime</text>
+  <text class="tk" x="74" y="1065">completed_at</text>
+  <text class="ttype" x="328" y="1065" text-anchor="end">datetime</text>
+  <rect class="card" x="40" y="1120" width="300" height="137"/>
+  <path class="hrule" d="M40 1152 h300"/>
+  <text class="tn" x="52" y="1141">USER</text>
+  <rect class="tag" x="50" y="1160" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="1171" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="1171">user_id</text>
+  <text class="ttype" x="328" y="1171" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1190">email</text>
+  <text class="ttype" x="328" y="1190" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1209">display_name</text>
+  <text class="ttype" x="328" y="1209" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1228">status</text>
+  <text class="ttype" x="328" y="1228" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1247">created_at</text>
+  <text class="ttype" x="328" y="1247" text-anchor="end">datetime</text>
+  <rect class="card" x="40" y="1330" width="300" height="175"/>
+  <path class="hrule" d="M40 1362 h300"/>
+  <text class="tn" x="52" y="1351">MEMBERSHIP</text>
+  <rect class="tag" x="50" y="1370" width="16" height="14" rx="3"/>
+  <text class="tkey" x="58.0" y="1381" text-anchor="middle">PK</text>
+  <text class="tk" x="74" y="1381">membership_id</text>
+  <text class="ttype" x="328" y="1381" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="1389" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="1400" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="1400">tenant_id</text>
+  <text class="ttype" x="328" y="1400" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="1408" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="1419" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="1419">branch_id</text>
+  <text class="ttype" x="328" y="1419" text-anchor="end">string</text>
+  <rect class="tag" x="50" y="1427" width="15" height="14" rx="3"/>
+  <text class="tkey" x="57.5" y="1438" text-anchor="middle">FK</text>
+  <text class="tk" x="73" y="1438">user_id</text>
+  <text class="ttype" x="328" y="1438" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1457">role</text>
+  <text class="ttype" x="328" y="1457" text-anchor="end">string</text>
+  <text class="tk" x="74" y="1476">granted_at</text>
+  <text class="ttype" x="328" y="1476" text-anchor="end">datetime</text>
+  <text class="tk" x="74" y="1495">revoked_at</text>
+  <text class="ttype" x="328" y="1495" text-anchor="end">datetime</text>
+  <rect class="card" x="60" y="1560" width="300" height="213"/>
+  <path class="hrule" d="M60 1592 h300"/>
+  <text class="tn" x="72" y="1581">AUDIT_LOG</text>
+  <rect class="tag" x="70" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="78.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="94" y="1611">audit_log_id</text>
+  <text class="ttype" x="348" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="70" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="77.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="93" y="1630">tenant_id</text>
+  <text class="ttype" x="348" y="1630" text-anchor="end">string</text>
+  <rect class="tag" x="70" y="1638" width="15" height="14" rx="3"/>
+  <text class="tkey" x="77.5" y="1649" text-anchor="middle">FK</text>
+  <text class="tk" x="93" y="1649">branch_id</text>
+  <text class="ttype" x="348" y="1649" text-anchor="end">string</text>
+  <rect class="tag" x="70" y="1657" width="15" height="14" rx="3"/>
+  <text class="tkey" x="77.5" y="1668" text-anchor="middle">FK</text>
+  <text class="tk" x="93" y="1668">actor_user_id</text>
+  <text class="ttype" x="348" y="1668" text-anchor="end">string</text>
+  <text class="tk" x="94" y="1687">action</text>
+  <text class="ttype" x="348" y="1687" text-anchor="end">string</text>
+  <text class="tk" x="94" y="1706">target_type</text>
+  <text class="ttype" x="348" y="1706" text-anchor="end">string</text>
+  <text class="tk" x="94" y="1725">target_id</text>
+  <text class="ttype" x="348" y="1725" text-anchor="end">string</text>
+  <text class="tk" x="94" y="1744">outcome</text>
+  <text class="ttype" x="348" y="1744" text-anchor="end">string</text>
+  <text class="tk" x="94" y="1763">created_at</text>
+  <text class="ttype" x="348" y="1763" text-anchor="end">datetime</text>
+  <rect class="card" x="390" y="1560" width="300" height="194"/>
+  <path class="hrule" d="M390 1592 h300"/>
+  <text class="tn" x="402" y="1581">ALERT_DELIVERY</text>
+  <rect class="tag" x="400" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="408.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="424" y="1611">alert_delivery_id</text>
+  <text class="ttype" x="678" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="400" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="407.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="423" y="1630">alert_event_id</text>
+  <text class="ttype" x="678" y="1630" text-anchor="end">string</text>
+  <text class="tk" x="424" y="1649">channel</text>
+  <text class="ttype" x="678" y="1649" text-anchor="end">string</text>
+  <text class="tk" x="424" y="1668">recipient_ref</text>
+  <text class="ttype" x="678" y="1668" text-anchor="end">string</text>
+  <text class="tk" x="424" y="1687">attempt_number</text>
+  <text class="ttype" x="678" y="1687" text-anchor="end">int</text>
+  <text class="tk" x="424" y="1706">delivery_status</text>
+  <text class="ttype" x="678" y="1706" text-anchor="end">string</text>
+  <text class="tk" x="424" y="1725">provider_message_id</text>
+  <text class="ttype" x="678" y="1725" text-anchor="end">string</text>
+  <text class="tk" x="424" y="1744">attempted_at</text>
+  <text class="ttype" x="678" y="1744" text-anchor="end">datetime</text>
+  <rect class="card" x="720" y="1560" width="300" height="270"/>
+  <path class="hrule" d="M720 1592 h300"/>
+  <text class="tn" x="732" y="1581">ALERT_EVENT</text>
+  <rect class="tag" x="730" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="738.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="754" y="1611">alert_event_id</text>
+  <text class="ttype" x="1008" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="1630">alert_rule_id</text>
+  <text class="ttype" x="1008" y="1630" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="1638" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="1649" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="1649">branch_id</text>
+  <text class="ttype" x="1008" y="1649" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="1657" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="1668" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="1668">machine_id</text>
+  <text class="ttype" x="1008" y="1668" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="1676" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="1687" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="1687">gas_sensor_id</text>
+  <text class="ttype" x="1008" y="1687" text-anchor="end">string</text>
+  <rect class="tag" x="730" y="1695" width="15" height="14" rx="3"/>
+  <text class="tkey" x="737.5" y="1706" text-anchor="middle">FK</text>
+  <text class="tk" x="753" y="1706">acknowledged_by_user_id</text>
+  <text class="ttype" x="1008" y="1706" text-anchor="end">string</text>
+  <text class="tk" x="754" y="1725">dedupe_key</text>
+  <text class="ttype" x="1008" y="1725" text-anchor="end">string</text>
+  <text class="tk" x="754" y="1744">severity</text>
+  <text class="ttype" x="1008" y="1744" text-anchor="end">string</text>
+  <text class="tk" x="754" y="1763">evidence_json</text>
+  <text class="ttype" x="1008" y="1763" text-anchor="end">string</text>
+  <text class="tk" x="754" y="1782">status</text>
+  <text class="ttype" x="1008" y="1782" text-anchor="end">string</text>
+  <text class="tk" x="754" y="1801">triggered_at</text>
+  <text class="ttype" x="1008" y="1801" text-anchor="end">datetime</text>
+  <text class="tk" x="754" y="1820">acknowledged_at</text>
+  <text class="ttype" x="1008" y="1820" text-anchor="end">datetime</text>
+  <rect class="card" x="1050" y="1560" width="300" height="194"/>
+  <path class="hrule" d="M1050 1592 h300"/>
+  <text class="tn" x="1062" y="1581">ALERT_RULE</text>
+  <rect class="tag" x="1060" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1068.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="1084" y="1611">alert_rule_id</text>
+  <text class="ttype" x="1338" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="1060" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1067.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="1083" y="1630">tenant_id</text>
+  <text class="ttype" x="1338" y="1630" text-anchor="end">string</text>
+  <rect class="tag" x="1060" y="1638" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1067.5" y="1649" text-anchor="middle">FK</text>
+  <text class="tk" x="1083" y="1649">branch_id</text>
+  <text class="ttype" x="1338" y="1649" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="1668">rule_type</text>
+  <text class="ttype" x="1338" y="1668" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="1687">rule_version</text>
+  <text class="ttype" x="1338" y="1687" text-anchor="end">string</text>
+  <text class="tk" x="1084" y="1706">cooldown_seconds</text>
+  <text class="ttype" x="1338" y="1706" text-anchor="end">int</text>
+  <text class="tk" x="1084" y="1725">enabled</text>
+  <text class="ttype" x="1338" y="1725" text-anchor="end">boolean</text>
+  <text class="tk" x="1084" y="1744">updated_at</text>
+  <text class="ttype" x="1338" y="1744" text-anchor="end">datetime</text>
+  <rect class="card" x="1380" y="1560" width="300" height="175"/>
+  <path class="hrule" d="M1380 1592 h300"/>
+  <text class="tn" x="1392" y="1581">GAS_PRESSURE_EVENT</text>
+  <rect class="tag" x="1390" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1398.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="1414" y="1611">gas_pressure_event_id</text>
+  <text class="ttype" x="1668" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="1390" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1397.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="1413" y="1630">gas_sensor_id</text>
+  <text class="ttype" x="1668" y="1630" text-anchor="end">string</text>
+  <rect class="tag" x="1390" y="1638" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1397.5" y="1649" text-anchor="middle">FK</text>
+  <text class="tk" x="1413" y="1649">branch_id</text>
+  <text class="ttype" x="1668" y="1649" text-anchor="end">string</text>
+  <text class="tk" x="1414" y="1668">event_timestamp</text>
+  <text class="ttype" x="1668" y="1668" text-anchor="end">datetime</text>
+  <text class="tk" x="1414" y="1687">pressure_value</text>
+  <text class="ttype" x="1668" y="1687" text-anchor="end">decimal</text>
+  <text class="tk" x="1414" y="1706">ambient_temperature_c</text>
+  <text class="ttype" x="1668" y="1706" text-anchor="end">decimal</text>
+  <text class="tk" x="1414" y="1725">quality_status</text>
+  <text class="ttype" x="1668" y="1725" text-anchor="end">string</text>
+  <rect class="card" x="1710" y="1560" width="300" height="137"/>
+  <path class="hrule" d="M1710 1592 h300"/>
+  <text class="tn" x="1722" y="1581">GAS_SENSOR</text>
+  <rect class="tag" x="1720" y="1600" width="16" height="14" rx="3"/>
+  <text class="tkey" x="1728.0" y="1611" text-anchor="middle">PK</text>
+  <text class="tk" x="1744" y="1611">gas_sensor_id</text>
+  <text class="ttype" x="1998" y="1611" text-anchor="end">string</text>
+  <rect class="tag" x="1720" y="1619" width="15" height="14" rx="3"/>
+  <text class="tkey" x="1727.5" y="1630" text-anchor="middle">FK</text>
+  <text class="tk" x="1743" y="1630">branch_id</text>
+  <text class="ttype" x="1998" y="1630" text-anchor="end">string</text>
+  <text class="tk" x="1744" y="1649">sensor_code</text>
+  <text class="ttype" x="1998" y="1649" text-anchor="end">string</text>
+  <text class="tk" x="1744" y="1668">pressure_unit</text>
+  <text class="ttype" x="1998" y="1668" text-anchor="end">string</text>
+  <text class="tk" x="1744" y="1687">status</text>
+  <text class="ttype" x="1998" y="1687" text-anchor="end">string</text>
+  <rect class="card" x="890" y="700" width="300" height="156"/>
+  <path class="hrule" d="M890 732 h300"/>
+  <text class="tn" x="902" y="721">BRANCH</text>
+  <rect class="tag" x="900" y="740" width="16" height="14" rx="3"/>
+  <text class="tkey" x="908.0" y="751" text-anchor="middle">PK</text>
+  <text class="tk" x="924" y="751">branch_id</text>
+  <text class="ttype" x="1178" y="751" text-anchor="end">string</text>
+  <rect class="tag" x="900" y="759" width="15" height="14" rx="3"/>
+  <text class="tkey" x="907.5" y="770" text-anchor="middle">FK</text>
+  <text class="tk" x="923" y="770">tenant_id</text>
+  <text class="ttype" x="1178" y="770" text-anchor="end">string</text>
+  <text class="tk" x="924" y="789">name</text>
+  <text class="ttype" x="1178" y="789" text-anchor="end">string</text>
+  <text class="tk" x="924" y="808">timezone</text>
+  <text class="ttype" x="1178" y="808" text-anchor="end">string</text>
+  <text class="tk" x="924" y="827">status</text>
+  <text class="ttype" x="1178" y="827" text-anchor="end">string</text>
+  <text class="tk" x="924" y="846">created_at</text>
+  <text class="ttype" x="1178" y="846" text-anchor="end">datetime</text>
+  <path class="bold" d="M60 1898 h44" marker-end="url(#crow)"/>
+  <text class="tleg2" x="116" y="1902">business FK</text>
+  <path class="thin" d="M270 1898 h44" marker-end="url(#crow)"/>
+  <text class="tleg2" x="326" y="1902">branch_id scoping</text>
+  <text class="tleg2" x="560" y="1902">tenant_id → TENANT also on MEMBERSHIP · TELEMETRY_EVENT · ALERT_RULE · AUDIT_LOG · AI_REQUEST · AI_TOOL_CALL</text>
+</svg>
+</div>
+</body>
+</html>

@@ -4,6 +4,41 @@ This document describes the target LaundryTwin MVP. It is a logical design for
 the CE Project report and future implementation; it does not claim that every
 entity and workflow is already implemented by the current LaundryTwin application.
 
+## System Overview Poster
+
+`docs/diagrams/laundrytwin_01_architecture_system-overview.html` (and the
+`@1x`/`@2x` PNG renders beside it) shows the system as it is **deployed today**,
+not as a target design: client and edge, the single application container,
+ingestion, the ClickHouse tables, and the six allow-listed MCP tools by their
+real names. Every box names a file or a running service.
+
+The renders carry no title and a fully transparent background, so they can be
+dropped straight into the report as a figure. The ink is dark slate, which
+assumes a light page. The HTML is the source and is self-contained (inline SVG);
+the PNGs match the rest of `docs/diagrams/*.png`, which is gitignored.
+
+## Sequence and ER figures
+
+Two more figures in the same ink, drawn from the sources in this repository:
+
+| Figure | Source | What it claims |
+|---|---|---|
+| `laundrytwin_02_sequence_line-answer-flow` | `docs/diagrams/line-chatbot_01_sequence_answer-flow.mmd` | the LINE question-to-answer path as implemented: webhook ack before the model runs, server-side grant resolution, the signed-scope MCP round-trip bounded at `maxSteps = 2`, and the answer pushed because the reply token has expired |
+| `laundrytwin_03_er_logical-data-model` | the ER section of this document | the **target** logical model, not the deployed schema |
+
+`laundrytwin_02b_sequence_line-answer-flow-16x9` is the same flow cut for a
+16:9 slide: ten rows instead of forty, request/response pairs collapsed into
+double-headed arrows, and the three `alt` frames dropped. Use it for
+presentations; `laundrytwin_02_…` stays the reference for anything that has to
+state the failure paths.
+
+The ER figure is arranged hub-and-spoke around `BRANCH` because `branch_id` is
+what every operational row carries. Two deliberate concessions to legibility,
+both stated on the figure itself: `tenant_id → TENANT` is drawn once, at
+`BRANCH`, instead of seven times, and the seven tables that carry it are named
+in the legend; and the business foreign keys are drawn heavier than the scoping
+edges, so the two kinds of relationship never read as one.
+
 ## Entity Relationship Diagram
 
 The model separates immutable source events, the latest Digital Twin snapshot,
