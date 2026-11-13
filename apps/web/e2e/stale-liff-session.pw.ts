@@ -26,7 +26,7 @@ import { DEVELOPMENT_OWNER_SESSION, installStubbedSession } from "./support/sess
  * Requires a build with `VITE_LIFF_ID` baked in — the gate compiles every LIFF
  * branch out otherwise — so it skips rather than passing vacuously:
  *
- *   VITE_LIFF_ID=2011592166-uToRdTwS pnpm --filter @laundrytwin/web test:layout
+ *   VITE_LIFF_ID=0000000000-Placeholder pnpm --filter @laundrytwin/web test:layout
  *
  * The value does not have to be a real LIFF ID. These specs abort every
  * `*.line.me` and `*.line-s.me` request, so the SDK never reaches LINE and the
