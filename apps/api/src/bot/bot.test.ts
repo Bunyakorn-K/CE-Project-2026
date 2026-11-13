@@ -360,6 +360,48 @@ describe("bot webhook handler", () => {
       ]);
     });
 
+    it("records a rating for the answer it actually stored", async () => {
+      // The seam no test covered: the card carries a turn id, and `chat_turn` stores
+      // one. Every layer was green — the parser, the card builder, the store — while
+      // the id on the button never matched a row, so every tap answered
+      // "ให้คะแนนคำตอบนี้ไม่ได้". A rating has to point at a turn that exists.
+      const userRate = `line-rate-${Date.now()}`;
+      // One branch, so the picker does not intercept: this test is about the id on
+      // the card, not about asking which branch.
+      const { adapter, handler } = harness({
+        branches: [TWO_BRANCHES[0]],
+        answer: "รายได้: 960 บาท\nรอบซัก: 12 รอบ"
+      });
+      accessStore.findLiffUser.mockReturnValue({ id: "u1", name: "Owner", email: "o@e.com" });
+      accessStore.resolveUserPrincipal.mockReturnValue(owner);
+
+      await handler.handleTextEvent({
+        type: "message",
+        message: { type: "text", text: "รายได้วันนี้" },
+        source: { userId: userRate },
+        replyToken: "rt-rate"
+      });
+
+      // The buttons ride on the card, so the answer has to be one (`buildAnswerFlex`).
+      const card = JSON.stringify([...adapter.sendFlex.mock.calls, ...adapter.sendText.mock.calls]);
+      const turnId = /fb:up:([0-9a-f-]{36})/.exec(card)?.[1];
+      expect(turnId).toBeTruthy();
+      // The id on the card is the id in the transcript, not a second one invented
+      // beside it.
+      expect(allTurns(userRate).map((turn) => turn.id)).toContain(turnId);
+
+      await handler.handlePostbackEvent({
+        type: "postback",
+        source: { userId: userRate },
+        replyToken: "rt-fb",
+        postback: { data: `fb:up:${turnId}` }
+      });
+
+      const replies = adapter.sendText.mock.calls.map((call) => call[1] as string);
+      expect(replies.some((text) => text.includes("ขอบคุณ"))).toBe(true);
+      expect(replies.some((text) => text.includes("ให้คะแนนคำตอบนี้ไม่ได้"))).toBe(false);
+    });
+
     it("answers the held question when the branch is tapped", async () => {
       const userTap = `line-branch-tap-${Date.now()}`;
       const { adapter, handler, fetchImpl } = harness({ branches: TWO_BRANCHES, answer: "รายได้ 960 บาท" });

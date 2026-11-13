@@ -34,6 +34,16 @@ export type ChatRole = "user" | "assistant";
 export type ConversationTurn = { role: ChatRole; content: string };
 
 export type AppendTurnInput = {
+  /**
+   * The id the delivered card already carries.
+   *
+   * It has to be passed in, not generated here: the thumbs under an answer hold
+   * `fb:up:<turnId>`, and `recordFeedback` resolves that id against `chat_turn`. When
+   * this function made up its own id, the button pointed at a row that never existed
+   * and every tap answered "ให้คะแนนคำตอบนี้ไม่ได้" — with the parser, the card builder
+   * and the store all passing their own tests.
+   */
+  id?: string;
   lineUserId: string;
   userText: string;
   answerText: string;
@@ -57,7 +67,7 @@ export type AppendTurnInput = {
 export function appendTurn(input: AppendTurnInput): void {
   db.insert(chatTurn)
     .values({
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       lineUserId: input.lineUserId,
       userText: input.userText,
       answerText: input.answerText,

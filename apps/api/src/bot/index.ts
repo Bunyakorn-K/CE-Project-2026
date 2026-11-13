@@ -317,6 +317,8 @@ export function createBotHandler(deps: BotDeps, adapterOverride?: PlatformAdapte
     // The turn is the bot's memory and its record: without this row a follow-up
     // question has nothing to refer to, and nobody can see what the bot said.
     appendTurn({
+      // The same id the card carries, so a tap can find this row.
+      id: answer.turnId,
       lineUserId: userId,
       userText: question,
       // Stored without markdown: this is what the next question is given as
