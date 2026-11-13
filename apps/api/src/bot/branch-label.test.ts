@@ -61,3 +61,26 @@ describe("shortBranchLabels", () => {
     expect(shortBranchLabels([])).toEqual([]);
   });
 });
+
+describe("real production branch names", () => {
+  const SANDBOX = "SANDBOX ทดสอบ (ไม่ใช่สาขาจริง) - อย่ารับงานลูกค้าที่นี่";
+
+  it("never cuts a negation away and reverses the instruction", () => {
+    // Cut from the left this reads "…รับงานลูกค้าที่นี่" — the opposite of
+    // "อย่ารับงานลูกค้าที่นี่". The label falls back to the head instead.
+    const label = shortBranchLabel(SANDBOX);
+    expect(label).toBe("SANDBOX ทดสอบ…");
+    expect(label).not.toContain("รับงานลูกค้าที่นี่");
+  });
+
+  it("labels the three branches the warehouse actually holds", () => {
+    const labels = shortBranchLabels([
+      SANDBOX,
+      "about you.wash & dry แม่โจ้ - ตลาดโซนเหลือง",
+      "about you.wash & dry แม่โจ้ - หลิ่งมื่น"
+    ]);
+    expect(labels).toEqual(["SANDBOX ทดสอบ…", "ตลาดโซนเหลือง", "หลิ่งมื่น"]);
+    expect(new Set(labels).size).toBe(3);
+    expect(labels.every((label) => label.length <= QUICK_REPLY_LABEL_MAX)).toBe(true);
+  });
+});

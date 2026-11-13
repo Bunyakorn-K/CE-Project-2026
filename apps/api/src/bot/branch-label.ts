@@ -16,6 +16,16 @@ export const QUICK_REPLY_LABEL_MAX = 20;
 /** "about you.wash & dry แม่โจ้ - หลิ่งมื่น" → ["about you.wash & dry แม่โจ้", "หลิ่งมื่น"] */
 const SEPARATOR = /\s+[-–—]\s+/;
 
+/**
+ * Words that invert a sentence when they are the part that gets cut.
+ *
+ * The picker really holds a branch named
+ * "SANDBOX ทดสอบ (ไม่ใช่สาขาจริง) - อย่ารับงานลูกค้าที่นี่". Cut from the left to 20
+ * characters its label reads "…รับงานลูกค้าที่นี่" — the opposite instruction. A label
+ * may be vague; it may not say the reverse of the name.
+ */
+const NEGATION = /อย่า|ไม่|ห้าม|ยกเลิก|งด/;
+
 function segmentsOf(name: string): string[] {
   const parts = name
     .split(SEPARATOR)
@@ -24,21 +34,39 @@ function segmentsOf(name: string): string[] {
   return parts.length > 0 ? parts : [name.trim()];
 }
 
-/**
- * Keep the end of a string, because that is the part that differs.
- *
- * Cut from the left, not the right: "…ตลาดโซนเหลือง" tells the reader which branch,
- * while "about you.wash & dr…" tells them which franchise, which they already know.
- */
-function fit(text: string, max: number): string {
+/** Keep the end, because that is the part that differs branch to branch. */
+function tailFit(text: string, max: number): string {
   if (text.length <= max) return text;
   return `…${text.slice(text.length - (max - 1))}`;
+}
+
+/** Keep the beginning, cut at a word boundary so no word is half-shown. */
+function headFit(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const atSpace = cut.lastIndexOf(" ");
+  return `${(atSpace > 0 ? cut.slice(0, atSpace) : cut).trimEnd()}…`;
+}
+
+/**
+ * Shorten one label, preferring the end but never cutting a negation away.
+ *
+ * `fullName` is what `headFit` falls back to, and is only used when the end cannot be
+ * shown safely.
+ */
+function fit(text: string, fullName: string, max: number): string {
+  if (text.length <= max) return text;
+  // A negation anywhere in the part being shortened is a reason not to shorten it from
+  // the front: "อย่ารับงานลูกค้าที่นี่" becomes "…รับงานลูกค้าที่นี่" whether the cut
+  // lands before or inside the word, and Thai has no spaces to cut at.
+  if (NEGATION.test(text)) return headFit(fullName, max);
+  return tailFit(text, max);
 }
 
 /** The shortest label that still names this branch, ignoring its siblings. */
 export function shortBranchLabel(name: string, max = QUICK_REPLY_LABEL_MAX): string {
   const parts = segmentsOf(name);
-  return fit(parts[parts.length - 1] ?? name.trim(), max);
+  return fit(parts[parts.length - 1] ?? name.trim(), name.trim(), max);
 }
 
 /**
@@ -55,17 +83,21 @@ export function shortBranchLabels(names: string[], max = QUICK_REPLY_LABEL_MAX):
   const widest = Math.max(...segments.map((parts) => parts.length));
 
   for (let take = 1; take <= widest; take++) {
-    const labels = segments.map((parts) => fit(parts.slice(-take).join(" - "), max));
+    const labels = segments.map((parts, index) =>
+      take === 1
+        ? shortBranchLabel(names[index], max)
+        : fit(parts.slice(-take).join(" - "), names[index].trim(), max)
+    );
     if (new Set(labels).size === labels.length) return labels;
   }
 
   // Nothing distinguishes them, so the shortest label stays and the duplicates are
   // numbered. A wider label buys nothing when the names are identical.
   const seen = new Map<string, number>();
-  return segments.map((parts) => {
-    const shortest = fit(parts[parts.length - 1] ?? "", max);
+  return names.map((name) => {
+    const shortest = shortBranchLabel(name, max);
     const count = (seen.get(shortest) ?? 0) + 1;
     seen.set(shortest, count);
-    return count === 1 ? shortest : fit(`${shortest} (${count})`, max);
+    return count === 1 ? shortest : tailFit(`${shortest} (${count})`, max);
   });
 }
