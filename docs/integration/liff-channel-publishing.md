@@ -54,27 +54,39 @@ release.
 
 ## What changes in this repository when the LIFF ID changes
 
-No code. Three values, in two places:
+No code — but **four** values, not two, and the one people forget is the one that
+breaks sign-in *after* every visible step looks right.
 
-| value | where | who |
-|---|---|---|
-| `VITE_LIFF_ID` | GitHub Actions **secret** — baked into the SPA at image build time | you (a secret) |
-| `LIFF_ID` | `/opt/laundrytwin/.env` — the bot's rich menus and alert links | deploy step |
-| rich menu URIs | derived from `LIFF_ID`, so they must be re-synced | admin → "Sync rich menus", or `POST /api/admin/rich-menus/sync` |
+| value | where | why it matters | who |
+|---|---|---|---|
+| `LIFF_ID` | `/opt/laundrytwin/.env` | rich menu and alert links build `https://liff.line.me/<id>/…` from it | deploy step |
+| `LINE_LOGIN_CHANNEL_IDS` (or `LINE_LOGIN_CHANNEL_ID`) | `/opt/laundrytwin/.env` | **the ID-token `client_id`** the server verifies against. It is *not* derived from `LIFF_ID` (`apps/api/src/index.ts` passes it straight to the verifier). Miss this and `liff.init` succeeds, the redirect succeeds, and `/api/auth/liff/exchange` then rejects every token with `INVALID_LIFF_TOKEN` | deploy step |
+| `VITE_LIFF_ID` | GitHub Actions **secret** | baked into the SPA at image build time; without it every LIFF branch is compiled out and the release workflow refuses to publish | you (a secret) |
+| rich menu URIs | derived from `LIFF_ID` | an old menu keeps the old id until re-synced | admin → "Sync rich menus" |
 
-`liffUri()` builds `https://liff.line.me/<id>/<path>`, so the rich menu and every alert
-link follow the new id automatically once it is re-synced.
+`LINE_LOGIN_CHANNEL_IDS` accepts a comma-separated list, so the old channel id can stay
+while the new one is added — which is what makes the switch reversible without a second
+deploy.
 
 Sequence:
 
 ```text
-1. set the VITE_LIFF_ID secret to the new id
-2. push any commit (or re-run the Release workflow) -> new image with the id baked in
-3. /opt/laundrytwin/.env: LIFF_ID=<new id>   (mode 600)
+1. you: set the VITE_LIFF_ID secret to the new LIFF id
+2. you: push any commit (or re-run the Release workflow) -> image with the id baked in
+3. deploy: /opt/laundrytwin/.env gets LIFF_ID=<new liff id> and
+           LINE_LOGIN_CHANNEL_IDS=<new channel id>[,<old ids>]     (mode 600)
 4. deploy the image, then re-sync the rich menu
 5. verify: open https://liff.line.me/<new id>/dashboard on a phone that is NOT a
-   channel admin. That is the only check that proves the channel is published.
+   channel admin, and confirm /api/auth/liff/exchange answers 200. The second half is
+   what proves step 3's channel id, not just the publishing.
 ```
+
+### Rollback
+
+Keep the old ids in `LINE_LOGIN_CHANNEL_IDS` and keep the old `VITE_LIFF_ID` image tag
+(rollback refs live in `docs/02_architecture/deploy-runbook.md`). A rollback that only
+restores the image leaves `LIFF_ID` pointing at the new channel, so the menüs and the
+verifier disagree — restore both together.
 
 ## What to verify after the switch
 
