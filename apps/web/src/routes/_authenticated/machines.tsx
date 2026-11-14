@@ -187,12 +187,12 @@ function MachineCard({ machine }: { machine: Machine }) {
         </div>
         {machine.telemetry ? (
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3.5">
-            <div><span>Phase</span><strong>{machine.telemetry.phase ?? "ไม่ทราบ"}</strong></div>
-            <div><span>เหลือเวลา</span><strong>{fmtRemaining(machine.telemetry.remainingSeconds ?? machine.remainingSeconds)}</strong></div>
-            <div><span>อุณหภูมิ</span><strong>{machine.telemetry.temperatureC === null ? "ไม่ทราบ" : `${machine.telemetry.temperatureC}°C`}</strong></div>
-            <div><span>ประตู</span><strong>{machine.telemetry.doorStatus ?? "ไม่ทราบ"}</strong></div>
-            <div><span>Coinbox</span><strong>{machine.telemetry.coinbox ?? "ไม่ทราบ"}</strong></div>
-            <div><span>Error</span><strong>{machine.telemetry.errorCode === null ? "ไม่ทราบ" : machine.telemetry.errorCode}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">Phase</span><strong className="text-sm">{machine.telemetry.phase ?? "ไม่ทราบ"}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">เหลือเวลา</span><strong className="text-sm">{fmtRemaining(machine.telemetry.remainingSeconds ?? machine.remainingSeconds)}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">อุณหภูมิ</span><strong className="text-sm">{machine.telemetry.temperatureC === null ? "ไม่ทราบ" : `${machine.telemetry.temperatureC}°C`}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">ประตู</span><strong className="text-sm">{machine.telemetry.doorStatus ?? "ไม่ทราบ"}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">Coinbox</span><strong className="text-sm">{machine.telemetry.coinbox ?? "ไม่ทราบ"}</strong></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[11px] text-muted">Error</span><strong className="text-sm">{machine.telemetry.errorCode === null ? "ไม่ทราบ" : machine.telemetry.errorCode}</strong></div>
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-surface-secondary p-4 text-sm leading-relaxed text-muted">
