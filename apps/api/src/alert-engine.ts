@@ -52,6 +52,15 @@ export type AlertEngineDeps = {
   now?: () => Date;
   cooldownMs?: number;
   staleSendingMs?: number;
+  /**
+   * Alert ids that may be sent inside the cooldown window.
+   *
+   * The cooldown bounds *reminders*. An alert whose content materially changed — a gas
+   * decline that got steeper — is not a reminder, and holding it back for 12 (now 48)
+   * hours is how an escalation arrives too late to be useful. The monthly budget is
+   * still enforced: running out of messages is a deployment fact, not a cadence.
+   */
+  cooldownExemptIds?: Set<string>;
   severityRoles?: Record<string, Role[]>;
 };
 
@@ -71,6 +80,8 @@ export type AlertSweepSummary = {
    * messages and someone has to decide what to do about it.
    */
   suppressedBudget: number;
+  /** Alerts sent inside the cooldown window because their content changed. */
+  cooldownExempt: number;
 };
 
 /**
@@ -278,6 +289,7 @@ export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps):
     deduplicated: 0,
     cooldown: 0,
     suppressedBudget: 0,
+    cooldownExempt: 0,
     noRecipients: 0,
     failed: 0,
     acknowledged: 0
@@ -298,10 +310,15 @@ export async function runAlertSweep(alerts: IrisAlert[], deps: AlertEngineDeps):
 
     const key = cooldownKeyFor(alert);
     const lastSent = lastSentAtForKey(key);
-    if (lastSent && now.getTime() - lastSent.getTime() < cooldownMs) {
-      summary.cooldown += 1;
-      recordCooldownSkip(alert, key);
-      continue;
+    const insideCooldown = lastSent !== null && now.getTime() - lastSent.getTime() < cooldownMs;
+    if (insideCooldown) {
+      if (deps.cooldownExemptIds?.has(alert.id)) {
+        summary.cooldownExempt += 1;
+      } else {
+        summary.cooldown += 1;
+        recordCooldownSkip(alert, key);
+        continue;
+      }
     }
 
     // The month's allowance, checked after the cooldown so a suppressed alert is

@@ -247,6 +247,52 @@ describe("runAlertSweep", () => {
     expect(third.sent).toBe(1);
   });
 
+  it("sends an exempt alert inside the cooldown window, and still counts the rest as cooldown", async () => {
+    // An escalation is news even though a reminder is not: a channel whose decline got
+    // materially worse must not wait out the 12-hour (now 48-hour) cadence.
+    seedRecipient({ role: "owner", branchId: "B1" });
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const t0 = () => new Date("2026-09-06T12:00:00.000Z");
+    const oneHourLater = () => new Date("2026-09-06T13:00:00.000Z");
+
+    const base = makeAlert({ severity: "warning", branchId: "B1" });
+    const escalated = makeAlert({ id: `${base.id}-escalated`, severity: "warning", branchId: "B1" });
+
+    await runAlertSweep([base], deps({ adapter: { sendText }, now: t0 }));
+    const summary = await runAlertSweep([base, escalated], deps({
+      adapter: { sendText },
+      now: oneHourLater,
+      cooldownExemptIds: new Set([escalated.id])
+    }));
+
+    expect(summary.cooldown).toBe(1);
+    expect(summary.sent).toBe(1);
+    expect(summary.cooldownExempt).toBe(1);
+    expect(sendText).toHaveBeenCalledTimes(2);
+  });
+
+  it("an exemption does not bypass the month's allowance", async () => {
+    // The exemption is about the reminder cadence, not about the budget: running out of
+    // messages is a fact the deployment has to show, not one an escalation may ignore.
+    seedRecipient({ role: "owner", branchId: "B1" });
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const alert = makeAlert();
+    const previous = process.env.ALERT_MONTHLY_BUDGET;
+    process.env.ALERT_MONTHLY_BUDGET = "0";
+    try {
+      const summary = await runAlertSweep([alert], deps({
+        adapter: { sendText },
+        cooldownExemptIds: new Set([alert.id])
+      }));
+      expect(summary.suppressedBudget).toBe(1);
+      expect(summary.sent).toBe(0);
+      expect(sendText).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.ALERT_MONTHLY_BUDGET;
+      else process.env.ALERT_MONTHLY_BUDGET = previous;
+    }
+  });
+
   it("stops sending when the month's allowance is spent, and says so", async () => {
     seedRecipient({ role: "owner", branchId: "B1" });
     const sendText = vi.fn().mockResolvedValue(undefined);
