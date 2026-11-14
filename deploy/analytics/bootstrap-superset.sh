@@ -44,7 +44,22 @@ if ! docker exec "$CONTAINER" superset fab create-admin \
   log "   admin '$ADMIN_USER' already exists — skipping"
 fi
 
+log "1a/4 sync roles and permissions (idempotent superset init)"
+# NOT optional. `db upgrade` creates the tables; `superset init` creates the
+# security model inside them: the Alpha/Gamma/sql_lab roles and the ~230
+# permission view rows every REST endpoint checks. Without it a migrated
+# metadata database holds a partial set (measured on 2026-11-13: 27 permission
+# views, 99 view menus, 8 permissions, Admin holding 4) and the login works
+# while *every* `/api/v1/*` call answers 403 `{"message":"Forbidden"}` —
+# including `/api/v1/me/`, which is what the welcome page shows as "There was
+# an issue fetching your dashboards: [object Response]". A fresh SQLite volume
+# hid this because the app builds the model on first boot; a Postgres metadata
+# database migrated by `db upgrade` alone does not.
+docker exec "$CONTAINER" superset init
+
 log "1b/4 ensure Admin role can write Database/Dataset/Chart/Dashboard"
+# Belt and braces after init: the dashboard importer needs these four writes,
+# and a partially-synced Admin role would fail the import rather than the login.
 # Fresh volumes may have an Admin role without the write permissions the
 # dashboard importer needs (superset init can be incomplete during first boot).
 docker exec -i -e SUPERSET_ADMIN_USER="$ADMIN_USER" "$CONTAINER" superset shell <<'PY'
