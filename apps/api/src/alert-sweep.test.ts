@@ -345,6 +345,67 @@ describe("performAlertSweep", () => {
     expect(notificationRows().filter((row) => row.lineUserId === lineUserId)).toHaveLength(1);
   });
 
+  // A declining channel that has not changed is not news. Measured in production
+  // 2026-11-13: 42 messages in five days across three channels, all announcing one
+  // condition that had been true since the 9th.
+  describe("gas episodes", () => {
+    const clearGasRows = () => {
+      db.$client.prepare("delete from alert_notification where iris_alert_id like 'gas:%'").run();
+      db.$client.prepare("delete from audit_log where target like 'gas:%'").run();
+    };
+    beforeEach(clearGasRows);
+    afterEach(clearGasRows);
+
+    const declining = (step: number) => gasRows(Array.from({ length: 17 }, (_, index) => 60 - index * step));
+
+    it("does not re-announce a declining channel whose evidence has not changed", async () => {
+      seedRecipient("owner");
+      const deps = alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: declining(0.5) }) } });
+
+      const first = await performAlertSweep(deps);
+      expect(first.gas.alertable).toBe(1);
+      // Recipient count is not this test's subject: other files leave LINE-linked
+      // accounts behind in the shared database.
+      expect(first.gas.summary?.sent).toBeGreaterThan(0);
+
+      const second = await performAlertSweep(deps);
+      // Zero alerts reach the engine: not deduplicated by id, not cooldown — filtered
+      // out before either of those could apply.
+      expect(second.gas.alertable).toBe(0);
+      expect(second.gas.summary).toBeNull();
+      expect(second.gas.channels[0]).toMatchObject({ channel: "gas_run_a_pressure", episode: "suppressed" });
+
+      const audits = db
+        .select()
+        .from(auditLog)
+        .all()
+        .filter((row) => row.action === "alert.suppressed_episode");
+      expect(audits.length).toBeGreaterThan(0);
+      expect(audits[0].detail).toContain("unchanged_episode");
+    });
+
+    it("escalates a channel that got materially steeper, even inside the cooldown", async () => {
+      seedRecipient("owner");
+      const baseline = alertDeps({ gas: { clickhouse: gasClickhouse({ gasRows: declining(0.5) }) } });
+      const first = await performAlertSweep(baseline);
+      expect(first.gas.summary?.sent).toBeGreaterThan(0);
+
+      // One hour later — well inside the 12-hour floor — the decline is three times as
+      // steep. That is a change, and waiting out the cadence would make it arrive late.
+      const later = new Date(NOW.getTime() + 60 * 60 * 1000);
+      const steeper = alertDeps({
+        now: () => later,
+        gas: { clickhouse: gasClickhouse({ gasRows: declining(1.5) }) }
+      });
+      const second = await performAlertSweep(steeper);
+
+      expect(second.gas.alertable).toBe(1);
+      expect(second.gas.summary?.sent).toBeGreaterThan(0);
+      // Counted per alert, not per recipient: one channel escalated.
+      expect(second.gas.summary?.cooldownExempt).toBe(1);
+    });
+  });
+
   it("evaluates gas over its own window and names it in the summary", async () => {
     const values = Array.from({ length: 17 }, (_, index) => 60 - index * 0.5);
     const summary = await performAlertSweep(

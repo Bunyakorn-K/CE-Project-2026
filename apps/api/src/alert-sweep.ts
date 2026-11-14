@@ -18,9 +18,13 @@
  * window cannot be re-measured.
  */
 
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { ClickHouseExecutor } from "./analytics/clickhouse";
-import { runAlertSweep, type AlertEngineDeps, type AlertSweepSummary } from "./alert-engine";
+import { cooldownKeyFor, runAlertSweep, type AlertEngineDeps, type AlertSweepSummary } from "./alert-engine";
+import { db } from "./db";
+import { auditLog } from "./schema";
+import { effectiveRenotifyMs } from "./alert-settings";
+import { decideGasRenotify, lastSentGasAlert } from "./gas-episode";
 import {
   GAS_CHANNELS,
   evaluateGasTrend,
@@ -59,6 +63,14 @@ export type GasChannelSummary = {
    * `null` means there was none and the verdict is `unknown`.
    */
   temperatureAgeHours: number | null;
+  /**
+   * What the sweep did with this channel: `notify` sent a message, `suppressed` means
+   * the decline is the same one that was already announced, `not_declining` means there
+   * was nothing to say in the first place. A channel that is declining and produced no
+   * message must say which of those it was.
+   */
+  episode: "notify" | "suppressed" | "not_declining";
+  episodeReason: string;
 };
 
 export type GasSweepSummary = {
@@ -317,6 +329,20 @@ function specificReason(
   return decision.evidence.reason;
 }
 
+/** Why a declining channel produced no message — visible, not inferred. */
+function recordEpisodeSkip(alert: { id: string; ruleId: string }, cooldownKey: string, reason: string) {
+  db.insert(auditLog)
+    .values({
+      id: randomUUID(),
+      actorUserId: null,
+      action: "alert.suppressed_episode",
+      target: alert.id,
+      detail: JSON.stringify({ cooldownKey, ruleId: alert.ruleId, reason }),
+      createdAt: new Date()
+    })
+    .run();
+}
+
 /**
  * Evaluate all three pressure channels for the window and push only the
  * alertable ones through the same engine IRIS alerts use.
@@ -354,12 +380,43 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
     })
   );
 
-  const alerts = decisions
-    .map((decision) => gasAlertFromDecision(decision, { branchId, windowEnd: now }))
-    .filter((alert): alert is NonNullable<typeof alert> => alert !== null);
+  // A channel that is still declining is not news. The comparison is against the last
+  // alert actually sent for it, so one unchanged condition stops becoming a daily
+  // message — and an escalation still gets through, because its numbers changed.
+  const alerts: NonNullable<ReturnType<typeof gasAlertFromDecision>>[] = [];
+  const cooldownExemptIds = new Set<string>();
+  const renotifyMs = effectiveRenotifyMs();
+  const episodes: Array<{ episode: GasChannelSummary["episode"]; episodeReason: string }> = decisions.map(
+    (decision) => ({ episode: "not_declining", episodeReason: decision.evidence.reason })
+  );
+
+  decisions.forEach((decision, index) => {
+    const alert = gasAlertFromDecision(decision, { branchId, windowEnd: now });
+    if (!alert) return;
+    const key = cooldownKeyFor(alert as unknown as IrisAlert);
+    const verdict = decideGasRenotify({
+      previous: lastSentGasAlert(key),
+      current: {
+        // The rule's own evidence is nullable; `decideGasRenotify` treats a non-finite
+        // value as "not comparable" and falls through to the cadence.
+        edgeRatePsiPerHour: decision.evidence.edgeRatePsiPerHour ?? Number.NaN,
+        lastEdgePsi: decision.evidence.lastEdgePsi ?? Number.NaN
+      },
+      now: now.getTime(),
+      renotifyMs
+    });
+    if (!verdict.notify) {
+      recordEpisodeSkip(alert, key, verdict.reason);
+      episodes[index] = { episode: "suppressed", episodeReason: verdict.reason };
+      return;
+    }
+    if (verdict.reason === "rate_worsened" || verdict.reason === "drop_worsened") cooldownExemptIds.add(alert.id);
+    episodes[index] = { episode: "notify", episodeReason: verdict.reason };
+    alerts.push(alert);
+  });
 
   const summary = alerts.length > 0
-    ? await runAlertSweep(alerts as unknown as IrisAlert[], engine)
+    ? await runAlertSweep(alerts as unknown as IrisAlert[], { ...engine, cooldownExemptIds })
     : null;
 
   return {
@@ -377,7 +434,9 @@ async function sweepGas(deps: GasSweepDeps, now: Date, engine: Omit<AlertEngineD
       sampleCount: decision.evidence.sampleCount,
       nullMinutes: decision.evidence.nullMinutes,
       reason: specificReason(decision, reasons),
-      temperatureAgeHours
+      temperatureAgeHours,
+      episode: episodes[index].episode,
+      episodeReason: episodes[index].episodeReason
     })),
     summary
   };
