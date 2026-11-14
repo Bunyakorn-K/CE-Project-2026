@@ -17,6 +17,10 @@
 // steady observation is stored. The cadence is what bounds it; separating the two cases
 // would need episode state, which is a schema change and a different piece of work.
 
+import { and, desc, eq } from "drizzle-orm";
+import { db } from "./db";
+import { alertNotification } from "./schema";
+
 /** A decline is worth another message when its rate is this much steeper. */
 export const RATE_WORSEN_FRACTION = 0.25;
 
@@ -79,4 +83,43 @@ export function decideGasRenotify(input: {
   if (now - previous.sentAt >= renotifyMs) return { notify: true, reason: "reminder_due" };
 
   return { notify: false, reason: "unchanged_episode" };
+}
+
+/**
+ * What the last alert for this channel actually reported.
+ *
+ * Read from `alert_notification` rather than kept in a new table: the evidence of the
+ * alert that was sent is the baseline, and it cannot drift from what the recipient saw.
+ * Only `sent` rows count — a failed attempt reached nobody, so it must not become the
+ * reason the next one is suppressed.
+ *
+ * `null` when there is no such row, when its evidence carries no numbers (rows written
+ * before the evidence had these fields), or when the JSON does not parse. Every one of
+ * those means "treat this as a first alert", never "stay quiet".
+ */
+export function lastSentGasAlert(cooldownKey: string): GasEpisodePrevious | null {
+  const row = db
+    .select({ evidence: alertNotification.evidence, attemptedAt: alertNotification.attemptedAt })
+    .from(alertNotification)
+    .where(and(eq(alertNotification.cooldownKey, cooldownKey), eq(alertNotification.status, "sent")))
+    .orderBy(desc(alertNotification.attemptedAt))
+    .limit(1)
+    .get();
+  if (!row) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.evidence);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+
+  const evidence = parsed as Record<string, unknown>;
+  const edgeRatePsiPerHour = evidence.edgeRatePsiPerHour;
+  const lastEdgePsi = evidence.lastEdgePsi;
+  if (typeof edgeRatePsiPerHour !== "number" || !Number.isFinite(edgeRatePsiPerHour)) return null;
+  if (typeof lastEdgePsi !== "number" || !Number.isFinite(lastEdgePsi)) return null;
+
+  return { edgeRatePsiPerHour, lastEdgePsi, sentAt: row.attemptedAt.getTime() };
 }
